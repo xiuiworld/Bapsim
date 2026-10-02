@@ -1,0 +1,38 @@
+default_config:
+
+bapsim:
+
+homeassistant:
+  name: Bapsim Lab
+  time_zone: Asia/Seoul
+  packages: !include_dir_named packages
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+recorder:
+  purge_keep_days: 14
+  include:
+    entities:
+      - input_select.bapsim_lid_state
+      - input_select.bapsim_cooking_state
+      - input_select.bapsim_availability
+      - input_select.bapsim_away_state
+      - sensor.bapsim_detection_status
+      - sensor.bapsim_workflow_status
+      - sensor.bapsim_baseline
+      - sensor.bapsim_features
+      - sensor.bapsim_notification_delivery
+      - sensor.bapsim_matter_input
+
+lovelace:
+  mode: storage
+  dashboards:
+    bapsim-lab:
+      mode: yaml
+      title: 밥심 실험실
+      icon: mdi:rice
+      show_in_sidebar: true
+      filename: dashboards/bapsim_lab.yaml
+

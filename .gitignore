@@ -14,9 +14,15 @@ __pycache__/
 /home-assistant/runtime/
 /service/runtime/
 /deploy/runtime/
+/infrastructure/home_assistant/config/.HA_VERSION
+/infrastructure/home_assistant/config/.ha_run.lock
+/infrastructure/home_assistant/config/home-assistant_v2.db*
+/infrastructure/home_assistant/config/home-assistant.log*
+/infrastructure/home_assistant/config/blueprints/
 
 # Generated build/test outputs
 build/
+/dist/
 node_modules/
 .pytest_cache/
 .mypy_cache/
@@ -29,6 +35,7 @@ htmlcov/
 /docs/proposals/assets/
 /docs/program/
 /docs/hardware/*.pdf
+/docs/reference/*.pdf
 
 # Editor / OS local files
 .DS_Store

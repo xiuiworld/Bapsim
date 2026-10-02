@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "status": "offline_candidate_only",
+  "features": [
+    "open_drop",
+    "delay_growth",
+    "cook_open_mismatch",
+    "inactivity_growth"
+  ],
+  "weights": [
+    0.1,
+    0.4,
+    0.1,
+    0.4
+  ],
+  "threshold": 0.3,
+  "train_seed": 11,
+  "holdout_seeds": [
+    31,
+    47,
+    73
+  ],
+  "warning": "Evaluated on synthetic situations only. Does not replace live conservative rules."
+}

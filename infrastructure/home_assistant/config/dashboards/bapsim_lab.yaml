@@ -1,0 +1,124 @@
+title: 밥심 실험실
+views:
+  - title: Simulator
+    path: simulator
+    icon: mdi:rice
+    cards:
+      - type: markdown
+        content: |
+          ## 밥솥 시뮬레이터
+          버튼은 원시 상태와 `bapsim_raw_event`만 만듭니다. 실제 식사 여부나 이상 여부를 판정하지 않습니다.
+      - type: grid
+        title: 이벤트 발생
+        columns: 2
+        square: false
+        cards:
+          - type: button
+            name: 뚜껑 열기
+            icon: mdi:pot-steam
+            tap_action: {action: perform-action, perform_action: script.bapsim_lid_open}
+          - type: button
+            name: 뚜껑 닫기
+            icon: mdi:pot
+            tap_action: {action: perform-action, perform_action: script.bapsim_lid_close}
+          - type: button
+            name: 취사 시작
+            icon: mdi:play
+            tap_action: {action: perform-action, perform_action: script.bapsim_cooking_start}
+          - type: button
+            name: 취사 완료
+            icon: mdi:check
+            tap_action: {action: perform-action, perform_action: script.bapsim_cooking_finish}
+          - type: button
+            name: 통신 끊기
+            icon: mdi:lan-disconnect
+            tap_action: {action: perform-action, perform_action: script.bapsim_disconnect}
+          - type: button
+            name: 통신 복구
+            icon: mdi:lan-connect
+            tap_action: {action: perform-action, perform_action: script.bapsim_reconnect}
+          - type: button
+            name: 외출 시작
+            icon: mdi:exit-run
+            tap_action: {action: perform-action, perform_action: script.bapsim_away_start}
+          - type: button
+            name: 외출 종료
+            icon: mdi:home-import-outline
+            tap_action: {action: perform-action, perform_action: script.bapsim_away_end}
+      - type: entities
+        title: 현재 원시 상태
+        entities:
+          - input_select.bapsim_lid_state
+          - input_select.bapsim_cooking_state
+          - input_select.bapsim_availability
+          - input_select.bapsim_away_state
+      - type: history-graph
+        title: 최근 상태 변화
+        hours_to_show: 24
+        entities:
+          - input_select.bapsim_lid_state
+          - input_select.bapsim_cooking_state
+          - input_select.bapsim_availability
+          - input_select.bapsim_away_state
+  - title: 밥심 상태
+    path: status
+    icon: mdi:heart-pulse
+    cards:
+      - type: markdown
+        content: |
+          ## 생활 루틴 확인
+          밥솥 사용의 변화를 보여줍니다. 식사 여부나 건강 상태를 확정하지 않습니다.
+      - type: entities
+        title: 판정 및 기준
+        entities:
+          - sensor.bapsim_detection_status
+          - sensor.bapsim_workflow_status
+          - sensor.bapsim_baseline
+          - sensor.bapsim_features
+          - sensor.bapsim_notification_delivery
+          - sensor.bapsim_matter_input
+          - sensor.bapsim_away
+          - input_select.bapsim_availability
+      - type: markdown
+        content: |
+          {% set f = states.sensor.bapsim_features.attributes if states.sensor.bapsim_features is defined else {} %}
+          {% set p = states.sensor.bapsim_baseline.attributes if states.sensor.bapsim_baseline is defined else {} %}
+          {% set windows = state_attr('sensor.bapsim_baseline', 'windows') or [] %}
+          {% set d = states.sensor.bapsim_detection_status.attributes if states.sensor.bapsim_detection_status is defined else {} %}
+          {% set cooks = f.get('cook_count_24h') %}
+          {% set opens = p.get('lid_open_count_24h') %}
+          ### 개인별 사용 패턴
+          - 모델 상태: **{{ states('sensor.bapsim_baseline') }}** (연결이 정상인 날의 기록이 최소 7일 쌓이면 개인 판정을 시작)
+          {% for w in windows %}
+          - 예상 사용 구간 {{ loop.index }}: **{{ as_timestamp(w.expected_time) | timestamp_custom('%H:%M', true) }} 전후** · 관측 확률 {{ (w.probability * 100) | round(0) }}% · 학습일 {{ w.covered_days }}일
+          {% endfor %}
+          ### 현재 관측
+          - 최근 24시간 취사 세션: **{{ cooks ~ '회' if cooks is not none else '미관측' }}** / 뚜껑 열림: **{{ opens ~ '회' if opens is not none else '미관측' }}**
+          - 판정 근거: **{{ (d.get('reason_codes') or []) | join(', ') if d.get('reason_codes') else '없음' }}**
+          - 밥솥 판정: **{{ states('sensor.bapsim_detection_status') }}**
+      - type: grid
+        title: 보호자 확인 기록
+        columns: 2
+        square: false
+        cards:
+          - type: button
+            name: 확인 중
+            icon: mdi:account-search
+            tap_action:
+              action: perform-action
+              perform_action: bapsim.respond
+              data: {response: checking}
+          - type: button
+            name: 안부 확인 완료
+            icon: mdi:check-circle
+            tap_action:
+              action: perform-action
+              perform_action: bapsim.respond
+              data: {response: resolved}
+      - type: history-graph
+        title: 판정 및 응답 기록
+        hours_to_show: 168
+        entities:
+          - sensor.bapsim_detection_status
+          - sensor.bapsim_workflow_status
+
