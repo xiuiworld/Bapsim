@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1.0",
+  "household_id": "demo-home",
+  "revision": 1,
+  "generated_at": "2026-10-02T03:00:00Z",
+  "valid_until": "2026-10-02T03:03:00Z",
+  "last_usage_at": null,
+  "learning": "collecting",
+  "observation": "available",
+  "sensor_issues": [],
+  "assessments": [],
+  "summary": "생활 패턴을 배우고 있어요.",
+  "policy_version": "proposal-0.1",
+  "model_version": "simulation-only"
+}

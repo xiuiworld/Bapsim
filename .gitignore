@@ -1,0 +1,35 @@
+__pycache__/
+*.py[cod]
+**/api-results/
+.venv/
+
+# Local secrets and runtime state
+.env
+.env.*
+!.env.example
+!.env.*.example
+**/secrets.yaml
+**/.storage/
+/local-data/
+/home-assistant/runtime/
+/service/runtime/
+/deploy/runtime/
+
+# Generated build/test outputs
+build/
+node_modules/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local reference originals: review rights/privacy before sharing
+/docs/proposals/submitted/
+/docs/proposals/assets/
+/docs/program/
+/docs/hardware/*.pdf
+
+# Editor / OS local files
+.DS_Store
+Thumbs.db
