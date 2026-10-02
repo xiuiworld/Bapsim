@@ -1,0 +1,144 @@
+respond:
+  name: Record caregiver response
+  description: Record checking or resolved. With no source/device ID, use the only active incident; supply both if multiple are active.
+  fields:
+    response:
+      required: true
+      selector:
+        select:
+          options:
+            - checking
+            - resolved
+    source:
+      selector:
+        text:
+    device_id:
+      selector:
+        text:
+register_matter_contact:
+  name: Register Matter cooker contact
+  description: Map a contact entity from the HA Matter integration to the same raw cooker event boundary as the simulator.
+  fields:
+    device_id:
+      required: true
+      selector:
+        text:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: binary_sensor
+    on_is_open:
+      required: true
+      selector:
+        boolean:
+register_matter_cooking_state:
+  name: Register Matter cooker cooking state
+  description: Map two confirmed cooking values from an HA Matter entity to raw started/finished states. Use the same device_id as the lid contact.
+  fields:
+    device_id:
+      required: true
+      selector:
+        text:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain:
+            - sensor
+            - binary_sensor
+            - select
+    started_state:
+      required: true
+      selector:
+        text:
+    finished_state:
+      required: true
+      selector:
+        text:
+unregister_matter_input:
+  name: Remove Matter cooker input mapping
+  description: Remove a logical cooker's lid, cooking, or both bindings when hardware or HA entities change. Removed inputs are marked offline.
+  fields:
+    device_id:
+      required: true
+      selector:
+        text:
+    input_type:
+      required: true
+      selector:
+        select:
+          options:
+            - lid
+            - cooking
+            - all
+register_matter_context:
+  name: Register optional Matter context
+  description: Forward a Matter entity's raw HA state to bapsim_context_raw_event. This does not change cooker detection.
+  fields:
+    device_id:
+      required: true
+      selector:
+        text:
+    entity_id:
+      required: true
+      selector:
+        entity:
+    signal:
+      required: true
+      selector:
+        text:
+unregister_matter_context:
+  name: Remove optional Matter context
+  description: Remove a context entity binding and publish an unavailable raw observation.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+register_matter_board_signal:
+  name: Register Matter board observation or inference
+  description: Preserve one HA Matter entity as a raw board signal. This does not infer cooking or change detection.
+  fields:
+    device_id:
+      required: true
+      selector:
+        text:
+    entity_id:
+      required: true
+      selector:
+        entity:
+    kind:
+      required: true
+      selector:
+        select:
+          options:
+            - observation
+            - inference
+    signal:
+      required: true
+      selector:
+        text:
+unregister_matter_board_signal:
+  name: Remove Matter board signal
+  description: Remove one board signal mapping and record it as unavailable.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+set_notification_target:
+  name: Set caregiver mobile notification service
+  description: Supply a registered notify.mobile_app_* service, or leave empty to disable mobile delivery. Local HA notifications stay enabled.
+  fields:
+    service:
+      selector:
+        text:
+set_away:
+  name: Set declared absence
+  description: Mark the household as away or home. A declared absence pauses routine-change alerts and is saved across restarts.
+  fields:
+    away:
+      required: true
+      selector:
+        boolean:

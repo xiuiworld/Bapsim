@@ -1,0 +1,153 @@
+# Raw simulator input only. No normalization, feature extraction, or detection here.
+input_select:
+  bapsim_lid_state:
+    name: 밥솥 뚜껑 원시 상태
+    options: [unknown, open, closed]
+    icon: mdi:pot-steam
+  bapsim_cooking_state:
+    name: 취사 원시 상태
+    options: [unknown, started, finished]
+    icon: mdi:rice
+  bapsim_availability:
+    name: 밥솥 통신 상태
+    options: [unknown, online, offline]
+    icon: mdi:lan-connect
+  bapsim_away_state:
+    name: 외출 원시 상태
+    options: [unknown, away, home]
+    icon: mdi:home-account
+
+script:
+  bapsim_emit_raw:
+    alias: 밥심 원시 이벤트 발행
+    description: Simulator adapter output for the future normalizer.
+    mode: queued
+    max: 20
+    fields:
+      device_id:
+        description: Stable source device ID
+      event_type:
+        description: Raw field name
+      value:
+        description: Raw field value
+      availability:
+        description: Source availability at observation
+    sequence:
+      - variables:
+          observed_at: "{{ now().isoformat() }}"
+      - event: bapsim_raw_event
+        event_data:
+          device_id: "{{ device_id }}"
+          event_type: "{{ event_type }}"
+          value: "{{ value }}"
+          observed_at: "{{ observed_at }}"
+          received_at: "{{ now().isoformat() }}"
+          source: simulator
+          availability: "{{ availability }}"
+          quality: simulated
+
+  bapsim_lid_open:
+    alias: 뚜껑 열기
+    sequence:
+      - action: input_select.select_option
+        target: {entity_id: input_select.bapsim_lid_state}
+        data: {option: open}
+      - action: script.bapsim_emit_raw
+        data:
+          device_id: cooker_01
+          event_type: lid_state
+          value: open
+          availability: "{{ states('input_select.bapsim_availability') }}"
+
+  bapsim_lid_close:
+    alias: 뚜껑 닫기
+    sequence:
+      - action: input_select.select_option
+        target: {entity_id: input_select.bapsim_lid_state}
+        data: {option: closed}
+      - action: script.bapsim_emit_raw
+        data:
+          device_id: cooker_01
+          event_type: lid_state
+          value: closed
+          availability: "{{ states('input_select.bapsim_availability') }}"
+
+  bapsim_cooking_start:
+    alias: 취사 시작
+    sequence:
+      - action: input_select.select_option
+        target: {entity_id: input_select.bapsim_cooking_state}
+        data: {option: started}
+      - action: script.bapsim_emit_raw
+        data:
+          device_id: cooker_01
+          event_type: cooking_state
+          value: started
+          availability: "{{ states('input_select.bapsim_availability') }}"
+
+  bapsim_cooking_finish:
+    alias: 취사 완료
+    sequence:
+      - action: input_select.select_option
+        target: {entity_id: input_select.bapsim_cooking_state}
+        data: {option: finished}
+      - action: script.bapsim_emit_raw
+        data:
+          device_id: cooker_01
+          event_type: cooking_state
+          value: finished
+          availability: "{{ states('input_select.bapsim_availability') }}"
+
+  bapsim_disconnect:
+    alias: 통신 끊기
+    sequence:
+      - action: input_select.select_option
+        target: {entity_id: input_select.bapsim_availability}
+        data: {option: offline}
+      - action: script.bapsim_emit_raw
+        data:
+          device_id: cooker_01
+          event_type: availability
+          value: offline
+          availability: offline
+
+  bapsim_reconnect:
+    alias: 통신 복구
+    sequence:
+      - action: input_select.select_option
+        target: {entity_id: input_select.bapsim_availability}
+        data: {option: online}
+      - action: script.bapsim_emit_raw
+        data:
+          device_id: cooker_01
+          event_type: availability
+          value: online
+          availability: online
+
+  bapsim_away_start:
+    alias: 외출 시작
+    sequence:
+      - action: input_select.select_option
+        target: {entity_id: input_select.bapsim_away_state}
+        data: {option: away}
+      - action: script.bapsim_emit_raw
+        data:
+          device_id: household_01
+          event_type: away_state
+          value: away
+          availability: online
+
+  bapsim_away_end:
+    alias: 외출 종료
+    sequence:
+      - action: input_select.select_option
+        target: {entity_id: input_select.bapsim_away_state}
+        data: {option: home}
+      - action: script.bapsim_emit_raw
+        data:
+          device_id: household_01
+          event_type: away_state
+          value: home
+          availability: online
+
+
