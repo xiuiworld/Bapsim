@@ -19,7 +19,14 @@ FUTURE_DAYS = 21
 RHYTHMS = ("every_2_days", "every_3_days", "alternating_2_3_days")
 DEVELOPMENT_SEEDS = (301, 307)
 REPLICATION_SEEDS = (809, 821, 823, 827)
-CANDIDATES = {"current_p95": 0.95, "earlier_p75": 0.75}
+STRESS_SEEDS = (1201, 1213)
+CANDIDATES = {
+    "current_p95": (0.95, "empirical"),
+    "earlier_p75": (0.75, "empirical"),
+    "robust_predictive_p95": (0.95, "robust_predictive"),
+    "robust_predictive_p90": (0.90, "robust_predictive"),
+    "robust_predictive_p85": (0.85, "robust_predictive"),
+}
 
 
 def _planned_days(rhythm: str) -> list[int]:
@@ -38,7 +45,9 @@ def _planned_days(rhythm: str) -> list[int]:
 
 
 def household(seed: int, rhythm: str, *, interrupted: bool,
-              quantile: float = 0.95) -> list[dict[str, object]]:
+              quantile: float = 0.95,
+              interval_strategy: str = "empirical",
+              natural_skip_probability: float = 0.11) -> list[dict[str, object]]:
     planned = _planned_days(rhythm)
     future = [day for day in planned if day >= HISTORY_DAYS]
     episodes = {future[index + offset]: number
@@ -46,7 +55,8 @@ def household(seed: int, rhythm: str, *, interrupted: bool,
                 for offset in (0, 1)}
     rng = Random(f"irregular-hourly-v1:{seed}:{rhythm}")
     device = f"{rhythm}_{seed}_{'incident' if interrupted else 'benign'}"
-    model = PersonalUsageModel(interval_quantile=quantile)
+    model = PersonalUsageModel(interval_quantile=quantile,
+                               interval_strategy=interval_strategy)
     workflow = DetectionStateManager(candidate_window=timedelta(hours=36),
                                      min_consecutive=2, resumption_alerts=False)
     # Build the complete event schedule before replay. Candidate settings see
@@ -60,7 +70,8 @@ def household(seed: int, rhythm: str, *, interrupted: bool,
         elif day >= HISTORY_DAYS:
             draw = rng.random()
             category = ("outing_declared" if draw < 0.03 else "offline" if draw < 0.05
-                        else "natural_skip" if draw < 0.16 and day in planned else "routine")
+                        else "natural_skip" if draw < 0.05 + natural_skip_probability
+                        and day in planned else "routine")
         else:
             category = "routine"
         categories[day] = category
@@ -120,11 +131,16 @@ def household(seed: int, rhythm: str, *, interrupted: bool,
 
 
 def experiment() -> dict[str, object]:
-    def replay(seeds: tuple[int, ...], quantile: float) -> dict[str, object]:
+    def replay(seeds: tuple[int, ...], quantile: float, strategy: str,
+               *, natural_skip_probability: float = 0.11) -> dict[str, object]:
         benign = [row for seed in seeds for rhythm in RHYTHMS
-                  for row in household(seed, rhythm, interrupted=False, quantile=quantile)]
+                  for row in household(seed, rhythm, interrupted=False, quantile=quantile,
+                                       interval_strategy=strategy,
+                                       natural_skip_probability=natural_skip_probability)]
         incidents = [row for seed in seeds for rhythm in RHYTHMS
-                     for row in household(seed, rhythm, interrupted=True, quantile=quantile)]
+                     for row in household(seed, rhythm, interrupted=True, quantile=quantile,
+                                          interval_strategy=strategy,
+                                          natural_skip_probability=natural_skip_probability)]
         return {"benign_request_days": sum(row["notification_request"] for row in benign),
                 "benign_eligible_days": sum(row["label"] is not None for row in benign),
                 "declared_away_or_offline_requests": sum(
@@ -137,12 +153,16 @@ def experiment() -> dict[str, object]:
                     for rhythm in RHYTHMS}}
     return {"scope": "Synthetic irregular cooker use; hourly interval checks; no field labels",
             "development_seeds": DEVELOPMENT_SEEDS, "replication_seeds": REPLICATION_SEEDS,
+            "stress_seeds": STRESS_SEEDS,
             "history_days": HISTORY_DAYS, "future_days": FUTURE_DAYS,
             "candidates": CANDIDATES,
-            "development": {name: replay(DEVELOPMENT_SEEDS, quantile)
-                            for name, quantile in CANDIDATES.items()},
-            "replication": {name: replay(REPLICATION_SEEDS, quantile)
-                            for name, quantile in CANDIDATES.items()}}
+            "development": {name: replay(DEVELOPMENT_SEEDS, *settings)
+                            for name, settings in CANDIDATES.items()},
+            "replication": {name: replay(REPLICATION_SEEDS, *settings)
+                            for name, settings in CANDIDATES.items()},
+            "frequent_natural_skip_stress": {
+                name: replay(STRESS_SEEDS, *CANDIDATES[name], natural_skip_probability=0.30)
+                for name in ("current_p95", "robust_predictive_p90")}}
 
 
 if __name__ == "__main__":

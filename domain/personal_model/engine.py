@@ -8,7 +8,8 @@ dominate them. Missing reports and declared absence never become inactivity.
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
-from math import atan2, ceil, cos, pi, sin
+from math import atan2, ceil, cos, exp, log, pi, sin, sqrt
+from statistics import NormalDist, median
 from typing import Mapping
 
 
@@ -50,18 +51,22 @@ def _circular_mean(values: list[float], prior: float) -> float:
 class PersonalUsageModel:
     def __init__(self, *, min_covered_days: int = 7, history_days: int = 28,
                  window_hours: float = 2.0, alert_probability: float = 0.72,
-                 late_grace_hours: float = 0.0, interval_quantile: float = 0.95) -> None:
+                 late_grace_hours: float = 0.0, interval_quantile: float = 0.95,
+                 interval_strategy: str = "empirical") -> None:
         if min_covered_days < 1 or history_days < min_covered_days:
             raise ValueError("invalid learning window")
         if (not 0 < window_hours <= 3 or not 0 < alert_probability <= 1 or
                 not 0 <= late_grace_hours <= 2 or not 0.5 <= interval_quantile <= 0.95):
             raise ValueError("invalid model window or alert probability")
+        if interval_strategy not in {"empirical", "robust_predictive"}:
+            raise ValueError("invalid interval strategy")
         self.min_covered_days = min_covered_days
         self.history_days = history_days
         self.window = timedelta(hours=window_hours)
         self.alert_probability = alert_probability
         self.late_grace = timedelta(hours=late_grace_hours)
         self.interval_quantile = interval_quantile
+        self.interval_strategy = interval_strategy
         self._devices: dict[tuple[str, str], dict[str, object]] = {}
         self._away_intervals: list[tuple[datetime, datetime]] = []
         self._away_since: datetime | None = None
@@ -437,7 +442,20 @@ class PersonalUsageModel:
             return None
         intervals.sort()
         p95 = intervals[ceil(0.95 * len(intervals)) - 1]
-        limit = intervals[ceil(self.interval_quantile * len(intervals)) - 1]
+        if self.interval_strategy == "robust_predictive":
+            # Estimate a future gap on the log scale. Median/MAD keep one
+            # unusually long normal skip from becoming the entire threshold.
+            # A dispersion floor and sample-size factor widen sparse-history
+            # predictions; neither implies a field-calibrated risk probability.
+            log_hours = [log(item.total_seconds() / 3600) for item in intervals]
+            center = median(log_hours)
+            spread = median(abs(item - center) for item in log_hours)
+            scale = max(1.4826 * spread, 0.25)
+            z_score = NormalDist().inv_cdf(self.interval_quantile)
+            hours = exp(center + z_score * scale * sqrt(1 + 4 / len(intervals)))
+            limit = timedelta(hours=hours)
+        else:
+            limit = intervals[ceil(self.interval_quantile * len(intervals)) - 1]
         last = opens[-1]
         if not self._covered(state, last, now, now) or self._away_window(last, now):
             return None
@@ -453,6 +471,7 @@ class PersonalUsageModel:
                          "last_use_at": last.isoformat(), "p95_hours": round(p95.total_seconds() / 3600, 2),
                          "threshold_hours": round(limit.total_seconds() / 3600, 2),
                          "interval_quantile": self.interval_quantile,
+                         "interval_strategy": self.interval_strategy,
                          "elapsed_hours": round(elapsed.total_seconds() / 3600, 2)},
         }
 
