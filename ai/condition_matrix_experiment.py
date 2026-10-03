@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from random import Random
 
 from domain.personal_model import PersonalUsageModel
+from workflow import DetectionStateManager
 
 
 KST = timezone(timedelta(hours=9))
@@ -31,6 +32,14 @@ SETTINGS = {
     "higher_threshold": {"alert_probability": 0.84, "late_grace_hours": 0.0, "interval_quantile": 0.95},
     "late_grace": {"alert_probability": 0.72, "late_grace_hours": 1.0, "interval_quantile": 0.95},
     "grace_and_cadence": {"alert_probability": 0.72, "late_grace_hours": 1.0, "interval_quantile": 0.75},
+    "longer_confirmation": {"alert_probability": 0.72, "late_grace_hours": 0.0,
+                            "interval_quantile": 0.95, "candidate_window_hours": 72},
+    "longer_grace_cadence": {"alert_probability": 0.72, "late_grace_hours": 1.0,
+                             "interval_quantile": 0.75, "candidate_window_hours": 72},
+    "single_high_confidence": {"alert_probability": 0.84, "late_grace_hours": 1.0,
+                                "interval_quantile": 0.95, "min_consecutive": 1},
+    "single_cadence": {"alert_probability": 0.84, "late_grace_hours": 1.0,
+                       "interval_quantile": 0.75, "min_consecutive": 1},
 }
 
 
@@ -56,9 +65,19 @@ def household(seed: int, rhythm: str, condition: str,
     spec = RHYTHMS[rhythm]
     rng = Random(f"condition-v1:{seed}:{rhythm}:{condition}")
     device = f"{rhythm}_{condition}_{seed}"
-    model = PersonalUsageModel(**setting)
+    model = PersonalUsageModel(**{key: setting[key] for key in
+                                  ("alert_probability", "late_grace_hours", "interval_quantile")})
     planned = _planned_days(rhythm, condition)
-    interruptions = {planned[len(planned) // 3], planned[2 * len(planned) // 3]}
+    # Two separate, consecutive planned-use interruptions let the real
+    # two-candidate notification policy be evaluated rather than just the
+    # model's first internal warning.
+    interruptions = {planned[index + offset]
+                     for index in (len(planned) // 3, 2 * len(planned) // 3)
+                     for offset in (0, 1)}
+    notifications = DetectionStateManager(candidate_window=timedelta(
+                                               hours=setting.get("candidate_window_hours", 36)),
+                                           min_consecutive=int(setting.get("min_consecutive", 2)),
+                                           resumption_alerts=False)
     last_open: datetime | None = None
     rows: list[dict[str, object]] = []
     for day in range(HISTORY_DAYS + FUTURE_DAYS):
@@ -91,6 +110,7 @@ def household(seed: int, rhythm: str, condition: str,
         actions.extend((datetime.fromisoformat(window["expected_time"]) +
                         timedelta(hours=2.5 + grace), "evaluate") for window in windows)
         flagged = False
+        requested = False
         for moment, action in sorted(actions):
             if action in {"open", "repeat"}:
                 model.observe(_event(device, "lid_opened", moment))
@@ -99,17 +119,28 @@ def household(seed: int, rhythm: str, condition: str,
                 decisions = model.evaluate("simulator", device, moment.isoformat(),
                                            online=not offline, away=away)
                 flagged |= any(item["routine_status"] == "check_required" for item in decisions)
+                for decision in decisions:
+                    for update in notifications.ingest(decision):
+                        if update.action == "notify_requested":
+                            requested = True
+                            notifications.mark_notified("simulator", device, update.as_of)
         end = _at(day, 23 + 59 / 60)
         if not offline:
             model.availability("simulator", device, True, end.isoformat())
         interval = model.evaluate_interval("simulator", device, end.isoformat(),
                                            online=not offline, away=away)
         flagged |= bool(interval and interval["routine_status"] == "check_required")
+        if interval:
+            for update in notifications.ingest(interval):
+                if update.action == "notify_requested":
+                    requested = True
+                    notifications.mark_notified("simulator", device, update.as_of)
         if day >= HISTORY_DAYS:
             rows.append({"household": device, "rhythm": rhythm, "age_group": spec["age"],
                          "condition": condition, "day": day,
                          "label": None if away or offline else int(interruption),
                          "candidate": int(flagged),
+                         "notification_request": int(requested),
                          "fixed_24h": int(not away and not offline and last_open is not None and
                                           end - last_open > timedelta(hours=24)),
                          "reason": "away" if away else "offline" if offline else
@@ -146,7 +177,7 @@ def by_condition(rows: list[dict[str, object]]) -> dict[str, dict[str, int | flo
 
 
 def experiment() -> dict[str, object]:
-    training = {name: score(cohort(TRAIN_SEEDS, TRAIN_CONDITIONS, setting))
+    training = {name: score(cohort(TRAIN_SEEDS, TRAIN_CONDITIONS, setting), "notification_request")
                 for name, setting in SETTINGS.items()}
     # Select using training households and training conditions only. The
     # penalty gives nuisance candidates twice the weight of missed scripts.
@@ -164,14 +195,16 @@ def experiment() -> dict[str, object]:
         "train_seeds": list(TRAIN_SEEDS), "holdout_seeds": list(HOLDOUT_SEEDS),
         "candidate_settings": SETTINGS, "training": training,
         "selected": selected, "selected_settings": SETTINGS[selected],
-        "holdout_current": score(current_rows),
-        "holdout_selected": score(candidate_rows),
+        "holdout_current": score(current_rows, "notification_request"),
+        "holdout_selected": score(candidate_rows, "notification_request"),
+        "holdout_model_candidates_current": score(current_rows),
+        "holdout_model_candidates_selected": score(candidate_rows),
         "holdout_fixed_24h": score(current_rows, "fixed_24h"),
-        "by_condition_current": by_condition(current_rows),
-        "by_condition_selected": by_condition(candidate_rows),
-        "by_rhythm_current": {rhythm: score([row for row in current_rows if row["rhythm"] == rhythm])
+        "by_condition_current": {condition: score([row for row in current_rows if row["condition"] == condition], "notification_request") for condition in HOLDOUT_CONDITIONS},
+        "by_condition_selected": {condition: score([row for row in candidate_rows if row["condition"] == condition], "notification_request") for condition in HOLDOUT_CONDITIONS},
+        "by_rhythm_current": {rhythm: score([row for row in current_rows if row["rhythm"] == rhythm], "notification_request")
                               for rhythm in RHYTHMS},
-        "by_rhythm_selected": {rhythm: score([row for row in candidate_rows if row["rhythm"] == rhythm])
+        "by_rhythm_selected": {rhythm: score([row for row in candidate_rows if row["rhythm"] == rhythm], "notification_request")
                                for rhythm in RHYTHMS},
         "example_rows": candidate_rows[:8],
     }

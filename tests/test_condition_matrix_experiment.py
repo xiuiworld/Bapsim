@@ -19,6 +19,8 @@ class ConditionMatrixTests(TestCase):
         self.assertEqual([(row["day"], row["label"], row["reason"]) for row in current],
                          [(row["day"], row["label"], row["reason"]) for row in proposed])
         self.assertEqual(sum(row["label"] is None for row in current), 2)
-        self.assertEqual(sum(row["label"] == 1 for row in current), 2)
+        self.assertEqual(sum(row["label"] == 1 for row in current), 4)
         self.assertEqual(score(current)["alerted_away_or_offline"], 0)
         self.assertEqual(score(proposed)["alerted_away_or_offline"], 0)
+        self.assertEqual(score(current, "notification_request")["alerted_away_or_offline"], 0)
+        self.assertEqual(score(proposed, "notification_request")["alerted_away_or_offline"], 0)
