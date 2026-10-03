@@ -173,6 +173,21 @@ set_notification_control:
     ends_at:
       selector:
         text:
+dashboard_control:
+  name: Apply caregiver dashboard control
+  description: Use the dashboard end-time picker to acknowledge the sole active assessment or pause lifestyle alerts.
+  fields:
+    action:
+      required: true
+      selector:
+        select:
+          options:
+            - acknowledge
+            - pause_lifestyle
+            - cancel_pause
+    pause_id:
+      selector:
+        text:
 record_simulated_activity:
   name: Record simulated auxiliary activity
   description: Add a virtual activity event for the simulator only. It never modifies the live Matter assessment or sends a real phone notification.
