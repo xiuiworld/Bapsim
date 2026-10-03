@@ -159,8 +159,37 @@ class HAServiceIntegrationTests(TestCase):
                 self.assertTrue(any(item["topic"].endswith("/observations") and not item["retain"] for item in sent))
                 self.assertTrue(any(item["topic"].endswith("/control") and not item["retain"] for item in sent))
                 self.assertFalse(hass.data["bapsim"]["usage_model"].device_keys)
+                self.assertEqual(hass.data["bapsim"]["store"].saved["forwarded_devices"], [
+                    {"source": "simulator", "device_id": "cooker_01"},
+                ])
 
         asyncio.run(scenario())
+
+    def test_external_worker_restores_forwarded_device_heartbeat(self):
+        async def scenario():
+            seed = {"forwarded_devices": [{"source": "simulator", "device_id": "cooker_01"}]}
+            with patch.dict(sys.modules, ha_modules(seed)), patch.dict(os.environ, {"BAPSIM_EXTERNAL_SERVICE": "1"}):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_restored_forwarding_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                hass.states.async_set("input_select.bapsim_availability", "online", {})
+                async def publish(call):
+                    pass
+                hass.services.async_register("mqtt", "publish", publish)
+                self.assertTrue(await module.async_setup(hass, {}))
+                hass.hourly_callback(datetime.now(timezone.utc))
+                await asyncio.gather(*hass.tasks)
+                sent = [data for domain, name, data in hass.services.calls
+                        if (domain, name) == ("mqtt", "publish")]
+                self.assertTrue(any(
+                    item["topic"] == "bapsim/simulation/v1/household_01/observations"
+                    and '"event_type": "device_online"' in item["payload"]
+                    for item in sent
+                ))
+
+        asyncio.run(scenario())
+
     def test_bounded_pause_service_is_persisted_and_can_be_cancelled(self):
         async def scenario():
             with patch.dict(sys.modules, ha_modules({})):
