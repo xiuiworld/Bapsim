@@ -26,6 +26,7 @@ CANDIDATES = {
     "robust_predictive_p95": (0.95, "robust_predictive"),
     "robust_predictive_p90": (0.90, "robust_predictive"),
     "robust_predictive_p85": (0.85, "robust_predictive"),
+    "guarded_predictive_p90": (0.90, "guarded_predictive"),
 }
 
 
@@ -162,7 +163,7 @@ def experiment() -> dict[str, object]:
                             for name, settings in CANDIDATES.items()},
             "frequent_natural_skip_stress": {
                 name: replay(STRESS_SEEDS, *CANDIDATES[name], natural_skip_probability=0.30)
-                for name in ("current_p95", "robust_predictive_p90")}}
+                for name in ("current_p95", "robust_predictive_p90", "guarded_predictive_p90")}}
 
 
 if __name__ == "__main__":
