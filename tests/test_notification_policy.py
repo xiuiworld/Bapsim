@@ -4,7 +4,8 @@ from unittest import TestCase
 
 from workflow.notification_controls import NotificationControls
 from workflow.notification_policy import (current_request, queue_quiet,
-                                          quiet_release_allowed, suppressed)
+                                          quiet_release_allowed, release_quiet, suppressed)
+from workflow import DetectionStateManager
 
 
 NOW = datetime(2026, 10, 3, tzinfo=timezone.utc).isoformat()
@@ -51,3 +52,16 @@ class NotificationPolicyTests(TestCase):
                                                  source="matter", device_id="cooker",
                                                  incident_id=incident_id, notification_id=incident_id))
         self.assertEqual(list(pending), ["new"])
+
+    def test_colliding_assessment_ids_keep_trend_precedence(self):
+        gap, decline = DetectionStateManager(), DetectionStateManager()
+        shared = {"source": "matter", "device_id": "cooker", "status": "check_required",
+                  "pending_action": "notify_requested", "incident_id": "same"}
+        gap.load_state([{**shared, "reason_codes": ["EXPECTED_USE_MISSING"]}])
+        decline.load_state([{**shared, "reason_codes": ["DECLINING_USAGE"]}])
+        pending = {"same": {"source": "matter", "device_id": "cooker",
+                            "incident_id": "same", "action": "notify_requested"}}
+        ready = release_quiet(pending, gap, decline, NotificationControls(),
+                              lambda *_: False, lambda *_: True, False, NOW)
+        self.assertEqual(len(ready), 1)
+        self.assertIs(ready[0][1], decline)

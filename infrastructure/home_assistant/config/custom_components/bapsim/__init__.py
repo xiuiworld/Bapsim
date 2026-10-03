@@ -27,7 +27,7 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.workflow.quiet_hours import QuietHours
     from .runtime.workflow.evidence_boundary import cooker_only
     from .runtime.workflow.notification_policy import (ALERT_ACTIONS, current_request, queue_quiet,
-                                                       quiet_release_allowed, suppressed)
+                                                       release_quiet, suppressed)
     from .runtime.inputs.matter import MatterBoardSignalAdapter, MatterContactAdapter, MatterContextAdapter, MatterCookingStateAdapter
     from .runtime.inputs.base.journal import RawEventJournal
     from .runtime.service import ObservationJournal, StatusOutput, AuxiliaryDeferral
@@ -40,6 +40,8 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.service.ha_journal import HAJournal
     from .runtime.service.ha_analysis_flow import AnalysisMode, bind_analysis
     from .runtime.service.ha_cooker_events import bind_cooker_events
+    from .runtime.service.ha_periodic import PeriodicState, bind_periodic
+    from .runtime.service.ha_mqtt_subscriptions import bind_mqtt_subscriptions
 else:
     from domain.events.normalizer import CookerEventNormalizer, NormalizedCookerEvent
     from domain.baseline import PersonalBaselineEngine
@@ -51,7 +53,7 @@ else:
     from workflow.quiet_hours import QuietHours
     from workflow.evidence_boundary import cooker_only
     from workflow.notification_policy import (ALERT_ACTIONS, current_request, queue_quiet,
-                                              quiet_release_allowed, suppressed)
+                                              release_quiet, suppressed)
     from inputs.matter import MatterBoardSignalAdapter, MatterContactAdapter, MatterContextAdapter, MatterCookingStateAdapter
     from inputs.base.journal import RawEventJournal
     from service import ObservationJournal, StatusOutput, AuxiliaryDeferral
@@ -64,6 +66,8 @@ else:
     from service.ha_journal import HAJournal
     from service.ha_analysis_flow import AnalysisMode, bind_analysis
     from service.ha_cooker_events import bind_cooker_events
+    from service.ha_periodic import PeriodicState, bind_periodic
+    from service.ha_mqtt_subscriptions import bind_mqtt_subscriptions
 
 DOMAIN = "bapsim"
 RAW_EVENT = "bapsim_raw_event"
@@ -120,8 +124,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     journal = RawEventJournal(Path(hass.config.path("bapsim_events"))) if hasattr(hass, "config") else None
     observations = ObservationJournal(Path(hass.config.path("bapsim_observations"))) if hasattr(hass, "config") else None
     service_records = ObservationJournal(Path(hass.config.path("bapsim_records")), 180, "records") if hasattr(hass, "config") else None
-    last_observation_prune_day = None
-    last_routine_review_day = None
     last_baseline_record_day: dict[tuple[str, str], str] = {}
     stored = await store.async_load()
     routine_updated_at: dict[str, str] = dict(stored.get("routine_updated_at", {})) if isinstance(stored, dict) else {}
@@ -475,98 +477,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
      publish_cooking_input_offline, unsubscribe_matter, unsubscribe_registry,
      on_started) = matter_inputs
 
-    @callback
-    def on_hourly_tick(now) -> None:
-        nonlocal last_observation_prune_day, last_routine_review_day
-        as_of = now.isoformat()
-        review_day = now.astimezone(timezone.utc).date()
-        if review_day != last_routine_review_day:
-            show_initial_routines(now)
-            last_routine_review_day = review_day
-        delivery.prune(as_of)
-        if external_service:
-            if hass.services.has_service("mqtt", "publish"):
-                for source, device_id in tuple(forwarded_devices):
-                    online = (matter_inputs_available(device_id) if source == "matter" else
-                              (hass.states.get("input_select.bapsim_availability") is not None and
-                               hass.states.get("input_select.bapsim_availability").state == "online"))
-                    heartbeat = {"source": source, "device_id": device_id,
-                                 "event_type": "device_online" if online else "device_offline",
-                                 "observed_at": as_of,
-                                 "availability": "online" if online else "offline"}
-                    hass.async_create_task(hass.services.async_call("mqtt", "publish", {
-                        "topic": output.topic(source, "observations"),
-                        "payload": json.dumps(heartbeat), "qos": 1, "retain": False,
-                    }, blocking=True))
-            return
-        if not quiet_hours.is_quiet(as_of) and pending_quiet:
-            active = {item["incident_id"]: item for item in
-                      (*workflow.dump_state(), *trend_workflow.dump_state())
-                      if item["incident_id"]}
-            for notification_id, item in tuple(pending_quiet.items()):
-                incident_id = item["incident_id"]
-                action = item.get("action", "notify_requested")
-                current = active.get(incident_id)
-                pending_quiet.pop(notification_id, None)
-                online = availability_by_device.get((item["source"], item["device_id"])) == "online"
-                if action == "observation_issue_requested":
-                    if quiet_release_allowed(action, None, observation_unavailable=
-                                             observation_issues.is_unavailable(item["source"], item["device_id"]),
-                                             online=online, away=away, controls=controls,
-                                             now=as_of, incident_id=incident_id):
-                        update = WorkflowUpdate(item["device_id"], item["source"], incident_id,
-                                                "data_unavailable", action, as_of,
-                                                ("COOKER_DATA_UNAVAILABLE",), item.get("notification_id"))
-                        hass.async_create_task(create_notification(update))
-                    continue
-                if current is None or away or not online or suppressed(action, incident_id, controls, as_of):
-                    continue
-                manager = trend_workflow if "DECLINING_USAGE" in current["reason_codes"] else workflow
-                if not quiet_release_allowed(action, current, observation_unavailable=False,
-                                             online=online, away=away, controls=controls,
-                                             now=as_of, incident_id=incident_id):
-                    manager.cancel_request(item["source"], item["device_id"], as_of)
-                    continue
-                update = WorkflowUpdate(item["device_id"], item["source"], incident_id,
-                                        current["status"], action, as_of,
-                                        tuple(current["reason_codes"]),
-                                        item.get("notification_id"))
-                hass.async_create_task(create_notification(update, manager))
-            save_later()
-        if away or controls.is_paused(as_of):
-            auxiliary.clear()
-        else:
-            for decision in auxiliary.due(as_of):
-                key = (decision["source"], decision["device_id"])
-                if availability_by_device.get(key) != "online":
-                    continue
-                latest_open = usage_model.profile(*key, as_of)["last_lid_open_at"]
-                if latest_open and datetime.fromisoformat(latest_open) > datetime.fromisoformat(decision["deferred_from"]):
-                    continue
-                show("auxiliary_deferral", "expired", {"device_id": decision["device_id"]})
-                for update in workflow.ingest(cooker_only(decision)):
-                    dispatch_workflow(update)
-        if observations is not None and last_observation_prune_day != now.date():
-            last_observation_prune_day = now.date()
-            hass.async_create_task(prune_observations(now))
-        for source, device_id in tuple(latest_features):
-            if source == "simulator":
-                state = hass.states.get("input_select.bapsim_availability")
-                availability = "online" if state is not None and state.state == "online" else "offline"
-            elif source == "matter":
-                availability = "online" if matter_inputs_available(device_id) else "offline"
-            else:
-                availability = "offline"
-            payload = features.extract(source, device_id, as_of, availability).as_dict()
-            latest_features[(source, device_id)] = payload
-            show("features", "available" if availability == "online" else "unavailable", payload)
-            hass.bus.async_fire(FEATURE_EVENT, payload)
-            evaluate_model(source, device_id, as_of)
-        for source, device_id in usage_model.device_keys:
-            if (source, device_id) not in latest_features:
-                evaluate_model(source, device_id, as_of)
-        if pending_mobile:
-            hass.async_create_task(retry_mobile_notifications(as_of))
+    periodic_state = PeriodicState()
+    on_hourly_tick = bind_periodic(
+        callback, hass, periodic_state, show_initial_routines, delivery, external_service,
+        forwarded_devices, matter_inputs_available, output, quiet_hours, pending_quiet,
+        workflow, trend_workflow, controls, observation_issues, availability_by_device,
+        lambda: away, create_notification, release_quiet, save_later, auxiliary,
+        usage_model, show, cooker_only, dispatch_workflow, observations,
+        prune_observations, latest_features, features, FEATURE_EVENT, evaluate_model,
+        pending_mobile, retry_mobile_notifications)
 
     unsubscribe_tick = async_track_time_interval(hass, on_hourly_tick, timedelta(seconds=60))
 
@@ -782,107 +701,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     hass.services.async_register(DOMAIN, "dashboard_control", dashboard_control)
 
-    unsubscribe_control = None
-    unsubscribe_worker: list = []
-
-    async def on_mqtt_control(message) -> None:
-        if getattr(message, "retain", False):
-            return
-        command_id = None
-        try:
-            command = json.loads(message.payload)
-            if not isinstance(command, dict):
-                raise ValueError("control payload must be an object")
-            command_id = command.get("command_id")
-            if command.get("schema_version") != "0.1.0":
-                raise ValueError("unsupported control schema")
-            created = datetime.fromisoformat(command["created_at"].replace("Z", "+00:00"))
-            if created.tzinfo is None or abs((datetime.now(timezone.utc) - created).total_seconds()) > 600:
-                raise ValueError("stale control command")
-            await set_notification_control(SimpleNamespace(data=command))
-            result = {"command_id": command_id, "status": "accepted"}
-        except (KeyError, TypeError, ValueError) as exc:
-            result = {"command_id": command_id, "status": "rejected", "reason": str(exc)}
-        if hass.services.has_service("mqtt", "publish"):
-            await hass.services.async_call("mqtt", "publish", {
-                "topic": output.topic("matter", "control_result"),
-                "payload": json.dumps(result), "qos": 1, "retain": False,
-            }, blocking=True)
-
-    async def subscribe_controls() -> None:
-        nonlocal unsubscribe_control
-        try:
-            from homeassistant.components import mqtt
-        except ImportError:
-            return
-        if await mqtt.async_wait_for_mqtt_client(hass):
-            unsubscribe_control = await mqtt.async_subscribe(
-                hass, output.topic("matter", "control"),
-                lambda message: hass.async_create_task(on_mqtt_control(message)), qos=1,
-            )
-
-    # MQTT can finish loading after this YAML integration. Wait for its client
-    # instead of deciding from whether mqtt.publish already exists at setup.
-    if not external_service and hasattr(hass, "config"):
-        hass.async_create_task(subscribe_controls())
-
-    async def subscribe_worker() -> None:
-        try:
-            from homeassistant.components import mqtt
-        except ImportError:
-            return
-        if not await mqtt.async_wait_for_mqtt_client(hass):
-            return
-
-        def on_state(message) -> None:
-            try:
-                payload = json.loads(message.payload)
-                if not isinstance(payload, dict):
-                    raise ValueError("worker state must be an object")
-                if payload.get("household_id") == output.household_id:
-                    show("output_state", payload.get("summary", ""), payload)
-            except (TypeError, ValueError):
-                _LOGGER.warning("Ignored invalid worker state")
-
-        def on_simulation_state(message) -> None:
-            try:
-                payload = json.loads(message.payload)
-                if not isinstance(payload, dict):
-                    raise ValueError("simulation state must be an object")
-                if payload.get("household_id") == output.household_id:
-                    show("simulation_output_state", payload.get("summary", ""),
-                         {**payload, "mode": "simulation"})
-            except (TypeError, ValueError):
-                _LOGGER.warning("Ignored invalid simulation worker state")
-
-        def on_control_state(message) -> None:
-            try:
-                payload = json.loads(message.payload)
-                if not isinstance(payload, dict):
-                    raise ValueError("worker controls must be an object")
-                if payload.get("household_id") == output.household_id:
-                    show("notification_controls", payload.get("revision", 0), payload)
-            except (TypeError, ValueError):
-                _LOGGER.warning("Ignored invalid worker controls")
-
-        def on_control_result(message) -> None:
-            try:
-                payload = json.loads(message.payload)
-                if not isinstance(payload, dict):
-                    raise ValueError("worker result must be an object")
-                show("notification_control_result", payload.get("status", "unknown"), payload)
-            except (TypeError, ValueError):
-                _LOGGER.warning("Ignored invalid worker control result")
-
-        for leaf, handler in (("state", on_state), ("notification_controls", on_control_state),
-                              ("control_result", on_control_result)):
-            unsubscribe_worker.append(await mqtt.async_subscribe(
-                hass, output.topic("matter", leaf), handler, qos=1))
-        unsubscribe_worker.append(await mqtt.async_subscribe(
-            hass, output.topic("simulator", "state"), on_simulation_state, qos=1))
-
-    if external_service and hasattr(hass, "config"):
-        hass.async_create_task(subscribe_worker())
+    stop_mqtt_subscriptions = bind_mqtt_subscriptions(
+        hass, output, set_notification_control, show, _LOGGER, external_service)
 
     async def record_simulated_activity(call) -> None:
         device_id = call.data.get("device_id")
@@ -938,10 +758,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         unsubscribe_registry()
         unsubscribe_tick()
         unsubscribe_mobile_action()
-        if unsubscribe_control is not None:
-            unsubscribe_control()
-        for remove in unsubscribe_worker:
-            remove()
+        stop_mqtt_subscriptions()
         hass.services.async_remove(DOMAIN, "respond")
         hass.services.async_remove(DOMAIN, "register_matter_contact")
         hass.services.async_remove(DOMAIN, "register_matter_cooking_state")

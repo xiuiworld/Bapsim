@@ -13,7 +13,7 @@ from workflow import (DeliveryLedger, DetectionStateManager, NotificationControl
                       ObservationIssueTracker, WorkflowUpdate)
 from workflow.quiet_hours import QuietHours
 from workflow.notification_policy import (ALERT_ACTIONS, current_request, queue_quiet,
-                                          quiet_release_allowed, suppressed)
+                                          release_quiet, suppressed)
 from service.output import StatusOutput
 from service.analysis_policy import assess_personal_use
 from service.auxiliary import AuxiliaryDeferral
@@ -325,39 +325,11 @@ class AnalysisService:
                     continue
                 self._handle(self.gap.ingest(decision), self.gap, now)
         if not self.quiet.is_quiet(now):
-            active = {item["incident_id"]: item for item in
-                      (*self.gap.dump_state(), *self.decline.dump_state()) if item["incident_id"]}
-            for notification_id, item in tuple(self.pending_quiet.items()):
-                self.pending_quiet.pop(notification_id, None)
-                incident_id = item["incident_id"]
-                current_state = active.get(incident_id)
-                action = item.get("action", "notify_requested")
-                online = self.availability.get((item["source"], item["device_id"]), False)
-                if action == "observation_issue_requested":
-                    if quiet_release_allowed(action, None, observation_unavailable=
-                                             self.observation_issues.is_unavailable(item["source"], item["device_id"]),
-                                             online=online, away=self.away, controls=self.controls,
-                                             now=now, incident_id=incident_id):
-                        update = WorkflowUpdate(item["device_id"], item["source"], incident_id,
-                                                "data_unavailable", action, now,
-                                                ("COOKER_DATA_UNAVAILABLE",), item.get("notification_id"))
-                        self._handle([update], self.gap, now)
-                    continue
-                if current_state is None:
-                    continue
-                if self.away or not online or suppressed(action, incident_id, self.controls, now):
-                    continue
-                if not quiet_release_allowed(action, current_state, observation_unavailable=False,
-                                             online=online, away=self.away, controls=self.controls,
-                                             now=now, incident_id=incident_id):
-                    manager = self.decline if "DECLINING_USAGE" in current_state["reason_codes"] else self.gap
-                    manager.cancel_request(item["source"], item["device_id"], now)
-                    continue
-                manager = self.decline if "DECLINING_USAGE" in current_state["reason_codes"] else self.gap
-                update = WorkflowUpdate(item["device_id"], item["source"], incident_id,
-                                        current_state["status"], action, now,
-                                        tuple(current_state["reason_codes"]),
-                                        item.get("notification_id"))
+            for update, manager in release_quiet(
+                    self.pending_quiet, self.gap, self.decline, self.controls,
+                    self.observation_issues.is_unavailable,
+                    lambda source, device_id: self.availability.get((source, device_id), False),
+                    self.away, now):
                 self._handle([update], manager, now)
         self._retry_one(now)
         self.save()
