@@ -21,9 +21,16 @@ recorder:
       - input_select.bapsim_away_state
       - sensor.bapsim_detection_status
       - sensor.bapsim_workflow_status
+      - sensor.bapsim_decline_status
+      - sensor.bapsim_decline_detection
       - sensor.bapsim_baseline
       - sensor.bapsim_features
       - sensor.bapsim_notification_delivery
+      - sensor.bapsim_notification_controls
+      - sensor.bapsim_notification_control_result
+      - sensor.bapsim_output_state
+      - sensor.bapsim_mqtt_output
+      - sensor.bapsim_auxiliary_deferral
       - sensor.bapsim_matter_input
 
 lovelace:
@@ -35,4 +42,3 @@ lovelace:
       icon: mdi:rice
       show_in_sidebar: true
       filename: dashboards/bapsim_lab.yaml
-

@@ -142,3 +142,53 @@ set_away:
       required: true
       selector:
         boolean:
+set_notification_control:
+  name: Set bounded notification control
+  description: Acknowledge one active incident until an end time, pause lifestyle alerts for a period, or cancel a pause. Use a unique command_id for each action.
+  fields:
+    command_id:
+      required: true
+      selector:
+        text:
+    action:
+      required: true
+      selector:
+        select:
+          options:
+            - acknowledge
+            - pause_lifestyle
+            - cancel_pause
+    incident_id:
+      selector:
+        text:
+    assessment_id:
+      selector:
+        text:
+    pause_id:
+      selector:
+        text:
+    starts_at:
+      selector:
+        text:
+    ends_at:
+      selector:
+        text:
+record_simulated_activity:
+  name: Record simulated auxiliary activity
+  description: Add a virtual activity event for the simulator only. It never modifies the live Matter assessment or sends a real phone notification.
+  fields:
+    device_id:
+      required: true
+      selector:
+        text:
+    signal:
+      required: true
+      selector:
+        select:
+          options:
+            - door_opened
+            - motion_detected
+            - appliance_used
+    at:
+      selector:
+        text:

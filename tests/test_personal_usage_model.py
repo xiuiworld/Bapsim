@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import TestCase
 
 from domain.personal_model import PersonalUsageModel
+from workflow import DetectionStateManager
 
 
 KST = timezone(timedelta(hours=9))
@@ -108,3 +109,46 @@ class PersonalUsageModelTests(TestCase):
         model.observe(event(0, 12))
         model.observe(event(0, 12, 5))
         self.assertEqual(len(model.dump_state()["devices"][0]["opens"]), 1)
+
+    def test_fixed_sixty_minute_group_does_not_extend_with_later_openings(self):
+        model = PersonalUsageModel()
+        model.observe(event(0, 0, kind="device_online"))
+        for minute in (0, 20, 59, 60, 110):
+            model.observe(event(0, 12 + minute // 60, minute % 60))
+        stored = model.dump_state()["devices"][0]
+        self.assertEqual(len(stored["raw_opens"]), 5)
+        self.assertEqual(
+            [datetime.fromisoformat(value).astimezone(KST).isoformat() for value in stored["opens"]],
+            [at(0, 12), at(0, 13)],
+        )
+        restored = PersonalUsageModel()
+        restored.load_state(model.dump_state())
+        self.assertEqual(restored.dump_state()["devices"][0]["opens"], stored["opens"])
+
+    def test_decline_requires_long_reference_and_three_daily_evaluations(self):
+        model = PersonalUsageModel()
+        model.observe(event(0, 0, kind="device_online"))
+        for day in range(14):
+            model.observe(event(day, 8))
+            model.observe(event(day, 19))
+        alerts = [model.evaluate_trend("matter", "cooker_01", at(day, 0, 1), online=True)
+                  for day in range(19, 23)]
+        self.assertEqual(sum(item is not None and item["routine_status"] == "check_required"
+                             for item in alerts), 1)
+        candidate = next(item for item in alerts if item is not None and item["routine_status"] == "check_required")
+        self.assertEqual(DetectionStateManager(min_consecutive=1).ingest(candidate)[0].action,
+                         "notify_requested")
+        self.assertEqual(model.evaluate_trend("matter", "cooker_01", at(22, 1), online=True), None)
+        restored = PersonalUsageModel()
+        restored.load_state(model.dump_state())
+        self.assertEqual(restored.evaluate_trend("matter", "cooker_01", at(22, 2), online=True), None)
+
+    def test_decline_does_not_count_missing_coverage_as_zero_use(self):
+        model = PersonalUsageModel()
+        model.observe(event(0, 0, kind="device_online"))
+        for day in range(14):
+            model.observe(event(day, 8))
+            model.observe(event(day, 19))
+        model.observe(event(14, 0, kind="device_offline"))
+        for day in range(19, 25):
+            self.assertIsNone(model.evaluate_trend("matter", "cooker_01", at(day, 1), online=False))

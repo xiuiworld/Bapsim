@@ -18,6 +18,9 @@ __pycache__/
 /infrastructure/home_assistant/config/.ha_run.lock
 /infrastructure/home_assistant/config/home-assistant_v2.db*
 /infrastructure/home_assistant/config/home-assistant.log*
+/infrastructure/home_assistant/config/bapsim_events/
+/infrastructure/home_assistant/config/bapsim_observations/
+/infrastructure/home_assistant/config/bapsim_records/
 /infrastructure/home_assistant/config/blueprints/
 
 # Generated build/test outputs
