@@ -137,7 +137,7 @@ class DetectionStateManager:
             state.next_reminder_at = None
             return [self._update(source, device_id, state, "notify_requested", as_of)]
 
-        if kind == "no_expectation":
+        if kind in {"no_expectation", "learning"}:
             return []
         state.candidate_count = 0
         state.candidate_at = None

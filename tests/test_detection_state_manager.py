@@ -99,6 +99,13 @@ class DetectionStateManagerTests(unittest.TestCase):
         manager.ingest(detection(1, "data_unavailable"))
         self.assertEqual(manager.ingest(detection(2, "check_required")), [])
 
+    def test_other_window_still_learning_does_not_erase_candidate(self) -> None:
+        manager = DetectionStateManager()
+        self.assertEqual(manager.ingest(detection(0, "check_required")), [])
+        self.assertEqual(manager.ingest(detection(1, "learning")), [])
+        self.assertEqual(manager.ingest(detection(2, "check_required"))[0].action,
+                         "notify_requested")
+
 
 if __name__ == "__main__":
     unittest.main()

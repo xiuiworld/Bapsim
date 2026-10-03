@@ -1,0 +1,2217 @@
+{
+  "scope": "Paired synthetic cooker-use replay; no meal or field-accuracy labels",
+  "history_days": 5,
+  "future_days": 14,
+  "development_seeds": [
+    301,
+    307,
+    313,
+    317
+  ],
+  "replication_seeds": [
+    809,
+    821,
+    823,
+    827
+  ],
+  "scenarios": [
+    "accurate_daily",
+    "weekday_lunch_away",
+    "wrong_lunch_weekdays",
+    "wrong_time",
+    "wrong_weekdays",
+    "irregular_skips"
+  ],
+  "development": {
+    "scenario_results": {
+      "accurate_daily": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "accurate_daily_301",
+                "episode_id": 1
+              },
+              {
+                "household": "accurate_daily_301",
+                "episode_id": 2
+              },
+              {
+                "household": "accurate_daily_307",
+                "episode_id": 1
+              },
+              {
+                "household": "accurate_daily_307",
+                "episode_id": 2
+              },
+              {
+                "household": "accurate_daily_313",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "accurate_daily_301",
+                "episode_id": 1
+              },
+              {
+                "household": "accurate_daily_307",
+                "episode_id": 1
+              },
+              {
+                "household": "accurate_daily_313",
+                "episode_id": 1
+              },
+              {
+                "household": "accurate_daily_317",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 8,
+            "fp": 0,
+            "fn": 8,
+            "tn": 32,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 8,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 26.01,
+            "p90_delay_hours": 26.14,
+            "missed_examples": []
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 4,
+            "fp": 0,
+            "fn": 4,
+            "tn": 16,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 4,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 26.03,
+            "p90_delay_hours": 26.13,
+            "missed_examples": []
+          }
+        }
+      },
+      "weekday_lunch_away": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "weekday_lunch_away_301",
+                "episode_id": 1
+              },
+              {
+                "household": "weekday_lunch_away_301",
+                "episode_id": 2
+              },
+              {
+                "household": "weekday_lunch_away_307",
+                "episode_id": 1
+              },
+              {
+                "household": "weekday_lunch_away_307",
+                "episode_id": 2
+              },
+              {
+                "household": "weekday_lunch_away_313",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "weekday_lunch_away_301",
+                "episode_id": 1
+              },
+              {
+                "household": "weekday_lunch_away_307",
+                "episode_id": 1
+              },
+              {
+                "household": "weekday_lunch_away_313",
+                "episode_id": 1
+              },
+              {
+                "household": "weekday_lunch_away_317",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 8,
+            "fp": 0,
+            "fn": 8,
+            "tn": 32,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 8,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 26.05,
+            "p90_delay_hours": 26.12,
+            "missed_examples": []
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 4,
+            "fp": 0,
+            "fn": 4,
+            "tn": 16,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 4,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 26.09,
+            "p90_delay_hours": 26.12,
+            "missed_examples": []
+          }
+        }
+      },
+      "wrong_lunch_weekdays": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_lunch_weekdays_301",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_lunch_weekdays_301",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_lunch_weekdays_307",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_lunch_weekdays_307",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_lunch_weekdays_313",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_lunch_weekdays_301",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_lunch_weekdays_307",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_lunch_weekdays_313",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_lunch_weekdays_317",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 8,
+            "fp": 0,
+            "fn": 8,
+            "tn": 32,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 8,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 25.99,
+            "p90_delay_hours": 26.15,
+            "missed_examples": []
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 4,
+            "fp": 0,
+            "fn": 4,
+            "tn": 16,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 4,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 26.03,
+            "p90_delay_hours": 26.15,
+            "missed_examples": []
+          }
+        }
+      },
+      "wrong_time": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_time_301",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_301",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_time_307",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_307",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_time_313",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_time_301",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_307",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_313",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_317",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_time_301",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_301",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_time_307",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_307",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_time_313",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_time_301",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_307",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_313",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_317",
+                "episode_id": 1
+              }
+            ]
+          }
+        }
+      },
+      "wrong_weekdays": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_weekdays_301",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_301",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_weekdays_307",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_307",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_weekdays_313",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_weekdays_301",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_307",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_313",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_317",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 4,
+            "fp": 0,
+            "fn": 12,
+            "tn": 32,
+            "recall": 0.25,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 4,
+            "missed": 4,
+            "recall": 0.5,
+            "median_delay_hours": 25.95,
+            "p90_delay_hours": 26.11,
+            "missed_examples": [
+              {
+                "household": "wrong_weekdays_301",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_307",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_313",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_317",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_weekdays_301",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_307",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_313",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_317",
+                "episode_id": 1
+              }
+            ]
+          }
+        }
+      },
+      "irregular_skips": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 1,
+            "fn": 16,
+            "tn": 31,
+            "recall": 0.0,
+            "false_positive_rate": 0.0312,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.25,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "irregular_skips_301",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_301",
+                "episode_id": 2
+              },
+              {
+                "household": "irregular_skips_307",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_307",
+                "episode_id": 2
+              },
+              {
+                "household": "irregular_skips_313",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 1,
+            "fn": 8,
+            "tn": 15,
+            "recall": 0.0,
+            "false_positive_rate": 0.0625,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.25,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "irregular_skips_301",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_307",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_313",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_317",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 4,
+            "fp": 1,
+            "fn": 12,
+            "tn": 31,
+            "recall": 0.25,
+            "false_positive_rate": 0.0312,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.25,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 4,
+            "missed": 4,
+            "recall": 0.5,
+            "median_delay_hours": 13.95,
+            "p90_delay_hours": 26.02,
+            "missed_examples": [
+              {
+                "household": "irregular_skips_301",
+                "episode_id": 2
+              },
+              {
+                "household": "irregular_skips_307",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_307",
+                "episode_id": 2
+              },
+              {
+                "household": "irregular_skips_313",
+                "episode_id": 2
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 3,
+            "fp": 1,
+            "fn": 5,
+            "tn": 15,
+            "recall": 0.375,
+            "false_positive_rate": 0.0625,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.25,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 3,
+            "missed": 1,
+            "recall": 0.75,
+            "median_delay_hours": 25.92,
+            "p90_delay_hours": 26.02,
+            "missed_examples": [
+              {
+                "household": "irregular_skips_307",
+                "episode_id": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    "overall": {
+      "baseline": {
+        "days": {
+          "households": 24,
+          "eligible_days": 288,
+          "tp": 0,
+          "fp": 1,
+          "fn": 96,
+          "tn": 191,
+          "recall": 0.0,
+          "false_positive_rate": 0.0052,
+          "excluded_days": 48,
+          "alerted_away_or_offline": 0,
+          "false_requests_per_home": 0.042,
+          "observation_days": 14
+        },
+        "episodes": {
+          "episodes": 48,
+          "caught": 0,
+          "missed": 48,
+          "recall": 0.0,
+          "median_delay_hours": null,
+          "p90_delay_hours": null,
+          "missed_examples": [
+            {
+              "household": "accurate_daily_301",
+              "episode_id": 1
+            },
+            {
+              "household": "accurate_daily_301",
+              "episode_id": 2
+            },
+            {
+              "household": "accurate_daily_307",
+              "episode_id": 1
+            },
+            {
+              "household": "accurate_daily_307",
+              "episode_id": 2
+            },
+            {
+              "household": "accurate_daily_313",
+              "episode_id": 1
+            }
+          ]
+        },
+        "early_days": {
+          "households": 24,
+          "eligible_days": 144,
+          "tp": 0,
+          "fp": 1,
+          "fn": 48,
+          "tn": 95,
+          "recall": 0.0,
+          "false_positive_rate": 0.0104,
+          "excluded_days": 24,
+          "alerted_away_or_offline": 0,
+          "false_requests_per_home": 0.042,
+          "observation_days": 7
+        },
+        "early_episodes": {
+          "episodes": 24,
+          "caught": 0,
+          "missed": 24,
+          "recall": 0.0,
+          "median_delay_hours": null,
+          "p90_delay_hours": null,
+          "missed_examples": [
+            {
+              "household": "accurate_daily_301",
+              "episode_id": 1
+            },
+            {
+              "household": "accurate_daily_307",
+              "episode_id": 1
+            },
+            {
+              "household": "accurate_daily_313",
+              "episode_id": 1
+            },
+            {
+              "household": "accurate_daily_317",
+              "episode_id": 1
+            },
+            {
+              "household": "weekday_lunch_away_301",
+              "episode_id": 1
+            }
+          ]
+        }
+      },
+      "configured": {
+        "days": {
+          "households": 24,
+          "eligible_days": 288,
+          "tp": 32,
+          "fp": 1,
+          "fn": 64,
+          "tn": 191,
+          "recall": 0.3333,
+          "false_positive_rate": 0.0052,
+          "excluded_days": 48,
+          "alerted_away_or_offline": 0,
+          "false_requests_per_home": 0.042,
+          "observation_days": 14
+        },
+        "episodes": {
+          "episodes": 48,
+          "caught": 32,
+          "missed": 16,
+          "recall": 0.6667,
+          "median_delay_hours": 26.0,
+          "p90_delay_hours": 26.12,
+          "missed_examples": [
+            {
+              "household": "wrong_time_301",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_time_301",
+              "episode_id": 2
+            },
+            {
+              "household": "wrong_time_307",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_time_307",
+              "episode_id": 2
+            },
+            {
+              "household": "wrong_time_313",
+              "episode_id": 1
+            }
+          ]
+        },
+        "early_days": {
+          "households": 24,
+          "eligible_days": 144,
+          "tp": 15,
+          "fp": 1,
+          "fn": 33,
+          "tn": 95,
+          "recall": 0.3125,
+          "false_positive_rate": 0.0104,
+          "excluded_days": 24,
+          "alerted_away_or_offline": 0,
+          "false_requests_per_home": 0.042,
+          "observation_days": 7
+        },
+        "early_episodes": {
+          "episodes": 24,
+          "caught": 15,
+          "missed": 9,
+          "recall": 0.625,
+          "median_delay_hours": 26.02,
+          "p90_delay_hours": 26.13,
+          "missed_examples": [
+            {
+              "household": "wrong_time_301",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_time_307",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_time_313",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_time_317",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_weekdays_301",
+              "episode_id": 1
+            }
+          ]
+        }
+      }
+    }
+  },
+  "replication": {
+    "scenario_results": {
+      "accurate_daily": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "accurate_daily_809",
+                "episode_id": 1
+              },
+              {
+                "household": "accurate_daily_809",
+                "episode_id": 2
+              },
+              {
+                "household": "accurate_daily_821",
+                "episode_id": 1
+              },
+              {
+                "household": "accurate_daily_821",
+                "episode_id": 2
+              },
+              {
+                "household": "accurate_daily_823",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "accurate_daily_809",
+                "episode_id": 1
+              },
+              {
+                "household": "accurate_daily_821",
+                "episode_id": 1
+              },
+              {
+                "household": "accurate_daily_823",
+                "episode_id": 1
+              },
+              {
+                "household": "accurate_daily_827",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 8,
+            "fp": 0,
+            "fn": 8,
+            "tn": 32,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 8,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 25.99,
+            "p90_delay_hours": 26.08,
+            "missed_examples": []
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 4,
+            "fp": 0,
+            "fn": 4,
+            "tn": 16,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 4,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 26.0,
+            "p90_delay_hours": 26.08,
+            "missed_examples": []
+          }
+        }
+      },
+      "weekday_lunch_away": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "weekday_lunch_away_809",
+                "episode_id": 1
+              },
+              {
+                "household": "weekday_lunch_away_809",
+                "episode_id": 2
+              },
+              {
+                "household": "weekday_lunch_away_821",
+                "episode_id": 1
+              },
+              {
+                "household": "weekday_lunch_away_821",
+                "episode_id": 2
+              },
+              {
+                "household": "weekday_lunch_away_823",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "weekday_lunch_away_809",
+                "episode_id": 1
+              },
+              {
+                "household": "weekday_lunch_away_821",
+                "episode_id": 1
+              },
+              {
+                "household": "weekday_lunch_away_823",
+                "episode_id": 1
+              },
+              {
+                "household": "weekday_lunch_away_827",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 8,
+            "fp": 0,
+            "fn": 8,
+            "tn": 32,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 8,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 26.09,
+            "p90_delay_hours": 26.2,
+            "missed_examples": []
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 4,
+            "fp": 0,
+            "fn": 4,
+            "tn": 16,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 4,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 26.11,
+            "p90_delay_hours": 26.2,
+            "missed_examples": []
+          }
+        }
+      },
+      "wrong_lunch_weekdays": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_lunch_weekdays_809",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_lunch_weekdays_809",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_lunch_weekdays_821",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_lunch_weekdays_821",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_lunch_weekdays_823",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_lunch_weekdays_809",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_lunch_weekdays_821",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_lunch_weekdays_823",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_lunch_weekdays_827",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 8,
+            "fp": 0,
+            "fn": 8,
+            "tn": 32,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 8,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 26.04,
+            "p90_delay_hours": 26.09,
+            "missed_examples": []
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 4,
+            "fp": 0,
+            "fn": 4,
+            "tn": 16,
+            "recall": 0.5,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 4,
+            "missed": 0,
+            "recall": 1.0,
+            "median_delay_hours": 26.04,
+            "p90_delay_hours": 26.09,
+            "missed_examples": []
+          }
+        }
+      },
+      "wrong_time": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_time_809",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_809",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_time_821",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_821",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_time_823",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_time_809",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_821",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_823",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_827",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_time_809",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_809",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_time_821",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_821",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_time_823",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_time_809",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_821",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_823",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_time_827",
+                "episode_id": 1
+              }
+            ]
+          }
+        }
+      },
+      "wrong_weekdays": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 0,
+            "fn": 16,
+            "tn": 32,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_weekdays_809",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_809",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_weekdays_821",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_821",
+                "episode_id": 2
+              },
+              {
+                "household": "wrong_weekdays_823",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_weekdays_809",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_821",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_823",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_827",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 4,
+            "fp": 0,
+            "fn": 12,
+            "tn": 32,
+            "recall": 0.25,
+            "false_positive_rate": 0.0,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 4,
+            "missed": 4,
+            "recall": 0.5,
+            "median_delay_hours": 26.0,
+            "p90_delay_hours": 26.03,
+            "missed_examples": [
+              {
+                "household": "wrong_weekdays_809",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_821",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_823",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_827",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "wrong_weekdays_809",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_821",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_823",
+                "episode_id": 1
+              },
+              {
+                "household": "wrong_weekdays_827",
+                "episode_id": 1
+              }
+            ]
+          }
+        }
+      },
+      "irregular_skips": {
+        "baseline": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 0,
+            "fp": 1,
+            "fn": 16,
+            "tn": 31,
+            "recall": 0.0,
+            "false_positive_rate": 0.0312,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.25,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 0,
+            "missed": 8,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "irregular_skips_809",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_809",
+                "episode_id": 2
+              },
+              {
+                "household": "irregular_skips_821",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_821",
+                "episode_id": 2
+              },
+              {
+                "household": "irregular_skips_823",
+                "episode_id": 1
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 0,
+            "fp": 0,
+            "fn": 8,
+            "tn": 16,
+            "recall": 0.0,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 0,
+            "missed": 4,
+            "recall": 0.0,
+            "median_delay_hours": null,
+            "p90_delay_hours": null,
+            "missed_examples": [
+              {
+                "household": "irregular_skips_809",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_821",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_823",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_827",
+                "episode_id": 1
+              }
+            ]
+          }
+        },
+        "configured": {
+          "days": {
+            "households": 4,
+            "eligible_days": 48,
+            "tp": 5,
+            "fp": 1,
+            "fn": 11,
+            "tn": 31,
+            "recall": 0.3125,
+            "false_positive_rate": 0.0312,
+            "excluded_days": 8,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.25,
+            "observation_days": 14
+          },
+          "episodes": {
+            "episodes": 8,
+            "caught": 5,
+            "missed": 3,
+            "recall": 0.625,
+            "median_delay_hours": 25.87,
+            "p90_delay_hours": 26.06,
+            "missed_examples": [
+              {
+                "household": "irregular_skips_823",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_827",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_827",
+                "episode_id": 2
+              }
+            ]
+          },
+          "early_days": {
+            "households": 4,
+            "eligible_days": 24,
+            "tp": 2,
+            "fp": 0,
+            "fn": 6,
+            "tn": 16,
+            "recall": 0.25,
+            "false_positive_rate": 0.0,
+            "excluded_days": 4,
+            "alerted_away_or_offline": 0,
+            "false_requests_per_home": 0.0,
+            "observation_days": 7
+          },
+          "early_episodes": {
+            "episodes": 4,
+            "caught": 2,
+            "missed": 2,
+            "recall": 0.5,
+            "median_delay_hours": 25.95,
+            "p90_delay_hours": 26.04,
+            "missed_examples": [
+              {
+                "household": "irregular_skips_823",
+                "episode_id": 1
+              },
+              {
+                "household": "irregular_skips_827",
+                "episode_id": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    "overall": {
+      "baseline": {
+        "days": {
+          "households": 24,
+          "eligible_days": 288,
+          "tp": 0,
+          "fp": 1,
+          "fn": 96,
+          "tn": 191,
+          "recall": 0.0,
+          "false_positive_rate": 0.0052,
+          "excluded_days": 48,
+          "alerted_away_or_offline": 0,
+          "false_requests_per_home": 0.042,
+          "observation_days": 14
+        },
+        "episodes": {
+          "episodes": 48,
+          "caught": 0,
+          "missed": 48,
+          "recall": 0.0,
+          "median_delay_hours": null,
+          "p90_delay_hours": null,
+          "missed_examples": [
+            {
+              "household": "accurate_daily_809",
+              "episode_id": 1
+            },
+            {
+              "household": "accurate_daily_809",
+              "episode_id": 2
+            },
+            {
+              "household": "accurate_daily_821",
+              "episode_id": 1
+            },
+            {
+              "household": "accurate_daily_821",
+              "episode_id": 2
+            },
+            {
+              "household": "accurate_daily_823",
+              "episode_id": 1
+            }
+          ]
+        },
+        "early_days": {
+          "households": 24,
+          "eligible_days": 144,
+          "tp": 0,
+          "fp": 0,
+          "fn": 48,
+          "tn": 96,
+          "recall": 0.0,
+          "false_positive_rate": 0.0,
+          "excluded_days": 24,
+          "alerted_away_or_offline": 0,
+          "false_requests_per_home": 0.0,
+          "observation_days": 7
+        },
+        "early_episodes": {
+          "episodes": 24,
+          "caught": 0,
+          "missed": 24,
+          "recall": 0.0,
+          "median_delay_hours": null,
+          "p90_delay_hours": null,
+          "missed_examples": [
+            {
+              "household": "accurate_daily_809",
+              "episode_id": 1
+            },
+            {
+              "household": "accurate_daily_821",
+              "episode_id": 1
+            },
+            {
+              "household": "accurate_daily_823",
+              "episode_id": 1
+            },
+            {
+              "household": "accurate_daily_827",
+              "episode_id": 1
+            },
+            {
+              "household": "weekday_lunch_away_809",
+              "episode_id": 1
+            }
+          ]
+        }
+      },
+      "configured": {
+        "days": {
+          "households": 24,
+          "eligible_days": 288,
+          "tp": 33,
+          "fp": 1,
+          "fn": 63,
+          "tn": 191,
+          "recall": 0.3438,
+          "false_positive_rate": 0.0052,
+          "excluded_days": 48,
+          "alerted_away_or_offline": 0,
+          "false_requests_per_home": 0.042,
+          "observation_days": 14
+        },
+        "episodes": {
+          "episodes": 48,
+          "caught": 33,
+          "missed": 15,
+          "recall": 0.6875,
+          "median_delay_hours": 26.02,
+          "p90_delay_hours": 26.1,
+          "missed_examples": [
+            {
+              "household": "wrong_time_809",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_time_809",
+              "episode_id": 2
+            },
+            {
+              "household": "wrong_time_821",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_time_821",
+              "episode_id": 2
+            },
+            {
+              "household": "wrong_time_823",
+              "episode_id": 1
+            }
+          ]
+        },
+        "early_days": {
+          "households": 24,
+          "eligible_days": 144,
+          "tp": 14,
+          "fp": 0,
+          "fn": 34,
+          "tn": 96,
+          "recall": 0.2917,
+          "false_positive_rate": 0.0,
+          "excluded_days": 24,
+          "alerted_away_or_offline": 0,
+          "false_requests_per_home": 0.0,
+          "observation_days": 7
+        },
+        "early_episodes": {
+          "episodes": 24,
+          "caught": 14,
+          "missed": 10,
+          "recall": 0.5833,
+          "median_delay_hours": 26.04,
+          "p90_delay_hours": 26.15,
+          "missed_examples": [
+            {
+              "household": "wrong_time_809",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_time_821",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_time_823",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_time_827",
+              "episode_id": 1
+            },
+            {
+              "household": "wrong_weekdays_809",
+              "episode_id": 1
+            }
+          ]
+        }
+      }
+    }
+  }
+}
