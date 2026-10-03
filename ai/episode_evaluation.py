@@ -10,7 +10,10 @@ from typing import Iterable, Mapping
 
 def episode_score(rows: Iterable[Mapping[str, object]]) -> dict[str, object]:
     episodes: dict[tuple[str, int], list[Mapping[str, object]]] = defaultdict(list)
+    requests: dict[str, list[datetime]] = defaultdict(list)
     for row in rows:
+        requests[str(row["household"])].extend(
+            datetime.fromisoformat(str(at)) for at in row.get("notification_request_times", []))
         if row.get("label") == 1 and isinstance(row.get("episode_id"), int):
             episodes[(str(row["household"]), int(row["episode_id"]))].append(row)
     delays: list[float] = []
@@ -20,9 +23,7 @@ def episode_score(rows: Iterable[Mapping[str, object]]) -> dict[str, object]:
         start = datetime.fromisoformat(str(members[0]["missed_use_at"]))
         last = datetime.fromisoformat(str(members[-1]["missed_use_at"]))
         end = datetime.combine(last.date() + timedelta(days=1), time.min, last.tzinfo)
-        times = [datetime.fromisoformat(str(at)) for row in members
-                 for at in row.get("notification_request_times", [])]
-        matches = [at for at in times if start <= at < end]
+        matches = [at for at in requests[household] if start <= at < end]
         if matches:
             delays.append(round((min(matches) - start).total_seconds() / 3600, 2))
         else:

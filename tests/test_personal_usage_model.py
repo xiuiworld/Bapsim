@@ -44,6 +44,29 @@ class PersonalUsageModelTests(TestCase):
         self.assertEqual(missing[0]["reason_codes"], ["EXPECTED_USE_MISSING"])
         self.assertEqual(model.evaluate("matter", "cooker_01", at(7, 18, 30), online=True), [])
 
+    def test_late_tick_recovers_covered_window_without_replaying_resumed_alert(self):
+        model = self._trained()
+        delayed = model.evaluate("matter", "cooker_01", at(7, 20), online=True)
+        midday = [item for item in delayed if item["evidence"]["slot"] == "slot_2"]
+        self.assertEqual(len(midday), 1)
+        self.assertEqual(midday[0]["routine_status"], "check_required")
+        self.assertTrue(midday[0]["evidence"]["replayed_after_delay"])
+        self.assertEqual(model.evaluate("matter", "cooker_01", at(7, 20, 30), online=True), [])
+
+        resumed = self._trained()
+        resumed.observe(event(7, 19))
+        recovered = resumed.evaluate("matter", "cooker_01", at(7, 20), online=True)
+        midday = [item for item in recovered if item["evidence"]["slot"] == "slot_2"]
+        self.assertEqual(midday, [])
+
+    def test_late_tick_does_not_turn_outage_into_nonuse(self):
+        model = self._trained()
+        model.observe(event(7, 12, kind="device_offline"))
+        model.observe(event(7, 19, kind="device_online"))
+        decisions = model.evaluate("matter", "cooker_01", at(7, 20), online=True)
+        midday = [item for item in decisions if item["evidence"]["slot"] == "slot_2"]
+        self.assertEqual(midday, [])
+
     def test_weak_initial_prior_waits_for_personal_history(self):
         model = PersonalUsageModel()
         model.observe(event(0, 0, kind="device_online"))
