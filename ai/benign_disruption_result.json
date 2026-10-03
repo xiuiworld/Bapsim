@@ -48,7 +48,7 @@
     },
     "late_use": {
       "days": 65,
-      "notification_request_days": 9
+      "notification_request_days": 2
     },
     "outing_declared": {
       "days": 25,
@@ -56,7 +56,7 @@
     },
     "outing_undeclared": {
       "days": 33,
-      "notification_request_days": 18
+      "notification_request_days": 17
     },
     "offline": {
       "days": 17,
@@ -75,7 +75,7 @@
       },
       "late_use": {
         "days": 19,
-        "notification_request_days": 1
+        "notification_request_days": 0
       },
       "outing_declared": {
         "days": 11,
@@ -97,11 +97,11 @@
       },
       "meal_out": {
         "days": 47,
-        "notification_request_days": 3
+        "notification_request_days": 2
       },
       "late_use": {
         "days": 23,
-        "notification_request_days": 3
+        "notification_request_days": 1
       },
       "outing_declared": {
         "days": 9,
@@ -123,11 +123,11 @@
       },
       "meal_out": {
         "days": 51,
-        "notification_request_days": 8
+        "notification_request_days": 9
       },
       "late_use": {
         "days": 23,
-        "notification_request_days": 5
+        "notification_request_days": 1
       },
       "outing_declared": {
         "days": 5,
@@ -135,7 +135,7 @@
       },
       "outing_undeclared": {
         "days": 10,
-        "notification_request_days": 4
+        "notification_request_days": 3
       },
       "offline": {
         "days": 5,
@@ -146,20 +146,28 @@
   "benign_total": {
     "households": 24,
     "eligible_days": 630,
-    "notification_request_days": 45,
+    "notification_request_days": 37,
     "away_or_offline_request_days": 0
   },
   "scripted_interruption_episodes": {
     "episodes": 48,
-    "caught": 45,
-    "missed": 3,
-    "recall": 0.9375,
+    "caught": 43,
+    "missed": 5,
+    "recall": 0.8958,
     "median_delay_hours": 13.05,
     "p90_delay_hours": 26.06,
     "missed_examples": [
       {
+        "household": "once_daily_809_incident",
+        "episode_id": 2
+      },
+      {
         "household": "twice_daily_809_incident",
         "episode_id": 1
+      },
+      {
+        "household": "once_daily_821_incident",
+        "episode_id": 2
       },
       {
         "household": "once_daily_829_incident",
@@ -171,16 +179,16 @@
       }
     ]
   },
-  "challenged_benign_request_days": 37,
+  "challenged_benign_request_days": 27,
   "sensitivity": {
     "replication": {
       "current": {
-        "benign_request_days": 45,
+        "benign_request_days": 37,
         "benign_eligible_days": 630,
         "declared_away_request_days": 0,
         "offline_request_days": 0,
         "incident_episodes": 48,
-        "incident_caught": 45,
+        "incident_caught": 43,
         "median_detection_delay_hours": 13.05
       },
       "one_hour_grace": {
@@ -190,27 +198,27 @@
         "offline_request_days": 0,
         "incident_episodes": 48,
         "incident_caught": 43,
-        "median_detection_delay_hours": 14.09
+        "median_detection_delay_hours": 14.14
       },
       "three_confirmations": {
-        "benign_request_days": 11,
+        "benign_request_days": 10,
         "benign_eligible_days": 630,
         "declared_away_request_days": 0,
         "offline_request_days": 0,
         "incident_episodes": 48,
-        "incident_caught": 31,
+        "incident_caught": 30,
         "median_detection_delay_hours": 25.98
       }
     },
     "development": {
       "current": {
-        "benign_request_days": 21,
+        "benign_request_days": 17,
         "benign_eligible_days": 307,
         "declared_away_request_days": 0,
         "offline_request_days": 0,
         "incident_episodes": 24,
-        "incident_caught": 22,
-        "median_detection_delay_hours": 13.04
+        "incident_caught": 23,
+        "median_detection_delay_hours": 13.01
       },
       "one_hour_grace": {
         "benign_request_days": 15,
@@ -222,13 +230,13 @@
         "median_detection_delay_hours": 14.01
       },
       "three_confirmations": {
-        "benign_request_days": 4,
+        "benign_request_days": 3,
         "benign_eligible_days": 307,
         "declared_away_request_days": 0,
         "offline_request_days": 0,
         "incident_episodes": 24,
         "incident_caught": 15,
-        "median_detection_delay_hours": 26.11
+        "median_detection_delay_hours": 26.12
       }
     }
   }

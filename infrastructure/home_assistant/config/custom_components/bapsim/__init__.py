@@ -103,8 +103,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     mqtt_lock = asyncio.Lock()
     last_discovery_at = None
     last_observation_prune_day = None
+    last_routine_review_day = None
     last_baseline_record_day: dict[tuple[str, str], str] = {}
     stored = await store.async_load()
+    routine_updated_at: dict[str, str] = dict(stored.get("routine_updated_at", {})) if isinstance(stored, dict) else {}
     output = StatusOutput(str(settings.get("household_id", "household_01")),
                           int(stored.get("output_revision", 0)) if isinstance(stored, dict) else 0)
     if isinstance(stored, dict):
@@ -218,6 +220,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             "features": features.dump_state(),
             "baseline": baseline.dump_state(),
             "usage_model": usage_model.dump_state(),
+            "routine_updated_at": dict(routine_updated_at),
             "workflow": workflow.dump_state(),
             "trend_workflow": trend_workflow.dump_state(),
             "notification_controls": controls.dump_state(),
@@ -279,11 +282,32 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         labels = {
             "detection_status": "밥솥 단독 판정", "workflow_status": "보호자 확인 상태",
             "baseline": "개인 기준", "features": "현재 특징",
+            "initial_routine": "초기 밥솥 사용 시간 설정",
             "notification_delivery": "알림 전달 단계", "matter_input": "실물 밥솥 입력 준비",
             "observation_issue_status": "연결 문제 상태",
             "output_state": "실물 분석 상태", "simulation_output_state": "시뮬레이션 분석 상태",
         }
         hass.states.async_set(f"sensor.bapsim_{entity}", display, {"friendly_name": labels.get(entity, entity), **(attributes or {})})
+
+    def show_initial_routines(as_of: datetime | None = None) -> None:
+        now = as_of or datetime.now(timezone.utc)
+        routines = []
+        for source, device_id in usage_model.device_keys:
+            if source != "matter":
+                continue
+            windows = usage_model.initial_routine(source, device_id)
+            if not windows:
+                continue
+            updated_at = routine_updated_at.get(device_id)
+            try:
+                updated = datetime.fromisoformat(updated_at) if updated_at else None
+                review_due = updated is None or now - updated.astimezone(timezone.utc) >= timedelta(days=28)
+            except (ValueError, TypeError):
+                review_due = True
+            routines.append({"device_id": device_id, "windows": windows,
+                             "updated_at": updated_at, "review_due": review_due})
+        show("initial_routine", "review_due" if any(item["review_due"] for item in routines)
+             else "configured" if routines else "not_configured", {"routines": routines})
 
     # Restore dashboard cards without treating old detections as new evidence.
     show("workflow_status", "normal")
@@ -291,6 +315,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     show("decline_detection", "waiting")
     show("interval_detection", "waiting")
     show("baseline", "waiting")
+    show_initial_routines()
     show("detection_status", "waiting")
     show("features", "waiting")
     show("notification_delivery", "not_sent")
@@ -1158,8 +1183,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     @callback
     def on_hourly_tick(now) -> None:
-        nonlocal last_observation_prune_day
+        nonlocal last_observation_prune_day, last_routine_review_day
         as_of = now.isoformat()
+        review_day = now.astimezone(timezone.utc).date()
+        if review_day != last_routine_review_day:
+            show_initial_routines(now)
+            last_routine_review_day = review_day
         delivery.prune(as_of)
         if external_service:
             if hass.services.has_service("mqtt", "publish"):
@@ -1477,9 +1506,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             except Exception:
                 usage_model.configure_initial_routine("matter", device_id, previous)
                 raise
-        show("initial_routine", "configured" if windows else "cleared", {
-            "device_id": device_id, "windows": usage_model.initial_routine("matter", device_id),
-        })
+        if windows:
+            routine_updated_at[device_id] = datetime.now(timezone.utc).isoformat()
+        else:
+            routine_updated_at.pop(device_id, None)
+        show_initial_routines()
         save_later()
 
     hass.services.async_register(DOMAIN, "set_initial_routine", set_initial_routine)

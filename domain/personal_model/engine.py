@@ -21,6 +21,7 @@ PRIORS = (
     ("slot_4", 30, 0.10),
 )
 USAGE_GROUP = timedelta(minutes=60)
+MAX_REPLAY_DELAY = timedelta(hours=36)
 
 
 def _time(value: str) -> datetime:
@@ -346,12 +347,12 @@ class PersonalUsageModel:
         self.availability(source, device_id, online, as_of)
         local_day = now.astimezone(KST).date()
         decisions = []
-        for day in (local_day - timedelta(days=1), local_day):
+        for day in (local_day - timedelta(days=2), local_day - timedelta(days=1), local_day):
             centers = self._centers(state, day)
             for index, center in enumerate(centers):
                 start, end = self._window(day, center)
                 decision_at = end + self.late_grace
-                if not decision_at <= now < decision_at + timedelta(hours=1):
+                if not decision_at <= now or now - decision_at > MAX_REPLAY_DELAY:
                     continue
                 evaluation_key = f"{day.isoformat()}|{index}"
                 if evaluation_key in state["evaluations"]:
@@ -371,7 +372,16 @@ class PersonalUsageModel:
                     status, reason, score = "check_required", "EXPECTED_USE_MISSING", profile["probability"]
                 else:
                     status, reason, score = "no_expectation", None, profile["probability"]
+                resumed_before_replay = (now > decision_at and any(
+                    decision_at < opening <= now for opening in state["opens"]))
+                if status == "check_required" and resumed_before_replay:
+                    status, reason, score = "normal", None, round(1 - profile["probability"], 4)
                 state["evaluations"][evaluation_key] = status
+                # Only an unresolved missed-use decision needs a late workflow
+                # update. Connection loss and lid opening have their own live
+                # events, and old learning/normal states would be misleading.
+                if now >= decision_at + timedelta(hours=1) and status != "check_required":
+                    continue
                 decisions.append({
                     "source": source, "device_id": device_id, "as_of": decision_at.isoformat(),
                     "routine_status": status,
@@ -381,6 +391,8 @@ class PersonalUsageModel:
                         **profile, "observed_use": self._used(state, start, decision_at),
                         "window_start": start.isoformat(), "window_end": end.isoformat(),
                         "decision_at": decision_at.isoformat(),
+                        "replayed_after_delay": now >= decision_at + timedelta(hours=1),
+                        "resumed_before_replay": resumed_before_replay,
                         "model": "personal_usage_v1",
                     },
                 })

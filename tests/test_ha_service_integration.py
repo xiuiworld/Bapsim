@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 from domain.baseline import PersonalBaselineEngine
 from domain.events.normalizer import CookerEventNormalizer
+from domain.personal_model import PersonalUsageModel
 from workflow import DeliveryLedger
 
 
@@ -302,6 +303,13 @@ class HAServiceIntegrationTests(TestCase):
                                                {"device_id": "cooker_01", "windows": windows})
                 self.assertEqual(hass.data["bapsim"]["usage_model"].initial_routine(
                     "matter", "cooker_01"), windows)
+                routine_state = hass.states.values["sensor.bapsim_initial_routine"]
+                self.assertEqual(routine_state.state, "configured")
+                self.assertEqual(routine_state.attributes["routines"][0]["windows"], windows)
+                self.assertFalse(routine_state.attributes["routines"][0]["review_due"])
+                hass.hourly_callback(datetime.now(timezone.utc) + timedelta(days=29))
+                self.assertEqual(hass.states.values["sensor.bapsim_initial_routine"].state,
+                                 "review_due")
                 self.assertEqual(hass.data["bapsim"]["store"].saved["usage_model"]["devices"][0]
                                  ["initial_windows"], windows)
                 if external:
@@ -315,9 +323,27 @@ class HAServiceIntegrationTests(TestCase):
                                                {"device_id": "cooker_01", "windows": []})
                 self.assertEqual(hass.data["bapsim"]["usage_model"].initial_routine(
                     "matter", "cooker_01"), [])
+                self.assertEqual(hass.states.values["sensor.bapsim_initial_routine"].state,
+                                 "not_configured")
 
         asyncio.run(scenario(False))
         asyncio.run(scenario(True))
+
+    def test_restored_initial_routine_without_review_date_is_visible(self):
+        model = PersonalUsageModel()
+        model.configure_initial_routine("matter", "cooker_01", [{"time": "08:00"}])
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules({"usage_model": model.dump_state()})):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_old_routine_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                self.assertTrue(await module.async_setup(hass, {}))
+                state = hass.states.values["sensor.bapsim_initial_routine"]
+                self.assertEqual(state.state, "review_due")
+                self.assertEqual(state.attributes["routines"][0]["device_id"], "cooker_01")
+
+        asyncio.run(scenario())
 
     def test_external_worker_restores_forwarded_device_heartbeat(self):
         async def scenario():
