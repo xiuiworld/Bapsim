@@ -17,6 +17,10 @@ HA에서 MQTT 통합과 브로커를 설정하면 기본 모드의 통합이 `mq
 알림 요청 1건 → 보호자 확인 → 사용 재개 해결 → 재시작 복원을 JSON으로
 출력합니다. HA·MQTT·휴대폰에는 전송하지 않습니다.
 
+발표용 결과 파일, 전체 테스트 기록, HA 통합 ZIP을 한 폴더에 묶으려면 저장소 루트에서
+`python -m tools.prepare_demo`를 실행합니다. 파일 설명과 시연 순서는
+[가상 데모 안내](../docs/DEMO_REHEARSAL.md)에 있습니다.
+
 1. Docker Desktop을 실행해 `docker info`에서 Server 버전이 출력되는지 확인합니다. Desktop 시작 시 Windows 권한 승인이나 첫 실행 동의가 필요할 수 있습니다.
 2. 저장소 루트에서 `.env.example`을 `.env`로 복사합니다. HA를 처음 실행할 때는 토큰을 비워 두어도 되지만, 알림 전달 전에 HA 사용자 프로필에서 장기 액세스 토큰을 만든 뒤 `.env`의 `BAPSIM_HA_TOKEN`에 넣습니다. 등록된 휴대폰 알림 서비스가 있으면 `BAPSIM_NOTIFY_SERVICE=mobile_app_...`을 지정합니다. `.env`는 Git 추적 대상이 아닙니다.
 3. `docker compose -f compose.yaml -f compose.standalone.yaml up -d --build`로 HA, 로컬 Mosquitto, 작업자를 실행합니다.
