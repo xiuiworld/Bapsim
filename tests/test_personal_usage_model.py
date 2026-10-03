@@ -148,6 +148,23 @@ class PersonalUsageModelTests(TestCase):
         self.assertLess(candidate["evidence"]["threshold_hours"],
                         candidate["evidence"]["p95_hours"])
 
+    def test_robust_interval_prediction_does_not_copy_one_long_gap(self):
+        current = PersonalUsageModel()
+        predictive = PersonalUsageModel(interval_strategy="robust_predictive",
+                                        interval_quantile=0.90)
+        for model in (current, predictive):
+            model.observe(event(0, 0, kind="device_online"))
+            for day in (0, 2, 4, 6, 8, 10, 12, 16, 18):
+                model.observe(event(day, 17))
+        as_of = at(20, 23)
+        baseline = current.evaluate_interval("matter", "cooker_01", as_of, online=True)
+        candidate = predictive.evaluate_interval("matter", "cooker_01", as_of, online=True)
+        self.assertEqual(baseline["evidence"]["p95_hours"], 96.0)
+        self.assertLess(candidate["evidence"]["threshold_hours"], 96.0)
+        self.assertEqual(candidate["evidence"]["interval_strategy"], "robust_predictive")
+        with self.assertRaises(ValueError):
+            PersonalUsageModel(interval_strategy="unknown")
+
     def test_regular_evening_user_is_not_expected_at_midday(self):
         model = PersonalUsageModel()
         model.observe(event(0, 0, kind="device_online"))
