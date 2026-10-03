@@ -49,9 +49,15 @@ print("후보 기준값 (훈련 사용자에서만 선택):", result["selected_t
 print("보류 사용자 개인 모델:", result["holdout_personal"])
 print("보류 사용자 고정 24시간 기준:", result["holdout_fixed_24h"])
 print("생활 변화 시나리오 개인 모델:", result["stress_personal"])
+print("훈련 가구에서 선택한 실험 후보:", result["selected_variant"], result["selected_variant_settings"])
+print("실험 후보 보류 가구:", result["candidate_holdout"])
+print("실험 후보 생활 변화 가구:", result["candidate_stress"])
 print("유형별 보류 결과:")
 for name, values in result["holdout_by_profile"].items():
-    print(name, "포착률", f'{values["recall"]:.1%}', "28일당 불필요한 후보", values["false_alerts_per_household_28d"])
+    proposed = result["candidate_by_profile"][name]
+    print(name, "현재/후보 포착률", f'{values["recall"]:.1%}', f'{proposed["recall"]:.1%}',
+          "현재/후보 28일당 불필요한 후보", values["false_alerts_per_household_28d"],
+          proposed["false_alerts_per_household_28d"])
 '''
 
 
@@ -61,11 +67,12 @@ from IPython.display import SVG, display
 def comparison_svg(result):
     personal = result["holdout_personal"]
     fixed = result["holdout_fixed_24h"]
-    measures = [("보류: 개인 모델", personal), ("보류: 고정 24시간", fixed),
-                ("변화: 개인 모델", result["stress_personal"]),
+    measures = [("보류: 현재", personal), ("보류: 실험 후보", result["candidate_holdout"]),
+                ("보류: 고정 24시간", fixed), ("변화: 현재", result["stress_personal"]),
+                ("변화: 실험 후보", result["candidate_stress"]),
                 ("변화: 고정 24시간", result["stress_fixed_24h"])]
-    parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="820" height="475" viewBox="0 0 820 475">',
-             '<rect width="820" height="475" fill="white"/>',
+    parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="820" height="650" viewBox="0 0 820 650">',
+             '<rect width="820" height="650" fill="white"/>',
              '<text x="24" y="30" font-family="sans-serif" font-size="19" fill="#17212b">가상 보류 가구와 생활 변화 가구 비교</text>',
              '<text x="24" y="53" font-family="sans-serif" font-size="12" fill="#52606d">가구마다 미래 28일 · 외출/단절 제외 · 내부 확인 후보, 실제 보호자 알림 아님</text>']
     for index, (name, values) in enumerate(measures):
@@ -91,9 +98,9 @@ from IPython.display import SVG, display
 def profile_svg(result):
     parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="820" height="340" viewBox="0 0 820 340">',
              '<rect width="820" height="340" fill="white"/>',
-             '<text x="24" y="30" font-family="sans-serif" font-size="19" fill="#17212b">가상 생활 유형별 28일당 불필요한 내부 후보</text>',
+             '<text x="24" y="30" font-family="sans-serif" font-size="19" fill="#17212b">실험 후보: 가상 생활 유형별 28일당 불필요한 후보</text>',
              '<text x="24" y="51" font-family="sans-serif" font-size="12" fill="#52606d">보류 가구 · 유형별 4가구 · 값이 낮을수록 보호자 부담 가능성이 낮음</text>']
-    profiles = result["holdout_by_profile"]
+    profiles = result["candidate_by_profile"]
     scale = max(1, max(item["false_alerts_per_household_28d"] for item in profiles.values()))
     for index, (name, values) in enumerate(profiles.items()):
         y = 67 + index * 32
@@ -112,13 +119,17 @@ display(SVG(profile_svg(result)))
 EXPORT = '''import json
 
 candidate = {
-    "schema_version": 1,
+    "schema_version": 2,
     "status": "offline_candidate_only",
     "model": "personal_usage_v1",
     "alert_probability": result["selected_threshold"],
+    "selected_variant": result["selected_variant"],
+    "selected_variant_settings": result["selected_variant_settings"],
     "train_seeds": result["train_seeds"],
     "holdout_seeds": result["holdout_seeds"],
     "holdout_personal": result["holdout_personal"],
+    "candidate_holdout": result["candidate_holdout"],
+    "candidate_stress": result["candidate_stress"],
     "warning": "Synthetic behavior only. Review real observations before changing live alerts.",
 }
 with open("personal_usage_candidate.json", "w", encoding="utf-8") as handle:
@@ -130,6 +141,7 @@ print("검토용 후보 저장: personal_usage_candidate.json")
 def notebook(results: dict[str, object]) -> dict[str, object]:
     personal = results["holdout_personal"]
     fixed = results["holdout_fixed_24h"]
+    candidate = results["candidate_holdout"]
     model_path = PROJECT / "domain/personal_model/engine.py"
     experiment_path = ROOT / "target_cohort_experiment.py"
     model_code = source(model_path)
@@ -143,6 +155,8 @@ def notebook(results: dict[str, object]) -> dict[str, object]:
                  f"보류 가구의 누락 포착률: 개인 모델 **{personal['recall']:.1%}**, "
                  f"고정 기준 **{fixed['recall']:.1%}**. 정상일 오경보율: 개인 모델 "
                  f"**{personal['false_positive_rate']:.1%}**, 고정 기준 **{fixed['false_positive_rate']:.1%}**. "
+                 f"훈련 가구에서 선택한 실험 후보는 보류 가구에서 포착률 **{candidate['recall']:.1%}**, "
+                 f"정상일 내부 후보율 {candidate['false_positive_rate']:.1%}입니다. "
                  f"가상 가구는 총 **{results['profile_count'] * (len(results['train_seeds']) + len(results['holdout_seeds']) + len(results['stress_seeds']))}곳**입니다. "
                  "정해 놓은 가상 행동에 대한 내부 판정 결과이며 실제 식사·건강 상태 정확도나 휴대폰 푸시 성능이 아닙니다.\n"),
         markdown("method", "## 방법과 주요 가정\n\n"
@@ -156,6 +170,9 @@ def notebook(results: dict[str, object]) -> dict[str, object]:
                  "- 정상적인 밥솥 미사용과 의도된 사용 중단을 별도 시나리오로 생성합니다. "
                  "라벨은 **생성 시점에** 정하며 모델 점수로 만들지 않습니다. 두 상황이 관측상 같을 수 있어 "
                  "합성 라벨을 실제 위험의 정답으로 해석할 수 없습니다.\n"
+                 "- 실험 후보는 예상 창 뒤에 최대 1시간을 더 관찰하고, 사용 간격의 75백분위를 기준으로 확인 후보를 만듭니다. "
+                 "이는 보호자 알림을 늦추거나 불필요한 후보를 늘릴 수 있는 절충안입니다. "
+                 "운영 기본값은 유지하며 후보 선정에도 훈련 가구만 사용합니다.\n"
                  "- 외출·단절은 정답 0으로 채우지 않고 평가에서 제외합니다. 고정 비교는 마지막 개방 이후 24시간 초과입니다. "
                  "두 방법 모두 **하루 중 한 번이라도 나온 내부 확인 필요 후보**를 비교하며, 실제 보호자 발송 정책은 별도입니다.\n"
                  "- 가상 집합은 설계한 상황에 편향돼 있습니다. 실제 사용자 기록과 별도 확인 자료가 준비되기 전에는 "
@@ -181,6 +198,7 @@ def notebook(results: dict[str, object]) -> dict[str, object]:
         code("profile-chart", PROFILE_CHART),
         markdown("interpretation", "## 해석\n\n"
                  "정상적인 미사용과 시나리오상 사용 중단은 밥솥 센서만으로 구분할 수 없는 경우가 있습니다. "
+                 "실험 후보는 이틀 간격 조리의 놓침을 줄여도 불필요한 후보를 늘릴 수 있습니다. "
                  "유형별 28일당 불필요한 내부 후보를 함께 봐야 보호자 알림 부담을 이해할 수 있습니다. "
                  "실제 관측과 보호자의 독립적인 확인 라벨이 쌓이면 같은 평가 코드를 실제 가구별 시간 분리 검증에 다시 사용해야 합니다.\n"),
         markdown("export", "## 4. 검토용 후보 내보내기\n\n"

@@ -51,6 +51,42 @@ class PersonalUsageModelTests(TestCase):
         midday = [item for item in decisions if item["evidence"]["slot"] == "slot_2"]
         self.assertEqual(midday[0]["routine_status"], "learning")
 
+    def test_optional_late_grace_waits_for_a_late_opening(self):
+        model = PersonalUsageModel(late_grace_hours=1.0)
+        model.observe(event(0, 0, kind="device_online"))
+        for day in range(7):
+            model.observe(event(day, 13))
+            model.evaluate("matter", "cooker_01", at(day, 16, 30), online=True)
+        expected = datetime.fromisoformat(
+            model.profile("matter", "cooker_01", at(7, 12))["windows"][1]["expected_time"])
+        self.assertEqual(model.evaluate("matter", "cooker_01",
+                                        (expected + timedelta(hours=2, minutes=30)).isoformat(),
+                                        online=True), [])
+        late_open = expected + timedelta(hours=2, minutes=45)
+        model.observe({**event(7, 13), "observed_at": late_open.isoformat()})
+        decisions = model.evaluate("matter", "cooker_01",
+                                   (expected + timedelta(hours=3, minutes=30)).isoformat(),
+                                   online=True)
+        midday = [item for item in decisions if item["evidence"]["slot"] == "slot_2"]
+        self.assertEqual(midday[0]["routine_status"], "normal")
+        self.assertEqual(midday[0]["evidence"]["decision_at"],
+                         (expected + timedelta(hours=3)).astimezone(timezone.utc).isoformat())
+
+    def test_optional_interval_quantile_exposes_earlier_candidate(self):
+        models = (PersonalUsageModel(), PersonalUsageModel(interval_quantile=0.75))
+        for model in models:
+            model.observe(event(0, 0, kind="device_online"))
+            for day in (0, 2, 4, 6, 8, 10, 12, 16, 18):
+                model.observe(event(day, 17))
+        later = at(20, 23)
+        current = models[0].evaluate_interval("matter", "cooker_01", later, online=True)
+        candidate = models[1].evaluate_interval("matter", "cooker_01", later, online=True)
+        self.assertEqual(current["routine_status"], "normal")
+        self.assertEqual(candidate["routine_status"], "check_required")
+        self.assertEqual(current["evidence"]["p95_hours"], candidate["evidence"]["p95_hours"])
+        self.assertLess(candidate["evidence"]["threshold_hours"],
+                        candidate["evidence"]["p95_hours"])
+
     def test_regular_evening_user_is_not_expected_at_midday(self):
         model = PersonalUsageModel()
         model.observe(event(0, 0, kind="device_online"))

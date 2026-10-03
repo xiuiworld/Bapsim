@@ -48,15 +48,19 @@ def _circular_mean(values: list[float], prior: float) -> float:
 
 class PersonalUsageModel:
     def __init__(self, *, min_covered_days: int = 7, history_days: int = 28,
-                 window_hours: float = 2.0, alert_probability: float = 0.72) -> None:
+                 window_hours: float = 2.0, alert_probability: float = 0.72,
+                 late_grace_hours: float = 0.0, interval_quantile: float = 0.95) -> None:
         if min_covered_days < 1 or history_days < min_covered_days:
             raise ValueError("invalid learning window")
-        if not 0 < window_hours <= 3 or not 0 < alert_probability <= 1:
+        if (not 0 < window_hours <= 3 or not 0 < alert_probability <= 1 or
+                not 0 <= late_grace_hours <= 2 or not 0.5 <= interval_quantile <= 0.95):
             raise ValueError("invalid model window or alert probability")
         self.min_covered_days = min_covered_days
         self.history_days = history_days
         self.window = timedelta(hours=window_hours)
         self.alert_probability = alert_probability
+        self.late_grace = timedelta(hours=late_grace_hours)
+        self.interval_quantile = interval_quantile
         self._devices: dict[tuple[str, str], dict[str, object]] = {}
         self._away_intervals: list[tuple[datetime, datetime]] = []
         self._away_since: datetime | None = None
@@ -292,19 +296,20 @@ class PersonalUsageModel:
             centers = self._centers(state, day)
             for index, center in enumerate(centers):
                 start, end = self._window(day, center)
-                if not end <= now < end + timedelta(hours=1):
+                decision_at = end + self.late_grace
+                if not decision_at <= now < decision_at + timedelta(hours=1):
                     continue
                 evaluation_key = f"{day.isoformat()}|{index}"
                 if evaluation_key in state["evaluations"]:
                     continue
                 profile = self._profile(state, day, index, center, now)
-                if away or self._away_window(start, end):
+                if away or self._away_window(start, decision_at):
                     status, reason, score = "away", "AWAY_DECLARED", None
-                elif not self._covered(state, start, end, now):
+                elif not self._covered(state, start, decision_at, now):
                     status, reason, score = "data_unavailable", "COOKER_DATA_UNAVAILABLE", None
                 elif profile["covered_days"] < self.min_covered_days:
                     status, reason, score = "learning", "PATTERN_LEARNING", None
-                elif self._used(state, start, end):
+                elif self._used(state, start, decision_at):
                     status, reason, score = "normal", None, round(1 - profile["probability"], 4)
                 elif profile["probability"] >= self.alert_probability:
                     status, reason, score = "check_required", "EXPECTED_USE_MISSING", profile["probability"]
@@ -312,13 +317,14 @@ class PersonalUsageModel:
                     status, reason, score = "no_expectation", None, profile["probability"]
                 state["evaluations"][evaluation_key] = status
                 decisions.append({
-                    "source": source, "device_id": device_id, "as_of": end.isoformat(),
+                    "source": source, "device_id": device_id, "as_of": decision_at.isoformat(),
                     "routine_status": status,
                     "severity": "warning" if status == "check_required" else "info" if reason else "none",
                     "reason_codes": [reason] if reason else [], "score": score,
                     "evidence": {
-                        **profile, "observed_use": self._used(state, start, end),
+                        **profile, "observed_use": self._used(state, start, decision_at),
                         "window_start": start.isoformat(), "window_end": end.isoformat(),
+                        "decision_at": decision_at.isoformat(),
                         "model": "personal_usage_v1",
                     },
                 })
@@ -359,7 +365,8 @@ class PersonalUsageModel:
         if len(intervals) < self.min_covered_days:
             return None
         intervals.sort()
-        limit = intervals[ceil(0.95 * len(intervals)) - 1]
+        p95 = intervals[ceil(0.95 * len(intervals)) - 1]
+        limit = intervals[ceil(self.interval_quantile * len(intervals)) - 1]
         last = opens[-1]
         if not self._covered(state, last, now, now) or self._away_window(last, now):
             return None
@@ -372,7 +379,9 @@ class PersonalUsageModel:
             "reason_codes": ["UNUSUAL_USE_GAP"] if status == "check_required" else [],
             "score": None,
             "evidence": {"model": "personal_interval_v1", "sample_count": len(intervals),
-                         "last_use_at": last.isoformat(), "p95_hours": round(limit.total_seconds() / 3600, 2),
+                         "last_use_at": last.isoformat(), "p95_hours": round(p95.total_seconds() / 3600, 2),
+                         "threshold_hours": round(limit.total_seconds() / 3600, 2),
+                         "interval_quantile": self.interval_quantile,
                          "elapsed_hours": round(elapsed.total_seconds() / 3600, 2)},
         }
 

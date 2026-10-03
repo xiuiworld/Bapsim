@@ -21,6 +21,11 @@ TRAIN_SEEDS = (101, 103, 107, 109)
 HOLDOUT_SEEDS = (301, 307, 311, 313)
 STRESS_SEEDS = (501, 503)
 THRESHOLDS = (0.72, 0.84, 0.90)
+VARIANTS = {
+    "current": (0.0, 0.95),
+    "late_grace": (1.0, 0.95),
+    "grace_and_cadence": (1.0, 0.75),
+}
 
 # These timings and probabilities are stress-test assumptions. The cited
 # population studies motivate diversity, not these exact cooker-use rates.
@@ -58,14 +63,17 @@ def _interruptions(profile: str, seed: int) -> set[int]:
 
 
 def run_household(seed: int, profile: str, threshold: float,
-                  *, stress: bool = False) -> list[dict[str, object]]:
+                  *, stress: bool = False, late_grace_hours: float = 0.0,
+                  interval_quantile: float = 0.95) -> list[dict[str, object]]:
     """Replay one home chronologically; labels are set before model scoring."""
     if profile not in PROFILES:
         raise ValueError("unknown synthetic profile")
     spec = PROFILES[profile]
     rng = Random(seed * 1009 + list(PROFILES).index(profile))
     device_id = f"synthetic_{profile}_{seed}"
-    model = PersonalUsageModel(alert_probability=threshold)
+    model = PersonalUsageModel(alert_probability=threshold,
+                               late_grace_hours=late_grace_hours,
+                               interval_quantile=interval_quantile)
     gap_days = _interruptions(profile, seed)
     away_days = {HISTORY_DAYS + 5 + seed % 2}
     outage_days = {HISTORY_DAYS + 12 + seed % 2}
@@ -104,7 +112,7 @@ def run_household(seed: int, profile: str, threshold: float,
         # Model window centers are computed from prior days only. Evaluate
         # each one shortly after its end, as a periodic worker would.
         centers = model.profile("simulator", device_id, baseline.isoformat())["windows"]
-        checks = [datetime.fromisoformat(item["expected_time"]) + timedelta(hours=2.5)
+        checks = [datetime.fromisoformat(item["expected_time"]) + timedelta(hours=2.5 + late_grace_hours)
                   for item in centers]
         actions = [(moment, kind) for moment, kind in planned_actions]
         actions += [(moment, "evaluate") for moment in checks]
@@ -136,9 +144,12 @@ def run_household(seed: int, profile: str, threshold: float,
 
 
 def cohort(seeds: tuple[int, ...], threshold: float,
-           *, stress: bool = False) -> list[dict[str, object]]:
+           *, stress: bool = False, late_grace_hours: float = 0.0,
+           interval_quantile: float = 0.95) -> list[dict[str, object]]:
     return [row for seed in seeds for profile in PROFILES
-            for row in run_household(seed, profile, threshold, stress=stress)]
+            for row in run_household(seed, profile, threshold, stress=stress,
+                                     late_grace_hours=late_grace_hours,
+                                     interval_quantile=interval_quantile)]
 
 
 def score(rows: list[dict[str, object]], field: str) -> dict[str, int | float]:
@@ -172,8 +183,26 @@ def experiment() -> dict[str, object]:
     selected = max(training, key=lambda item: (
         float(item["recall"]) - 2 * float(item["false_positive_rate"]),
         -abs(float(item["threshold"]) - 0.72)))["threshold"]
+    variant_training = []
+    for name, (grace, quantile) in VARIANTS.items():
+        variant_training.append({"name": name, "late_grace_hours": grace,
+                                 "interval_quantile": quantile,
+                                 **score(cohort(TRAIN_SEEDS, float(selected),
+                                                late_grace_hours=grace,
+                                                interval_quantile=quantile), "personal_alert")})
+    # All settings are chosen without examining holdout or stress homes.
+    candidate_name = max(variant_training, key=lambda item: (
+        float(item["recall"]) - 2 * float(item["false_positive_rate"]),
+        -float(item["late_grace_hours"])))["name"]
+    candidate_grace, candidate_quantile = VARIANTS[str(candidate_name)]
     holdout = cohort(HOLDOUT_SEEDS, float(selected))
     stress = cohort(STRESS_SEEDS, float(selected), stress=True)
+    candidate_holdout = cohort(HOLDOUT_SEEDS, float(selected),
+                               late_grace_hours=candidate_grace,
+                               interval_quantile=candidate_quantile)
+    candidate_stress = cohort(STRESS_SEEDS, float(selected), stress=True,
+                              late_grace_hours=candidate_grace,
+                              interval_quantile=candidate_quantile)
     return {
         "scope": "Balanced synthetic single-person cooker-use stress test; no meal or health labels.",
         "model": "PersonalUsageModel from domain/personal_model/engine.py",
@@ -182,14 +211,20 @@ def experiment() -> dict[str, object]:
         "stress_seeds": list(STRESS_SEEDS),
         "history_days_per_household": HISTORY_DAYS, "future_days_per_household": FUTURE_DAYS,
         "training_candidates": training, "selected_threshold": selected,
+        "variant_training": variant_training, "selected_variant": candidate_name,
+        "selected_variant_settings": {"late_grace_hours": candidate_grace,
+                                      "interval_quantile": candidate_quantile},
         "holdout_personal": score(holdout, "personal_alert"),
         "holdout_fixed_24h": score(holdout, "fixed_24h_alert"),
         "holdout_by_profile": _by(holdout, "profile"),
         "holdout_by_age_group": _by(holdout, "age_group"),
         "holdout_by_scenario": _by(holdout, "scenario"),
+        "candidate_holdout": score(candidate_holdout, "personal_alert"),
+        "candidate_by_profile": _by(candidate_holdout, "profile"),
         "stress_personal": score(stress, "personal_alert"),
         "stress_fixed_24h": score(stress, "fixed_24h_alert"),
         "stress_by_profile": _by(stress, "profile"),
+        "candidate_stress": score(candidate_stress, "personal_alert"),
         "example_future_rows": [row for row in holdout if row["household"] ==
                                 f"synthetic_lunch_dinner_{HOLDOUT_SEEDS[0]}" and
                                 row["split"] == "future"][:10],
