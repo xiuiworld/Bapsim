@@ -1,0 +1,235 @@
+{
+  "scope": "Randomized synthetic cooker-use replay only; no meal or safety labels",
+  "development_seeds": [
+    301,
+    307,
+    313,
+    317
+  ],
+  "replication_seeds": [
+    809,
+    821,
+    823,
+    827,
+    829,
+    839,
+    853,
+    857
+  ],
+  "rhythms": [
+    "once_daily",
+    "twice_daily",
+    "weekend_lunch"
+  ],
+  "candidate_settings": {
+    "current": {
+      "late_grace_hours": 0.0,
+      "min_consecutive": 2
+    },
+    "one_hour_grace": {
+      "late_grace_hours": 1.0,
+      "min_consecutive": 2
+    },
+    "three_confirmations": {
+      "late_grace_hours": 0.0,
+      "min_consecutive": 3
+    }
+  },
+  "history_days": 14,
+  "future_days": 28,
+  "benign_by_category": {
+    "routine": {
+      "days": 392,
+      "notification_request_days": 0
+    },
+    "meal_out": {
+      "days": 140,
+      "notification_request_days": 18
+    },
+    "late_use": {
+      "days": 65,
+      "notification_request_days": 9
+    },
+    "outing_declared": {
+      "days": 25,
+      "notification_request_days": 0
+    },
+    "outing_undeclared": {
+      "days": 33,
+      "notification_request_days": 18
+    },
+    "offline": {
+      "days": 17,
+      "notification_request_days": 0
+    }
+  },
+  "benign_by_rhythm_category": {
+    "once_daily": {
+      "routine": {
+        "days": 137,
+        "notification_request_days": 0
+      },
+      "meal_out": {
+        "days": 42,
+        "notification_request_days": 7
+      },
+      "late_use": {
+        "days": 19,
+        "notification_request_days": 1
+      },
+      "outing_declared": {
+        "days": 11,
+        "notification_request_days": 0
+      },
+      "outing_undeclared": {
+        "days": 11,
+        "notification_request_days": 2
+      },
+      "offline": {
+        "days": 4,
+        "notification_request_days": 0
+      }
+    },
+    "twice_daily": {
+      "routine": {
+        "days": 125,
+        "notification_request_days": 0
+      },
+      "meal_out": {
+        "days": 47,
+        "notification_request_days": 3
+      },
+      "late_use": {
+        "days": 23,
+        "notification_request_days": 3
+      },
+      "outing_declared": {
+        "days": 9,
+        "notification_request_days": 0
+      },
+      "outing_undeclared": {
+        "days": 12,
+        "notification_request_days": 12
+      },
+      "offline": {
+        "days": 8,
+        "notification_request_days": 0
+      }
+    },
+    "weekend_lunch": {
+      "routine": {
+        "days": 130,
+        "notification_request_days": 0
+      },
+      "meal_out": {
+        "days": 51,
+        "notification_request_days": 8
+      },
+      "late_use": {
+        "days": 23,
+        "notification_request_days": 5
+      },
+      "outing_declared": {
+        "days": 5,
+        "notification_request_days": 0
+      },
+      "outing_undeclared": {
+        "days": 10,
+        "notification_request_days": 4
+      },
+      "offline": {
+        "days": 5,
+        "notification_request_days": 0
+      }
+    }
+  },
+  "benign_total": {
+    "households": 24,
+    "eligible_days": 630,
+    "notification_request_days": 45,
+    "away_or_offline_request_days": 0
+  },
+  "scripted_interruption_episodes": {
+    "episodes": 48,
+    "caught": 45,
+    "missed": 3,
+    "recall": 0.9375,
+    "median_delay_hours": 13.05,
+    "p90_delay_hours": 26.06,
+    "missed_examples": [
+      {
+        "household": "twice_daily_809_incident",
+        "episode_id": 1
+      },
+      {
+        "household": "once_daily_829_incident",
+        "episode_id": 2
+      },
+      {
+        "household": "weekend_lunch_853_incident",
+        "episode_id": 2
+      }
+    ]
+  },
+  "challenged_benign_request_days": 37,
+  "sensitivity": {
+    "replication": {
+      "current": {
+        "benign_request_days": 45,
+        "benign_eligible_days": 630,
+        "declared_away_request_days": 0,
+        "offline_request_days": 0,
+        "incident_episodes": 48,
+        "incident_caught": 45,
+        "median_detection_delay_hours": 13.05
+      },
+      "one_hour_grace": {
+        "benign_request_days": 34,
+        "benign_eligible_days": 630,
+        "declared_away_request_days": 0,
+        "offline_request_days": 0,
+        "incident_episodes": 48,
+        "incident_caught": 43,
+        "median_detection_delay_hours": 14.09
+      },
+      "three_confirmations": {
+        "benign_request_days": 11,
+        "benign_eligible_days": 630,
+        "declared_away_request_days": 0,
+        "offline_request_days": 0,
+        "incident_episodes": 48,
+        "incident_caught": 31,
+        "median_detection_delay_hours": 25.98
+      }
+    },
+    "development": {
+      "current": {
+        "benign_request_days": 21,
+        "benign_eligible_days": 307,
+        "declared_away_request_days": 0,
+        "offline_request_days": 0,
+        "incident_episodes": 24,
+        "incident_caught": 22,
+        "median_detection_delay_hours": 13.04
+      },
+      "one_hour_grace": {
+        "benign_request_days": 15,
+        "benign_eligible_days": 307,
+        "declared_away_request_days": 0,
+        "offline_request_days": 0,
+        "incident_episodes": 24,
+        "incident_caught": 23,
+        "median_detection_delay_hours": 14.01
+      },
+      "three_confirmations": {
+        "benign_request_days": 4,
+        "benign_eligible_days": 307,
+        "declared_away_request_days": 0,
+        "offline_request_days": 0,
+        "incident_episodes": 24,
+        "incident_caught": 15,
+        "median_detection_delay_hours": 26.11
+      }
+    }
+  }
+}

@@ -62,6 +62,7 @@ def household(seed: int, scenario: str, *, configured: bool) -> list[dict[str, o
     notifications = DetectionStateManager(candidate_window=timedelta(hours=36),
                                           min_consecutive=2, resumption_alerts=False)
     rows: list[dict[str, object]] = []
+    carry_actions: list[tuple[datetime, str]] = []
     for day in range(HISTORY_DAYS + FUTURE_DAYS):
         start = _at(day)
         weekday = start.weekday()
@@ -71,7 +72,7 @@ def household(seed: int, scenario: str, *, configured: bool) -> list[dict[str, o
         actual_hour = 17 if scenario == "wrong_time" else 8
         model.set_away(away, start.isoformat())
         model.observe(_event(device, "device_offline" if offline else "device_online", start))
-        actions: list[tuple[datetime, str]] = []
+        actions: list[tuple[datetime, str]] = carry_actions
         skip = scenario == "irregular_skips" and rng.random() < 0.3
         if not (away or offline or interruption or skip):
             jitter = max(-35, min(35, rng.gauss(0, 15))) / 60
@@ -81,11 +82,16 @@ def household(seed: int, scenario: str, *, configured: bool) -> list[dict[str, o
         windows = model.profile("simulator", device, start.isoformat())["windows"]
         actions.extend((datetime.fromisoformat(window["expected_time"]) +
                         timedelta(hours=2.5), "evaluate") for window in windows)
+        carry_actions = [item for item in actions if item[0] >= _at(day + 1)]
+        actions = [item for item in actions if item[0] < _at(day + 1)]
         request_times: list[str] = []
         candidate = False
         for moment, kind in sorted(actions):
             if kind == "open":
                 model.observe(_event(device, "lid_opened", moment))
+                notifications.ingest({"source": "simulator", "device_id": device,
+                                      "as_of": moment.isoformat(), "routine_status": "normal",
+                                      "reason_codes": ["USAGE_RESUMED"]})
                 continue
             for decision in model.evaluate("simulator", device, moment.isoformat(),
                                            online=not offline, away=away):
