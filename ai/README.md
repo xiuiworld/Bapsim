@@ -11,3 +11,5 @@
 ## 실제 기록 평가를 위한 로컬 준비
 
 [평가 기록 규약](../docs/개인화_평가_기록_규약.md)에 가명 관측·별도 확인 라벨의 JSONL 형식과 제외 기준을 적었습니다. `python -m ai.demo_usage_records --output-dir local-data/usage-demo`로 두 가상 가구의 관측·라벨·보고서를 만들고, `python -m ai.usage_record_pipeline --help`로 별도 기록 평가 명령을 확인할 수 있습니다. 이 경로는 로컬 오프라인 평가용이며 Colab 노트북이나 운영 알림 기준을 자동으로 바꾸지 않습니다.
+
+보고서는 모델의 내부 후보(`personal`)와 상태 관리 규칙을 통과한 발송 요청(`notification_request`)을 따로 집계합니다. 가상 날짜별 라벨과 평가 시각은 실생활 확인 자료가 아니므로 보고서 수치를 실제 정확도로 읽지 않습니다.

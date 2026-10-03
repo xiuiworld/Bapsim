@@ -15,6 +15,9 @@ class UsageRecordPipelineTests(TestCase):
         self.assertEqual(result["personal"]["eligible_days"], 24)
         self.assertEqual(result["personal"]["abstained_days"], 4)
         self.assertEqual(result["fixed_24h"]["eligible_days"], 24)
+        self.assertEqual(result["notification_request"]["eligible_days"], 24)
+        self.assertLess(result["notification_request"]["fp"], result["personal"]["fp"])
+        self.assertLess(result["notification_request"]["tp"], result["personal"]["tp"])
         self.assertEqual({row["household_id"] for row in result["days"]},
                          {"demo_morning", "demo_twice"})
         self.assertEqual({row["abstain_reason"] for row in result["days"] if row["review"] == "unknown"},
@@ -24,6 +27,9 @@ class UsageRecordPipelineTests(TestCase):
             if row["review"] == "unknown":
                 self.assertIsNone(row["personal_candidate"])
                 self.assertIsNone(row["fixed_24h_candidate"])
+                self.assertIsNone(row["notification_request"])
+            elif row["notification_request"]:
+                self.assertTrue(row["personal_candidate"])
 
     def test_missing_connection_evidence_abstains_instead_of_counting_normal(self):
         observations, labels = generate()
