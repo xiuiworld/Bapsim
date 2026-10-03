@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from random import Random
+from typing import Mapping
 
 from domain.personal_model import PersonalUsageModel
 from workflow import DetectionStateManager
@@ -59,12 +60,18 @@ def _planned_days(rhythm: str, condition: str) -> list[int]:
 
 
 def household(seed: int, rhythm: str, condition: str,
-              setting: dict[str, float]) -> list[dict[str, object]]:
+              setting: dict[str, float], *, variation: Mapping[str, float | str] | None = None
+              ) -> list[dict[str, object]]:
     if rhythm not in RHYTHMS or condition not in TRAIN_CONDITIONS + HOLDOUT_CONDITIONS:
         raise ValueError("unknown synthetic rhythm or condition")
     spec = RHYTHMS[rhythm]
-    rng = Random(f"condition-v1:{seed}:{rhythm}:{condition}")
+    variation = variation or {}
+    variation_name = str(variation.get("name", "base"))
+    identity = f"condition-v1:{seed}:{rhythm}:{condition}"
+    rng = Random(identity if variation_name == "base" else f"{identity}:{variation_name}")
     device = f"{rhythm}_{condition}_{seed}"
+    if variation_name != "base":
+        device += f"_{variation_name}"
     model = PersonalUsageModel(**{key: setting[key] for key in
                                   ("alert_probability", "late_grace_hours", "interval_quantile")})
     planned = _planned_days(rhythm, condition)
@@ -87,24 +94,27 @@ def household(seed: int, rhythm: str, condition: str,
         period = 3 if condition == "batch_three_day" else int(spec["period"])
         scheduled = day % period == 0
         interruption = day in interruptions
-        skip_rate = float(spec["skip"]) + (0.18 if condition == "natural_skips" else 0.23
-                                               if condition == "skip_and_late" else 0)
+        skip_rate = min(0.95, float(spec["skip"]) + float(variation.get("skip_delta", 0)) +
+                        (0.18 if condition == "natural_skips" else 0.23
+                         if condition == "skip_and_late" else 0))
         natural_skip = scheduled and not interruption and rng.random() < skip_rate
         shift = (2.0 if condition == "late_shift" else
                  3.0 * max(0, day - HISTORY_DAYS) / FUTURE_DAYS
                  if condition == "gradual_drift" else
                  3.0 if condition == "weekend_shift" and start.weekday() >= 5 else
-                 1.0 if condition == "skip_and_late" else 0)
+                 1.0 if condition == "skip_and_late" else 0) + float(variation.get("shift_hours", 0))
         model.set_away(away, start.isoformat())
         model.observe(_event(device, "device_offline" if offline else "device_online", start))
         actions: list[tuple[datetime, str]] = []
         if scheduled and not (away or offline or interruption or natural_skip):
             for hour in spec["hours"]:
-                jitter = max(-90, min(90, rng.gauss(0, 35)))
+                jitter = max(-90, min(90, rng.gauss(0, float(variation.get("jitter_minutes", 35)))))
                 opening = _at(day, int(hour)) + timedelta(hours=shift, minutes=jitter)
-                actions.append((opening, "open"))
-                if rng.random() < 0.25:
-                    actions.append((opening + timedelta(minutes=12), "repeat"))
+                miss_rate = float(variation.get("missed_open_probability", 0))
+                if miss_rate == 0 or rng.random() >= miss_rate:
+                    actions.append((opening, "open"))
+                    if rng.random() < 0.25:
+                        actions.append((opening + timedelta(minutes=12), "repeat"))
         windows = model.profile("simulator", device, start.isoformat())["windows"]
         grace = setting["late_grace_hours"]
         actions.extend((datetime.fromisoformat(window["expected_time"]) +
@@ -137,6 +147,7 @@ def household(seed: int, rhythm: str, condition: str,
                     notifications.mark_notified("simulator", device, update.as_of)
         if day >= HISTORY_DAYS:
             rows.append({"household": device, "rhythm": rhythm, "age_group": spec["age"],
+                         "variation": variation_name,
                          "condition": condition, "day": day,
                          "label": None if away or offline else int(interruption),
                          "candidate": int(flagged),
