@@ -230,20 +230,29 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             "detection_status": "밥솥 단독 판정", "workflow_status": "보호자 확인 상태",
             "baseline": "개인 기준", "features": "현재 특징",
             "notification_delivery": "알림 전달 단계", "matter_input": "실물 밥솥 입력 준비",
+            "output_state": "실물 분석 상태", "simulation_output_state": "시뮬레이션 분석 상태",
         }
         hass.states.async_set(f"sensor.bapsim_{entity}", display, {"friendly_name": labels.get(entity, entity), **(attributes or {})})
 
     # Restore dashboard cards without treating old detections as new evidence.
     show("workflow_status", "normal")
+    show("decline_status", "waiting")
+    show("decline_detection", "waiting")
+    show("interval_detection", "waiting")
     show("baseline", "waiting")
     show("detection_status", "waiting")
     show("features", "waiting")
     show("notification_delivery", "not_sent")
+    show("mqtt_output", "waiting")
+    show("auxiliary_deferral", "waiting")
     show("matter_input", "not_configured")
     show("matter_board", "not_configured")
     show("board_history", len(board_history), {"latest": board_history[-3:]})
     show("away", "away" if away else "home")
     show("notification_controls", controls.revision, controls.dump_state())
+    if external_service:
+        show("output_state", "awaiting_matter", {"mode": "external_service"})
+        show("simulation_output_state", "waiting", {"mode": "simulation"})
 
     async def send_mqtt(source: str, payload: dict[str, object]) -> None:
         async with mqtt_lock:
@@ -1399,7 +1408,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 lambda message: hass.async_create_task(on_mqtt_control(message)), qos=1,
             )
 
-    if not external_service and hass.services.has_service("mqtt", "publish"):
+    # MQTT can finish loading after this YAML integration. Wait for its client
+    # instead of deciding from whether mqtt.publish already exists at setup.
+    if not external_service and hasattr(hass, "config"):
         hass.async_create_task(subscribe_controls())
 
     async def subscribe_worker() -> None:
@@ -1419,6 +1430,17 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                     show("output_state", payload.get("summary", ""), payload)
             except (TypeError, ValueError):
                 _LOGGER.warning("Ignored invalid worker state")
+
+        def on_simulation_state(message) -> None:
+            try:
+                payload = json.loads(message.payload)
+                if not isinstance(payload, dict):
+                    raise ValueError("simulation state must be an object")
+                if payload.get("household_id") == output.household_id:
+                    show("simulation_output_state", payload.get("summary", ""),
+                         {**payload, "mode": "simulation"})
+            except (TypeError, ValueError):
+                _LOGGER.warning("Ignored invalid simulation worker state")
 
         def on_control_state(message) -> None:
             try:
@@ -1443,8 +1465,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                               ("control_result", on_control_result)):
             unsubscribe_worker.append(await mqtt.async_subscribe(
                 hass, output.topic("matter", leaf), handler, qos=1))
+        unsubscribe_worker.append(await mqtt.async_subscribe(
+            hass, output.topic("simulator", "state"), on_simulation_state, qos=1))
 
-    if external_service and hass.services.has_service("mqtt", "publish"):
+    if external_service and hasattr(hass, "config"):
         hass.async_create_task(subscribe_worker())
 
     async def record_simulated_activity(call) -> None:
@@ -1530,6 +1554,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         "store": store,
     }
     on_started(None)
+    if external_service:
+        for entity in ("workflow_status", "decline_status", "decline_detection",
+                       "interval_detection", "baseline", "detection_status", "features",
+                       "notification_delivery"):
+            show(entity, "external_worker", {"mode": "external_service"})
     show_matter_readiness()
     show_context_readiness()
     show_board_readiness()

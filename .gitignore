@@ -15,6 +15,7 @@ __pycache__/
 /service/runtime/
 /deploy/runtime/
 /infrastructure/home_assistant/config/.HA_VERSION
+/infrastructure/home_assistant/config/.cache/
 /infrastructure/home_assistant/config/.ha_run.lock
 /infrastructure/home_assistant/config/home-assistant_v2.db*
 /infrastructure/home_assistant/config/home-assistant.log*
