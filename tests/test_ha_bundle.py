@@ -27,7 +27,8 @@ class HABundleTests(TestCase):
                 self.assertIn("custom_components/bapsim/runtime/service/ha_notification_transport.py", names)
                 self.assertIn("custom_components/bapsim/runtime/service/ha_notification_flow.py", names)
                 for module in ("ha_dashboard", "ha_mqtt_output", "ha_matter_inputs", "ha_journal",
-                               "ha_analysis_flow", "ha_cooker_events"):
+                               "ha_analysis_flow", "ha_cooker_events", "ha_periodic",
+                               "ha_mqtt_subscriptions"):
                     self.assertIn(f"custom_components/bapsim/runtime/service/{module}.py", names)
                 self.assertFalse(any(".storage" in name or "__pycache__" in name for name in names))
                 archive.extractall(root)
