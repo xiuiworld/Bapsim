@@ -1,0 +1,431 @@
+{
+  "scope": "Synthetic cooker-use scenarios only; no meal, health, or safety ground truth",
+  "history_days": 21,
+  "future_days": 21,
+  "rhythms": [
+    "older_morning",
+    "middle_evening",
+    "older_twice",
+    "older_alternate"
+  ],
+  "train_conditions": [
+    "stable",
+    "late_shift",
+    "natural_skips",
+    "batch_three_day"
+  ],
+  "holdout_conditions": [
+    "gradual_drift",
+    "weekend_shift",
+    "skip_and_late"
+  ],
+  "train_seeds": [
+    113,
+    127
+  ],
+  "holdout_seeds": [
+    809,
+    821
+  ],
+  "candidate_settings": {
+    "current": {
+      "alert_probability": 0.72,
+      "late_grace_hours": 0.0,
+      "interval_quantile": 0.95
+    },
+    "higher_threshold": {
+      "alert_probability": 0.84,
+      "late_grace_hours": 0.0,
+      "interval_quantile": 0.95
+    },
+    "late_grace": {
+      "alert_probability": 0.72,
+      "late_grace_hours": 1.0,
+      "interval_quantile": 0.95
+    },
+    "grace_and_cadence": {
+      "alert_probability": 0.72,
+      "late_grace_hours": 1.0,
+      "interval_quantile": 0.75
+    }
+  },
+  "training": {
+    "current": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 38,
+      "fp": 43,
+      "fn": 26,
+      "tn": 501,
+      "recall": 0.5938,
+      "false_positive_rate": 0.079,
+      "nuisance_per_home_21d": 1.344,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    "higher_threshold": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 33,
+      "fp": 36,
+      "fn": 31,
+      "tn": 508,
+      "recall": 0.5156,
+      "false_positive_rate": 0.0662,
+      "nuisance_per_home_21d": 1.125,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    "late_grace": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 38,
+      "fp": 43,
+      "fn": 26,
+      "tn": 501,
+      "recall": 0.5938,
+      "false_positive_rate": 0.079,
+      "nuisance_per_home_21d": 1.344,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    "grace_and_cadence": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 40,
+      "fp": 50,
+      "fn": 24,
+      "tn": 494,
+      "recall": 0.625,
+      "false_positive_rate": 0.0919,
+      "nuisance_per_home_21d": 1.562,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    }
+  },
+  "selected": "grace_and_cadence",
+  "selected_settings": {
+    "alert_probability": 0.72,
+    "late_grace_hours": 1.0,
+    "interval_quantile": 0.75
+  },
+  "holdout_current": {
+    "households": 24,
+    "eligible_days": 456,
+    "tp": 31,
+    "fp": 60,
+    "fn": 17,
+    "tn": 348,
+    "recall": 0.6458,
+    "false_positive_rate": 0.1471,
+    "nuisance_per_home_21d": 2.5,
+    "excluded_days": 48,
+    "alerted_away_or_offline": 0
+  },
+  "holdout_selected": {
+    "households": 24,
+    "eligible_days": 456,
+    "tp": 35,
+    "fp": 57,
+    "fn": 13,
+    "tn": 351,
+    "recall": 0.7292,
+    "false_positive_rate": 0.1397,
+    "nuisance_per_home_21d": 2.375,
+    "excluded_days": 48,
+    "alerted_away_or_offline": 0
+  },
+  "holdout_fixed_24h": {
+    "households": 24,
+    "eligible_days": 456,
+    "tp": 48,
+    "fp": 108,
+    "fn": 0,
+    "tn": 300,
+    "recall": 1.0,
+    "false_positive_rate": 0.2647,
+    "nuisance_per_home_21d": 4.5,
+    "excluded_days": 48,
+    "alerted_away_or_offline": 0
+  },
+  "by_condition_current": {
+    "gradual_drift": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 10,
+      "fp": 24,
+      "fn": 6,
+      "tn": 112,
+      "recall": 0.625,
+      "false_positive_rate": 0.1765,
+      "nuisance_per_home_21d": 3.0,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    },
+    "skip_and_late": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 11,
+      "fp": 26,
+      "fn": 5,
+      "tn": 110,
+      "recall": 0.6875,
+      "false_positive_rate": 0.1912,
+      "nuisance_per_home_21d": 3.25,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    },
+    "weekend_shift": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 10,
+      "fp": 10,
+      "fn": 6,
+      "tn": 126,
+      "recall": 0.625,
+      "false_positive_rate": 0.0735,
+      "nuisance_per_home_21d": 1.25,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    }
+  },
+  "by_condition_selected": {
+    "gradual_drift": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 13,
+      "fp": 14,
+      "fn": 3,
+      "tn": 122,
+      "recall": 0.8125,
+      "false_positive_rate": 0.1029,
+      "nuisance_per_home_21d": 1.75,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    },
+    "skip_and_late": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 12,
+      "fp": 29,
+      "fn": 4,
+      "tn": 107,
+      "recall": 0.75,
+      "false_positive_rate": 0.2132,
+      "nuisance_per_home_21d": 3.625,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    },
+    "weekend_shift": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 10,
+      "fp": 14,
+      "fn": 6,
+      "tn": 122,
+      "recall": 0.625,
+      "false_positive_rate": 0.1029,
+      "nuisance_per_home_21d": 1.75,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    }
+  },
+  "by_rhythm_current": {
+    "older_morning": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 12,
+      "fp": 18,
+      "fn": 0,
+      "tn": 84,
+      "recall": 1.0,
+      "false_positive_rate": 0.1765,
+      "nuisance_per_home_21d": 3.0,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "middle_evening": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 7,
+      "fp": 17,
+      "fn": 5,
+      "tn": 85,
+      "recall": 0.5833,
+      "false_positive_rate": 0.1667,
+      "nuisance_per_home_21d": 2.833,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "older_twice": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 12,
+      "fp": 25,
+      "fn": 0,
+      "tn": 77,
+      "recall": 1.0,
+      "false_positive_rate": 0.2451,
+      "nuisance_per_home_21d": 4.167,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "older_alternate": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 0,
+      "fp": 0,
+      "fn": 12,
+      "tn": 102,
+      "recall": 0.0,
+      "false_positive_rate": 0.0,
+      "nuisance_per_home_21d": 0.0,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    }
+  },
+  "by_rhythm_selected": {
+    "older_morning": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 12,
+      "fp": 16,
+      "fn": 0,
+      "tn": 86,
+      "recall": 1.0,
+      "false_positive_rate": 0.1569,
+      "nuisance_per_home_21d": 2.667,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "middle_evening": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 8,
+      "fp": 14,
+      "fn": 4,
+      "tn": 88,
+      "recall": 0.6667,
+      "false_positive_rate": 0.1373,
+      "nuisance_per_home_21d": 2.333,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "older_twice": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 12,
+      "fp": 17,
+      "fn": 0,
+      "tn": 85,
+      "recall": 1.0,
+      "false_positive_rate": 0.1667,
+      "nuisance_per_home_21d": 2.833,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "older_alternate": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 3,
+      "fp": 10,
+      "fn": 9,
+      "tn": 92,
+      "recall": 0.25,
+      "false_positive_rate": 0.098,
+      "nuisance_per_home_21d": 1.667,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    }
+  },
+  "example_rows": [
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "condition": "gradual_drift",
+      "day": 21,
+      "label": 0,
+      "candidate": 0,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "condition": "gradual_drift",
+      "day": 22,
+      "label": 0,
+      "candidate": 0,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "condition": "gradual_drift",
+      "day": 23,
+      "label": 0,
+      "candidate": 0,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "condition": "gradual_drift",
+      "day": 24,
+      "label": 0,
+      "candidate": 0,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "condition": "gradual_drift",
+      "day": 25,
+      "label": null,
+      "candidate": 0,
+      "fixed_24h": 0,
+      "reason": "away"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "condition": "gradual_drift",
+      "day": 26,
+      "label": 0,
+      "candidate": 0,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "condition": "gradual_drift",
+      "day": 27,
+      "label": 0,
+      "candidate": 0,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "condition": "gradual_drift",
+      "day": 28,
+      "label": 1,
+      "candidate": 1,
+      "fixed_24h": 1,
+      "reason": "interruption"
+    }
+  ]
+}
