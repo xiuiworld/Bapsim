@@ -81,6 +81,7 @@ views:
           - sensor.bapsim_notification_delivery
           - sensor.bapsim_notification_controls
           - sensor.bapsim_output_state
+          - sensor.bapsim_simulation_output_state
           - sensor.bapsim_mqtt_output
           - sensor.bapsim_auxiliary_deferral
           - sensor.bapsim_matter_input
@@ -102,6 +103,7 @@ views:
           {% endfor %}
           ### 현재 관측
           - 최근 24시간 취사 세션: **{{ cooks ~ '회' if cooks is not none else '미관측' }}** / 뚜껑 열림: **{{ opens ~ '회' if opens is not none else '미관측' }}**
+          - 시뮬레이션 최근 뚜껑 열림: **{{ as_timestamp(state_attr('sensor.bapsim_simulation_output_state', 'last_usage_at')) | timestamp_custom('%Y-%m-%d %H:%M', true) if state_attr('sensor.bapsim_simulation_output_state', 'last_usage_at') else '미관측' }}**
           - 판정 근거: **{{ (d.get('reason_codes') or []) | join(', ') if d.get('reason_codes') else '없음' }}**
           - 밥솥 판정: **{{ states('sensor.bapsim_detection_status') }}**
       - type: grid
