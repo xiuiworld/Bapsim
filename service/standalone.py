@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from domain.personal_model import PersonalUsageModel
-from workflow import DetectionStateManager, NotificationControls, ObservationIssueTracker, WorkflowUpdate
+from workflow import (DeliveryLedger, DetectionStateManager, NotificationControls,
+                      ObservationIssueTracker, WorkflowUpdate)
 from workflow.quiet_hours import QuietHours
 from service.output import StatusOutput
 
@@ -17,7 +18,7 @@ from service.output import StatusOutput
 class AnalysisService:
     def __init__(self, household_id: str, state_file: Path,
                  publish: Callable[[str, str, bool], None],
-                 notify: Callable[[WorkflowUpdate], bool], *,
+                 notify: Callable[[WorkflowUpdate], bool | str], *,
                  quiet_start: str = "22:00", quiet_end: str = "08:00") -> None:
         self.state_file = state_file
         self.publish = publish
@@ -28,6 +29,7 @@ class AnalysisService:
                                              reminder_cadence=timedelta(days=7), resumption_alerts=False)
         self.controls = NotificationControls()
         self.observation_issues = ObservationIssueTracker()
+        self.delivery = DeliveryLedger()
         self.quiet = QuietHours(quiet_start, quiet_end)
         self.output = StatusOutput(household_id)
         self.availability: dict[tuple[str, str], bool] = {}
@@ -43,12 +45,18 @@ class AnalysisService:
         self.decline.load_state(saved.get("decline", []))
         self.controls.load_state(saved.get("controls", {}))
         self.observation_issues.load_state(saved.get("observation_issues", []))
+        self.delivery.load_state(saved.get("delivery", []))
         self.output.revision = int(saved.get("revision", 0))
         self.away = bool(saved.get("away", False))
         self.pending_quiet = {item.get("notification_id", item["incident_id"]): item
                               for item in saved.get("pending_quiet", [])}
         self.availability = {(item["source"], item["device_id"]): False
                              for item in saved.get("devices", [])}
+        for record in self.delivery.records.values():
+            if record["status"] == "uncertain":
+                manager = self._manager_for(record)
+                manager.cancel_request(str(record["source"]), str(record["device_id"]),
+                                       str(record["updated_at"]))
 
     def save(self) -> None:
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -56,6 +64,7 @@ class AnalysisService:
             "model": self.model.dump_state(), "gap": self.gap.dump_state(),
             "decline": self.decline.dump_state(), "controls": self.controls.dump_state(),
             "observation_issues": self.observation_issues.dump_state(),
+            "delivery": self.delivery.dump_state(),
             "revision": self.output.revision, "away": self.away,
             "pending_quiet": list(self.pending_quiet.values()),
             "devices": [{"source": source, "device_id": device_id}
@@ -143,6 +152,9 @@ class AnalysisService:
                 for key, item in tuple(self.pending_quiet.items()):
                     if item["incident_id"] == update.incident_id:
                         self.pending_quiet.pop(key, None)
+                for notification_id, record in self.delivery.records.items():
+                    if record["incident_id"] == update.incident_id and record["status"] in {"pending", "failed"}:
+                        self.delivery.cancel(notification_id, now, "incident_resolved")
             if update.action not in {"notify_requested", "reminder_requested", "usage_resumed_requested",
                                      "observation_issue_requested"}:
                 continue
@@ -164,11 +176,75 @@ class AnalysisService:
                     "notification_id": str(update.notification_id or update.incident_id),
                 }
                 continue
-            if self.notify(update):
-                if update.action not in {"usage_resumed_requested", "observation_issue_requested"}:
-                    manager.mark_notified(update.source, update.device_id, now)
+            notification_id = str(update.notification_id or update.incident_id)
+            self.delivery.prepare(notification_id, str(update.incident_id), update.source,
+                                  update.device_id, update.action, list(update.reason_codes), now,
+                                  destination="home_assistant", title="", message="")
+            self.save()
+            self._deliver(update, manager, now)
+
+    def _manager_for(self, record: Mapping[str, object]) -> DetectionStateManager:
+        return self.decline if "DECLINING_USAGE" in record["reason_codes"] else self.gap
+
+    def _deliver(self, update: WorkflowUpdate, manager: DetectionStateManager, now: str) -> None:
+        notification_id = str(update.notification_id or update.incident_id)
+        if not self.delivery.begin(notification_id, now):
+            return
+        self.save()  # A crash after this point is uncertain; never replay it automatically.
+        try:
+            result = self.notify(update)
+            outcome = ("ha_accepted" if result is True else "failed" if result is False else str(result))
+            if outcome not in {"ha_accepted", "failed", "uncertain"}:
+                outcome = "uncertain"
+        except Exception:
+            outcome = "uncertain"
+        if outcome == "ha_accepted" and update.action not in {
+                "usage_resumed_requested", "observation_issue_requested"}:
+            manager.mark_notified(update.source, update.device_id, now)
+        self.delivery.finish(notification_id, outcome, now)
+        record = self.delivery.get(notification_id)
+        if outcome == "uncertain" or (outcome == "failed" and record["next_retry_at"] is None):
+            manager.cancel_request(update.source, update.device_id, now)
+        self.save()
+
+    def _retry_one(self, now: str) -> None:
+        for notification_id in self.delivery.expire(now):
+            record = self.delivery.get(notification_id)
+            self._manager_for(record).cancel_request(str(record["source"]), str(record["device_id"]), now)
+        for notification_id, record in self.delivery.records.items():
+            if not self.delivery.due(notification_id, now):
+                continue
+            source, device_id = str(record["source"]), str(record["device_id"])
+            action = str(record["action"])
+            manager = self._manager_for(record)
+            state = next((item for item in manager.dump_state()
+                          if (item["source"], item["device_id"], item["incident_id"]) ==
+                          (source, device_id, record["incident_id"])), None)
+            if action == "observation_issue_requested":
+                valid = self.observation_issues.is_unavailable(source, device_id)
+            elif action == "usage_resumed_requested":
+                valid = bool(state and state["status"] == "resolved" and state["notification_count"] > 0)
             else:
-                manager.cancel_request(update.source, update.device_id, now)
+                valid = bool(state and state["pending_action"] == action and
+                             state["status"] in ({"check_required"} if action == "notify_requested"
+                                                 else {"notified", "checking"}))
+            if not valid or (action != "observation_issue_requested" and self.controls.is_paused(now)) or (
+                    action not in {"observation_issue_requested", "usage_resumed_requested"} and
+                    self.controls.is_acknowledged(str(record["incident_id"]), now)):
+                self.delivery.cancel(notification_id, now, "no_longer_valid")
+                manager.cancel_request(source, device_id, now)
+                continue
+            if self.quiet.is_quiet(now):
+                continue
+            online = self.availability.get((source, device_id), False)
+            if (action == "observation_issue_requested" and online) or (
+                    action != "observation_issue_requested" and not online):
+                continue
+            update = WorkflowUpdate(device_id, source, str(record["incident_id"]),
+                                    str(state["status"]) if state else "data_unavailable", action, now,
+                                    tuple(record["reason_codes"]), notification_id)
+            self._deliver(update, manager, now)
+            break  # Never flush a backlog of alerts in one tick.
 
     def evaluate(self, source: str, device_id: str, now: str) -> None:
         online = self.availability.get((source, device_id), False)
@@ -203,6 +279,7 @@ class AnalysisService:
 
     def tick(self, now: str) -> None:
         current = datetime.fromisoformat(now.replace("Z", "+00:00"))
+        self.delivery.prune(now)
         for key in tuple(self.availability):
             seen = self.last_heartbeat.get(key)
             if self.availability[key] and (seen is None or current - seen > timedelta(minutes=3)):
@@ -245,4 +322,5 @@ class AnalysisService:
                                         tuple(current_state["reason_codes"]),
                                         item.get("notification_id"))
                 self._handle([update], manager, now)
+        self._retry_one(now)
         self.save()

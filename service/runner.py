@@ -9,7 +9,7 @@ import queue
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import paho.mqtt.client as mqtt
@@ -46,20 +46,24 @@ def main() -> None:
         if result.rc != mqtt.MQTT_ERR_SUCCESS:
             LOG.warning("MQTT publish failed: %s rc=%s", topic, result.rc)
 
-    def ha_call(domain: str, service: str, body: dict[str, object]) -> bool:
+    def ha_call(domain: str, service: str, body: dict[str, object]) -> str:
         if not ha_token:
             LOG.warning("HA token missing; notification remains pending")
-            return False
+            return "failed"
         request = Request(f"{ha_url}/api/services/{domain}/{service}",
                           data=json.dumps(body, ensure_ascii=False).encode(),
                           headers={"Authorization": f"Bearer {ha_token}",
                                    "Content-Type": "application/json"}, method="POST")
         try:
             with urlopen(request, timeout=10) as response:
-                return response.status == 200 or response.status == 201
+                return "ha_accepted" if response.status in {200, 201} else "uncertain"
+        except HTTPError as exc:
+            LOG.warning("HA notification HTTP error: %s", exc.code)
+            return "failed" if exc.code in {400, 401, 403, 404} else "uncertain"
         except (OSError, URLError) as exc:
             LOG.warning("HA notification call failed: %s", exc)
-            return False
+            reason = exc.reason if isinstance(exc, URLError) else exc
+            return "failed" if isinstance(reason, ConnectionRefusedError) else "uncertain"
 
     def notify(update) -> bool:
         resumed = update.action == "usage_resumed_requested"
@@ -81,14 +85,15 @@ def main() -> None:
                    "밥솥을 다시 사용하신 기록이 확인됐어요." if resumed else
                    "다음 예상 사용 시점에도 밥솥 사용 기록이 없습니다. 안부를 확인해 보세요."
                    if reminder else "평소와 다른 밥솥 사용 기록이 있습니다. 안부를 확인해 보세요.")
-        if not ha_call("persistent_notification", "create", {
+        local_result = ha_call("persistent_notification", "create", {
             "title": title, "message": message,
             "notification_id": notification_id,
-        }):
-            return False
-        if mobile and not ha_call("notify", mobile, {"title": title, "message": message}):
-            return False
-        return True
+        })
+        if local_result != "ha_accepted":
+            return local_result
+        if mobile:
+            return ha_call("notify", mobile, {"title": title, "message": message})
+        return "ha_accepted"
 
     service = AnalysisService(household, Path(os.environ.get("BAPSIM_STATE_FILE", "/data/state.json")),
                               publish, notify,

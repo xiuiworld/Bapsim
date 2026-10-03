@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from domain.baseline import PersonalBaselineEngine
 from domain.events.normalizer import CookerEventNormalizer
+from workflow import DeliveryLedger
 
 
 COMPONENT = Path(__file__).resolve().parents[1] / "infrastructure/home_assistant/config/custom_components/bapsim/__init__.py"
@@ -119,6 +120,9 @@ def ha_modules(seed):
         def async_delay_save(self, snapshot, delay):
             self.saved = snapshot()
 
+        async def async_save(self, snapshot):
+            self.saved = snapshot
+
     storage.Store = Store
     registry = types.ModuleType("homeassistant.helpers.entity_registry")
     registry.EVENT_ENTITY_REGISTRY_UPDATED = "entity_registry_updated"
@@ -162,6 +166,10 @@ class HAServiceIntegrationTests(TestCase):
                 await asyncio.gather(*hass.tasks)
                 self.assertEqual(hass.data["bapsim"]["workflow"].dump_state()[0]["notification_count"], 0)
                 self.assertEqual(len(hass.data["bapsim"]["store"].saved["pending_mobile"]), 1)
+                record = hass.data["bapsim"]["delivery"].get("incident-1")
+                self.assertEqual(record["status"], "failed")
+                self.assertEqual(record["attempts"], 1)
+                self.assertIsNotNone(record["next_retry_at"])
                 hass.bus.async_fire(module.COOKER_EVENT, {
                     "source": "matter", "device_id": "cooker_01", "event_type": "lid_opened",
                     "value": "open", "observed_at": now.isoformat(), "received_at": now.isoformat(),
@@ -171,6 +179,41 @@ class HAServiceIntegrationTests(TestCase):
                 notifications = [body for domain, name, body in hass.services.calls
                                  if (domain, name) == ("persistent_notification", "create")]
                 self.assertEqual(len(notifications), 1)
+                self.assertEqual(hass.data["bapsim"]["store"].saved["pending_mobile"], [])
+
+        asyncio.run(scenario())
+
+    def test_restart_during_notification_call_is_uncertain_and_not_retried(self):
+        now = datetime.now(timezone.utc).isoformat()
+        ledger = DeliveryLedger()
+        ledger.prepare("notice-1", "incident-1", "matter", "cooker_01",
+                       "notify_requested", ["EXPECTED_USE_MISSING"], now)
+        ledger.begin("notice-1", now)
+        seed = {
+            "workflow": [{"source": "matter", "device_id": "cooker_01", "status": "check_required",
+                          "incident_id": "incident-1", "reason_codes": ["EXPECTED_USE_MISSING"]}],
+            "delivery": ledger.dump_state(),
+            "pending_mobile": [{"source": "matter", "device_id": "cooker_01",
+                                "incident_id": "incident-1", "notification_id": "notice-1",
+                                "reason_codes": ["EXPECTED_USE_MISSING"], "message": "확인 필요",
+                                "action": "notify_requested"}],
+            "notification_target": "mobile_app_caregiver",
+        }
+
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules(seed)):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_uncertain_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+
+                async def mobile(call):
+                    self.fail("uncertain send must not replay")
+
+                hass.services.async_register("notify", "mobile_app_caregiver", mobile)
+                self.assertTrue(await module.async_setup(hass, {}))
+                await asyncio.gather(*hass.tasks)
+                self.assertEqual(hass.data["bapsim"]["delivery"].get("notice-1")["status"], "uncertain")
                 self.assertEqual(hass.data["bapsim"]["store"].saved["pending_mobile"], [])
 
         asyncio.run(scenario())
@@ -339,6 +382,7 @@ class HAServiceIntegrationTests(TestCase):
             "workflow": [{"source": "matter", "device_id": "cooker_01", "status": "notified",
                           "incident_id": "incident-1", "reason_codes": ["LID_ACTIVITY_DECREASED"]}],
             "notification_target": "mobile_app_caregiver",
+            "availability": [{"source": "matter", "device_id": "cooker_01", "availability": "online"}],
             "pending_mobile": [{"source": "matter", "device_id": "cooker_01",
                                 "incident_id": "incident-1", "reason_codes": ["LID_ACTIVITY_DECREASED"],
                                 "message": "확인 필요"}],
@@ -362,11 +406,11 @@ class HAServiceIntegrationTests(TestCase):
                 await asyncio.gather(*hass.tasks)
                 self.assertEqual(len(attempts), 1)
                 self.assertEqual(len(hass.data["bapsim"]["store"].saved["pending_mobile"]), 1)
-                hass.hourly_callback(datetime.now(timezone.utc))
+                hass.hourly_callback(datetime.now(timezone.utc) + timedelta(minutes=2, seconds=1))
                 await asyncio.gather(*hass.tasks[1:])
                 self.assertEqual(len(attempts), 2)
                 self.assertEqual(hass.data["bapsim"]["store"].saved["pending_mobile"], [])
-                self.assertEqual(hass.states.values["sensor.bapsim_notification_delivery"].state, "mobile_service_called")
+                self.assertEqual(hass.states.values["sensor.bapsim_notification_delivery"].state, "ha_accepted")
 
         asyncio.run(scenario())
 

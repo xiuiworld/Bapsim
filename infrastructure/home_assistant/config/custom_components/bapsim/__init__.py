@@ -24,7 +24,7 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.domain.features import CookerFeatureExtractor
     from .runtime.domain.sessions import CookingSessionBuilder
     from .runtime.domain.personal_model import PersonalUsageModel
-    from .runtime.workflow import DetectionStateManager, NotificationControls, ObservationIssueTracker, WorkflowUpdate
+    from .runtime.workflow import DeliveryLedger, DetectionStateManager, NotificationControls, ObservationIssueTracker, WorkflowUpdate
     from .runtime.workflow.quiet_hours import QuietHours
     from .runtime.workflow.evidence_boundary import cooker_only
     from .runtime.inputs.matter import MatterBoardSignalAdapter, MatterContactAdapter, MatterContextAdapter, MatterCookingStateAdapter
@@ -37,7 +37,7 @@ else:
     from domain.features import CookerFeatureExtractor
     from domain.sessions import CookingSessionBuilder
     from domain.personal_model import PersonalUsageModel
-    from workflow import DetectionStateManager, NotificationControls, ObservationIssueTracker, WorkflowUpdate
+    from workflow import DeliveryLedger, DetectionStateManager, NotificationControls, ObservationIssueTracker, WorkflowUpdate
     from workflow.quiet_hours import QuietHours
     from workflow.evidence_boundary import cooker_only
     from inputs.matter import MatterBoardSignalAdapter, MatterContactAdapter, MatterContextAdapter, MatterCookingStateAdapter
@@ -73,6 +73,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                                            reminder_cadence=timedelta(days=7), resumption_alerts=False)
     controls = NotificationControls()
     observation_issues = ObservationIssueTracker()
+    delivery = DeliveryLedger()
     quiet_hours = QuietHours()
     auxiliary = AuxiliaryDeferral()
     settings = config.get(DOMAIN) or {}
@@ -117,6 +118,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             trend_workflow.load_state(stored.get("trend_workflow", []))
             controls.load_state(stored.get("notification_controls", {}))
             observation_issues.load_state(stored.get("observation_issues", []))
+            delivery.load_state(stored.get("delivery", []))
             quiet_hours.configure(*stored.get("quiet_hours", ["22:00", "08:00"]))
             pending_quiet.update({item.get("notification_id", item["incident_id"]): item
                                   for item in stored.get("pending_quiet", [])})
@@ -177,10 +179,34 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 if (isinstance(item, dict) and all(isinstance(item.get(key), str) for key in (
                     "source", "device_id", "incident_id", "message",
                 )) and isinstance(item.get("reason_codes"), list)):
+                    item.setdefault("action", "legacy_mobile_retry")
                     pending_mobile[item.get("notification_id", item["incident_id"])] = item
+                    notification_id = item.get("notification_id", item["incident_id"])
+                    if delivery.get(notification_id) is None:
+                        now = datetime.now(timezone.utc).isoformat()
+                        record = delivery.prepare(notification_id, item["incident_id"], item["source"],
+                                                  item["device_id"], item["action"],
+                                                  item["reason_codes"], now, destination="mobile_legacy",
+                                                  title=item.get("title", ""), message=item["message"])
+                        record.update(status="failed", attempts=1, next_retry_at=now,
+                                      expires_at=item.get("expires_at", record["expires_at"]))
         except (KeyError, TypeError, ValueError) as exc:
             _LOGGER.warning("Could not restore some Bapsim pipeline state: %s", exc)
     model_away = away or controls.is_paused(datetime.now(timezone.utc).isoformat())
+    for record in delivery.records.values():
+        if record["status"] == "uncertain":
+            pending_mobile.pop(str(record["notification_id"]), None)
+            manager = trend_workflow if "DECLINING_USAGE" in record["reason_codes"] else workflow
+            manager.cancel_request(str(record["source"]), str(record["device_id"]),
+                                   str(record["updated_at"]))
+        elif record["status"] in {"ha_accepted", "cancelled"}:
+            pending_mobile.pop(str(record["notification_id"]), None)
+    if external_service:
+        now = datetime.now(timezone.utc).isoformat()
+        for notification_id in tuple(pending_mobile):
+            if delivery.get(notification_id) is not None:
+                delivery.cancel(notification_id, now, "external_worker_mode")
+            pending_mobile.pop(notification_id, None)
     if model_away:
         usage_model.set_away(True, datetime.now(timezone.utc).isoformat())
 
@@ -196,6 +222,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             "trend_workflow": trend_workflow.dump_state(),
             "notification_controls": controls.dump_state(),
             "observation_issues": observation_issues.dump_state(),
+            "delivery": delivery.dump_state(),
             "quiet_hours": [quiet_hours.start, quiet_hours.end],
             "pending_quiet": list(pending_quiet.values()),
             "auxiliary": auxiliary.dump_state(),
@@ -236,6 +263,14 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     @callback
     def save_later() -> None:
         store.async_delay_save(state_snapshot, 1)
+
+    async def save_now() -> None:
+        await store.async_save(state_snapshot())
+
+    @callback
+    def delivery_failure(exc: Exception) -> str:
+        # A timeout or unknown service error may have occurred after HA accepted the call.
+        return "failed" if isinstance(exc, ConnectionError) else "uncertain"
 
     @callback
     def show(entity: str, value: object, attributes: dict[str, object] | None = None) -> None:
@@ -343,6 +378,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 for key, item in tuple(pending.items()):
                     if item["incident_id"] == update.incident_id:
                         pending.pop(key, None)
+            for notification_id, record in delivery.records.items():
+                if record["incident_id"] == update.incident_id and record["status"] in {"pending", "failed"}:
+                    delivery.cancel(notification_id, update.as_of, "incident_resolved")
         hass.bus.async_fire(WORKFLOW_EVENT, payload)
         if update.action == "observation_issue_requested":
             show("observation_issue_status", "alert_requested", payload)
@@ -352,8 +390,41 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             show("workflow_status", update.status, payload)
         save_later()
 
-    async def create_notification(update, manager=workflow) -> None:
-        notification_time = datetime.now(timezone.utc).isoformat()
+    async def finish_notification(update, manager, outcome: str, stage: str,
+                                  title: str, message: str, error: str | None = None) -> None:
+        notification_id = str(update.notification_id or update.incident_id)
+        now = datetime.now(timezone.utc).isoformat()
+        delivery.finish(notification_id, outcome, now, error)
+        record = delivery.get(notification_id)
+        if outcome == "failed" and record["next_retry_at"] is not None:
+            pending_mobile[notification_id] = {
+                "source": update.source, "device_id": update.device_id,
+                "incident_id": str(update.incident_id), "notification_id": notification_id,
+                "action": update.action, "reason_codes": list(update.reason_codes),
+                "title": title, "message": message, "stage": stage,
+                "expires_at": record["expires_at"],
+            }
+        else:
+            pending_mobile.pop(notification_id, None)
+            if outcome == "ha_accepted" and update.action not in {
+                    "usage_resumed_requested", "observation_issue_requested"}:
+                sent = manager.mark_notified(update.source, update.device_id, now)
+                if sent is not None:
+                    publish_workflow(sent)
+            elif outcome != "ha_accepted":
+                manager.cancel_request(update.source, update.device_id, now)
+        show("notification_delivery", outcome, {"incident_id": update.incident_id,
+                                                  "notification_id": notification_id,
+                                                  "next_retry_at": record["next_retry_at"]})
+        archive_service_record("notification", {
+            "incident_id": update.incident_id, "notification_id": notification_id,
+            "action": update.action, "delivery": outcome, "attempts": record["attempts"],
+            "reason_codes": list(update.reason_codes),
+        }, now)
+        await save_now()
+
+    async def create_notification(update, manager=workflow, retry_at: str | None = None) -> None:
+        notification_time = retry_at or datetime.now(timezone.utc).isoformat()
         resumed = update.action == "usage_resumed_requested"
         reminder = update.action == "reminder_requested"
         issue = update.action == "observation_issue_requested"
@@ -406,23 +477,23 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                    if declining else
                    "다음 예상 사용 시점에도 밥솥 사용 기록이 없습니다. 안부를 확인해 보세요."
                    if reminder else "평소와 다른 밥솥 사용 패턴이 관측되었습니다. 안부를 확인해 보세요.")
-        try:
-            await hass.services.async_call(
-                "persistent_notification", "create",
-                {
-                    "title": title,
-                    "message": message,
-                    "notification_id": "bapsim_" + notification_id,
-                },
-                blocking=True,
-            )
-        except Exception:
-            _LOGGER.exception("Bapsim local notification failed")
-            manager.cancel_request(update.source, update.device_id, notification_time)
-            show("notification_delivery", "local_failed", {"incident_id": update.incident_id})
-            save_later()
+        delivery.prepare(notification_id, str(update.incident_id), update.source, update.device_id,
+                         update.action, list(update.reason_codes), notification_time,
+                         destination=notification_target or "ha_local", title=title, message=message)
+        await save_now()
+        if not delivery.begin(notification_id, notification_time):
             return
-        delivery = "ha_local_created"
+        await save_now()  # A restart during either service call leaves an uncertain record.
+        try:
+            await hass.services.async_call("persistent_notification", "create", {
+                "title": title, "message": message,
+                "notification_id": "bapsim_" + notification_id,
+            }, blocking=True)
+        except Exception as exc:
+            _LOGGER.warning("Bapsim local notification failed: %s", type(exc).__name__)
+            await finish_notification(update, manager, delivery_failure(exc), "local",
+                                      title, message, type(exc).__name__)
+            return
         if notification_target and update.source != "simulator":
             actions = [] if resumed or issue else [
                 {"action": f"BAPSIM|{response}|{update.source}|{update.device_id}|{update.incident_id}", "title": label}
@@ -432,49 +503,36 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 await hass.services.async_call("notify", notification_target, {
                     "title": title, "message": message, "data": {"actions": actions},
                 }, blocking=True)
-                delivery = "mobile_service_called"
-            except Exception:
-                _LOGGER.exception("Bapsim mobile notification service failed")
-                pending_mobile[notification_id] = {
-                    "source": update.source, "device_id": update.device_id,
-                    "incident_id": str(update.incident_id), "message": message,
-                    "notification_id": notification_id, "action": update.action,
-                    "title": title,
-                    "reason_codes": list(update.reason_codes),
-                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
-                }
-                delivery = "mobile_retry_pending"
-                save_later()
-        show("notification_delivery", delivery, {"incident_id": update.incident_id, "as_of": datetime.now(timezone.utc).isoformat()})
-        archive_service_record("notification", {
-            "incident_id": update.incident_id, "notification_id": notification_id,
-            "action": update.action, "delivery": delivery,
-            "reason_codes": list(update.reason_codes),
-        }, datetime.now(timezone.utc).isoformat())
-        sent = (None if resumed or issue or delivery == "mobile_retry_pending" else
-                manager.mark_notified(update.source, update.device_id, datetime.now(timezone.utc).isoformat()))
-        if sent is not None:
-            publish_workflow(sent)
+            except Exception as exc:
+                _LOGGER.warning("Bapsim mobile notification service failed: %s", type(exc).__name__)
+                await finish_notification(update, manager, delivery_failure(exc), "mobile",
+                                          title, message, type(exc).__name__)
+                return
+        await finish_notification(update, manager, "ha_accepted", "complete", title, message)
 
-    async def retry_mobile_notifications() -> None:
-        if not notification_target:
-            return
+    async def retry_mobile_notifications(as_of: str | None = None) -> None:
+        now = as_of or datetime.now(timezone.utc).isoformat()
         for notification_id, item in tuple(pending_mobile.items()):
             if notification_id in retrying_mobile:
                 continue
-            now = datetime.now(timezone.utc).isoformat()
+            record = delivery.get(notification_id)
+            if record is None:
+                pending_mobile.pop(notification_id, None)
+                continue
             incident_id = item["incident_id"]
             resumed = item.get("action") == "usage_resumed_requested"
             issue = item.get("action") == "observation_issue_requested"
-            if ((not issue and controls.is_paused(now)) or (not resumed and not issue and controls.is_acknowledged(incident_id, now))
-                    or (item.get("expires_at") and datetime.fromisoformat(item["expires_at"]) <= datetime.now(timezone.utc))):
+            manager = trend_workflow if "DECLINING_USAGE" in item["reason_codes"] else workflow
+            expired = datetime.fromisoformat(str(record["expires_at"])) <= datetime.fromisoformat(now)
+            if (expired or (not issue and controls.is_paused(now)) or
+                    (not resumed and not issue and controls.is_acknowledged(incident_id, now))):
                 pending_mobile.pop(notification_id, None)
+                delivery.cancel(notification_id, now, "expired" if expired else "control_suppressed")
                 if item.get("action") in {"notify_requested", "reminder_requested"}:
-                    manager = trend_workflow if "DECLINING_USAGE" in item["reason_codes"] else workflow
                     manager.cancel_request(item["source"], item["device_id"], now)
-                save_later()
+                await save_now()
                 continue
-            if quiet_hours.is_quiet(now):
+            if quiet_hours.is_quiet(now) or not delivery.due(notification_id, now):
                 continue
             current = next((state for state in (*workflow.dump_state(), *trend_workflow.dump_state())
                             if state["source"] == item["source"] and state["device_id"] == item["device_id"]
@@ -486,33 +544,46 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                                    (item.get("action") in {"notify_requested", "reminder_requested"} and
                                     current.get("pending_action") != item["action"]))):
                 pending_mobile.pop(notification_id, None)
-                save_later()
+                delivery.cancel(notification_id, now, "incident_not_active")
+                manager.cancel_request(item["source"], item["device_id"], now)
+                await save_now()
+                continue
+            online = availability_by_device.get((item["source"], item["device_id"])) == "online"
+            if (issue and online) or (not issue and not online and item["source"] != "simulator"):
+                continue
+            if item.get("stage", "mobile") == "mobile" and not notification_target:
                 continue
             retrying_mobile.add(notification_id)
-            actions = [] if resumed or issue else [
-                {"action": f"BAPSIM|{response}|{item['source']}|{item['device_id']}|{incident_id}", "title": label}
-                for response, label in (("checking", "확인 중"), ("resolved", "안부 확인 완료"))
-            ]
             try:
-                await hass.services.async_call("notify", notification_target, {
-                    "title": item.get("title", "밥심 — 안부 확인 필요"), "message": item["message"],
-                    "data": {"actions": actions},
-                }, blocking=True)
-            except Exception:
-                _LOGGER.warning("Bapsim mobile notification retry failed for %s", incident_id)
-            else:
-                pending_mobile.pop(notification_id, None)
-                if not resumed and not issue:
-                    manager = trend_workflow if "DECLINING_USAGE" in item["reason_codes"] else workflow
-                    sent = manager.mark_notified(item["source"], item["device_id"], now)
-                    if sent is not None:
-                        publish_workflow(sent)
-                show("notification_delivery", "mobile_service_called", {
-                    "incident_id": incident_id, "as_of": datetime.now(timezone.utc).isoformat(),
-                })
-                save_later()
+                update = WorkflowUpdate(item["device_id"], item["source"], incident_id,
+                                        current["status"] if current else "data_unavailable",
+                                        item.get("action", "notify_requested"), now,
+                                        tuple(item["reason_codes"]), notification_id)
+                if item.get("stage", "mobile") == "local":
+                    await create_notification(update, manager, retry_at=now)
+                elif notification_target:
+                    if delivery.begin(notification_id, now):
+                        await save_now()
+                        actions = [] if resumed or issue else [
+                            {"action": f"BAPSIM|{response}|{item['source']}|{item['device_id']}|{incident_id}",
+                             "title": label}
+                            for response, label in (("checking", "확인 중"), ("resolved", "안부 확인 완료"))
+                        ]
+                        try:
+                            await hass.services.async_call("notify", notification_target, {
+                                "title": item.get("title", "밥심 — 안부 확인 필요"),
+                                "message": item["message"], "data": {"actions": actions},
+                            }, blocking=True)
+                        except Exception as exc:
+                            await finish_notification(update, manager, delivery_failure(exc), "mobile",
+                                                      item.get("title", ""), item["message"],
+                                                      type(exc).__name__)
+                        else:
+                            await finish_notification(update, manager, "ha_accepted", "complete",
+                                                      item.get("title", ""), item["message"])
             finally:
                 retrying_mobile.discard(notification_id)
+            break  # Do not deliver all old requests at once after reconnection.
 
     @callback
     def dispatch_workflow(update, manager=workflow) -> None:
@@ -1080,7 +1151,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 online = False
             availability_by_device[(source, device_id)] = "online" if online else "offline"
             usage_model.availability(source, device_id, online, datetime.now(timezone.utc).isoformat())
-        if pending_mobile and notification_target:
+        if pending_mobile:
             hass.async_create_task(retry_mobile_notifications())
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, on_started)
@@ -1089,6 +1160,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     def on_hourly_tick(now) -> None:
         nonlocal last_observation_prune_day
         as_of = now.isoformat()
+        delivery.prune(as_of)
         if external_service:
             if hass.services.has_service("mqtt", "publish"):
                 for source, device_id in tuple(forwarded_devices):
@@ -1173,8 +1245,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         for source, device_id in usage_model.device_keys:
             if (source, device_id) not in latest_features:
                 evaluate_model(source, device_id, as_of)
-        if pending_mobile and notification_target:
-            hass.async_create_task(retry_mobile_notifications())
+        if pending_mobile:
+            hass.async_create_task(retry_mobile_notifications(as_of))
 
     unsubscribe_tick = async_track_time_interval(hass, on_hourly_tick, timedelta(seconds=60))
 
@@ -1650,6 +1722,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         "workflow": workflow,
         "trend_workflow": trend_workflow,
         "notification_controls": controls,
+        "delivery": delivery,
         "auxiliary": auxiliary,
         "matter_contacts": matter_contacts,
         "matter_cooking_states": matter_cooking_states,
