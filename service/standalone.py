@@ -12,6 +12,8 @@ from domain.personal_model import PersonalUsageModel
 from workflow import (DeliveryLedger, DetectionStateManager, NotificationControls,
                       ObservationIssueTracker, WorkflowUpdate)
 from workflow.quiet_hours import QuietHours
+from workflow.notification_policy import (ALERT_ACTIONS, current_request, queue_quiet,
+                                          quiet_release_allowed, suppressed)
 from service.output import StatusOutput
 from service.analysis_policy import assess_personal_use
 from service.auxiliary import AuxiliaryDeferral
@@ -198,26 +200,13 @@ class AnalysisService:
                 for notification_id, record in self.delivery.records.items():
                     if record["incident_id"] == update.incident_id and record["status"] in {"pending", "failed"}:
                         self.delivery.cancel(notification_id, now, "incident_resolved")
-            if update.action not in {"notify_requested", "reminder_requested", "usage_resumed_requested",
-                                     "observation_issue_requested"}:
+            if update.action not in ALERT_ACTIONS:
                 continue
-            issue = update.action == "observation_issue_requested"
-            if ((not issue and self.controls.is_paused(now)) or
-                    (update.action != "usage_resumed_requested" and
-                     not issue and self.controls.is_acknowledged(update.incident_id, now))):
+            if suppressed(update.action, update.incident_id, self.controls, now):
                 manager.cancel_request(update.source, update.device_id, now)
                 continue
             if self.quiet.is_quiet(now):
-                if issue:
-                    for key, item in tuple(self.pending_quiet.items()):
-                        if (item.get("action") == "observation_issue_requested" and
-                                (item["source"], item["device_id"]) == (update.source, update.device_id)):
-                            self.pending_quiet.pop(key, None)
-                self.pending_quiet[str(update.notification_id or update.incident_id)] = {
-                    "incident_id": str(update.incident_id), "source": update.source,
-                    "device_id": update.device_id, "action": update.action,
-                    "notification_id": str(update.notification_id or update.incident_id),
-                }
+                queue_quiet(self.pending_quiet, update)
                 continue
             notification_id = str(update.notification_id or update.incident_id)
             self.delivery.prepare(notification_id, str(update.incident_id), update.source,
@@ -260,20 +249,12 @@ class AnalysisService:
             source, device_id = str(record["source"]), str(record["device_id"])
             action = str(record["action"])
             manager = self._manager_for(record)
-            state = next((item for item in manager.dump_state()
-                          if (item["source"], item["device_id"], item["incident_id"]) ==
-                          (source, device_id, record["incident_id"])), None)
-            if action == "observation_issue_requested":
-                valid = self.observation_issues.is_unavailable(source, device_id)
-            elif action == "usage_resumed_requested":
-                valid = bool(state and state["status"] == "resolved" and state["notification_count"] > 0)
-            else:
-                valid = bool(state and state["pending_action"] == action and
-                             state["status"] in ({"check_required"} if action == "notify_requested"
-                                                 else {"notified", "checking"}))
-            if not valid or (action != "observation_issue_requested" and self.controls.is_paused(now)) or (
-                    action not in {"observation_issue_requested", "usage_resumed_requested"} and
-                    self.controls.is_acknowledged(str(record["incident_id"]), now)):
+            state = manager.current_state(source, device_id)
+            if state is not None and state["incident_id"] != record["incident_id"]:
+                state = None
+            valid = current_request(action, state, observation_unavailable=
+                                    self.observation_issues.is_unavailable(source, device_id))
+            if not valid or suppressed(action, str(record["incident_id"]), self.controls, now):
                 self.delivery.cancel(notification_id, now, "no_longer_valid")
                 manager.cancel_request(source, device_id, now)
                 continue
@@ -351,25 +332,24 @@ class AnalysisService:
                 incident_id = item["incident_id"]
                 current_state = active.get(incident_id)
                 action = item.get("action", "notify_requested")
+                online = self.availability.get((item["source"], item["device_id"]), False)
                 if action == "observation_issue_requested":
-                    if (self.observation_issues.is_unavailable(item["source"], item["device_id"]) and
-                            not self.availability.get((item["source"], item["device_id"]), False)):
+                    if quiet_release_allowed(action, None, observation_unavailable=
+                                             self.observation_issues.is_unavailable(item["source"], item["device_id"]),
+                                             online=online, away=self.away, controls=self.controls,
+                                             now=now, incident_id=incident_id):
                         update = WorkflowUpdate(item["device_id"], item["source"], incident_id,
                                                 "data_unavailable", action, now,
                                                 ("COOKER_DATA_UNAVAILABLE",), item.get("notification_id"))
                         self._handle([update], self.gap, now)
                     continue
-                if (current_state is None or self.away or self.controls.is_paused(now) or
-                        not self.availability.get((item["source"], item["device_id"]), False)):
+                if current_state is None:
                     continue
-                if action == "usage_resumed_requested":
-                    valid = current_state["status"] == "resolved" and current_state["notification_count"] > 0
-                elif action == "reminder_requested":
-                    valid = (current_state["status"] in {"notified", "checking"} and
-                             current_state["pending_action"] == action)
-                else:
-                    valid = current_state["status"] == "check_required"
-                if not valid:
+                if self.away or not online or suppressed(action, incident_id, self.controls, now):
+                    continue
+                if not quiet_release_allowed(action, current_state, observation_unavailable=False,
+                                             online=online, away=self.away, controls=self.controls,
+                                             now=now, incident_id=incident_id):
                     manager = self.decline if "DECLINING_USAGE" in current_state["reason_codes"] else self.gap
                     manager.cancel_request(item["source"], item["device_id"], now)
                     continue
