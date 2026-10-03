@@ -75,6 +75,61 @@
     }
   ],
   "selected_threshold": 0.72,
+  "variant_training": [
+    {
+      "name": "current",
+      "late_grace_hours": 0.0,
+      "interval_quantile": 0.95,
+      "households": 32,
+      "eligible_days": 832,
+      "tp": 86,
+      "fp": 70,
+      "fn": 10,
+      "tn": 666,
+      "recall": 0.8958,
+      "false_positive_rate": 0.0951,
+      "false_alerts_per_household_28d": 2.188,
+      "abstained_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    {
+      "name": "late_grace",
+      "late_grace_hours": 1.0,
+      "interval_quantile": 0.95,
+      "households": 32,
+      "eligible_days": 832,
+      "tp": 86,
+      "fp": 64,
+      "fn": 10,
+      "tn": 672,
+      "recall": 0.8958,
+      "false_positive_rate": 0.087,
+      "false_alerts_per_household_28d": 2.0,
+      "abstained_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    {
+      "name": "grace_and_cadence",
+      "late_grace_hours": 1.0,
+      "interval_quantile": 0.75,
+      "households": 32,
+      "eligible_days": 832,
+      "tp": 92,
+      "fp": 72,
+      "fn": 4,
+      "tn": 664,
+      "recall": 0.9583,
+      "false_positive_rate": 0.0978,
+      "false_alerts_per_household_28d": 2.25,
+      "abstained_days": 64,
+      "alerted_away_or_offline": 0
+    }
+  ],
+  "selected_variant": "grace_and_cadence",
+  "selected_variant_settings": {
+    "late_grace_hours": 1.0,
+    "interval_quantile": 0.75
+  },
   "holdout_personal": {
     "households": 32,
     "eligible_days": 832,
@@ -302,6 +357,125 @@
       "alerted_away_or_offline": 0
     }
   },
+  "candidate_holdout": {
+    "households": 32,
+    "eligible_days": 832,
+    "tp": 92,
+    "fp": 60,
+    "fn": 4,
+    "tn": 676,
+    "recall": 0.9583,
+    "false_positive_rate": 0.0815,
+    "false_alerts_per_household_28d": 1.875,
+    "abstained_days": 64,
+    "alerted_away_or_offline": 0
+  },
+  "candidate_by_profile": {
+    "batch_every_other_day": {
+      "households": 4,
+      "eligible_days": 104,
+      "tp": 8,
+      "fp": 13,
+      "fn": 4,
+      "tn": 79,
+      "recall": 0.6667,
+      "false_positive_rate": 0.1413,
+      "false_alerts_per_household_28d": 3.25,
+      "abstained_days": 8,
+      "alerted_away_or_offline": 0
+    },
+    "breakfast_dinner": {
+      "households": 4,
+      "eligible_days": 104,
+      "tp": 12,
+      "fp": 6,
+      "fn": 0,
+      "tn": 86,
+      "recall": 1.0,
+      "false_positive_rate": 0.0652,
+      "false_alerts_per_household_28d": 1.5,
+      "abstained_days": 8,
+      "alerted_away_or_offline": 0
+    },
+    "early_single": {
+      "households": 4,
+      "eligible_days": 104,
+      "tp": 12,
+      "fp": 8,
+      "fn": 0,
+      "tn": 84,
+      "recall": 1.0,
+      "false_positive_rate": 0.087,
+      "false_alerts_per_household_28d": 2.0,
+      "abstained_days": 8,
+      "alerted_away_or_offline": 0
+    },
+    "evening_single": {
+      "households": 4,
+      "eligible_days": 104,
+      "tp": 12,
+      "fp": 5,
+      "fn": 0,
+      "tn": 87,
+      "recall": 1.0,
+      "false_positive_rate": 0.0543,
+      "false_alerts_per_household_28d": 1.25,
+      "abstained_days": 8,
+      "alerted_away_or_offline": 0
+    },
+    "lunch_dinner": {
+      "households": 4,
+      "eligible_days": 104,
+      "tp": 12,
+      "fp": 7,
+      "fn": 0,
+      "tn": 85,
+      "recall": 1.0,
+      "false_positive_rate": 0.0761,
+      "false_alerts_per_household_28d": 1.75,
+      "abstained_days": 8,
+      "alerted_away_or_offline": 0
+    },
+    "midday_single": {
+      "households": 4,
+      "eligible_days": 104,
+      "tp": 12,
+      "fp": 7,
+      "fn": 0,
+      "tn": 85,
+      "recall": 1.0,
+      "false_positive_rate": 0.0761,
+      "false_alerts_per_household_28d": 1.75,
+      "abstained_days": 8,
+      "alerted_away_or_offline": 0
+    },
+    "three_windows": {
+      "households": 4,
+      "eligible_days": 104,
+      "tp": 12,
+      "fp": 8,
+      "fn": 0,
+      "tn": 84,
+      "recall": 1.0,
+      "false_positive_rate": 0.087,
+      "false_alerts_per_household_28d": 2.0,
+      "abstained_days": 8,
+      "alerted_away_or_offline": 0
+    },
+    "variable_weekend": {
+      "households": 4,
+      "eligible_days": 104,
+      "tp": 12,
+      "fp": 6,
+      "fn": 0,
+      "tn": 86,
+      "recall": 1.0,
+      "false_positive_rate": 0.0652,
+      "false_alerts_per_household_28d": 1.5,
+      "abstained_days": 8,
+      "alerted_away_or_offline": 0
+    }
+  },
   "stress_personal": {
     "households": 16,
     "eligible_days": 416,
@@ -433,6 +607,19 @@
       "abstained_days": 4,
       "alerted_away_or_offline": 0
     }
+  },
+  "candidate_stress": {
+    "households": 16,
+    "eligible_days": 416,
+    "tp": 44,
+    "fp": 91,
+    "fn": 4,
+    "tn": 277,
+    "recall": 0.9167,
+    "false_positive_rate": 0.2473,
+    "false_alerts_per_household_28d": 5.688,
+    "abstained_days": 32,
+    "alerted_away_or_offline": 0
   },
   "example_future_rows": [
     {
