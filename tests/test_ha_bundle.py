@@ -23,6 +23,8 @@ class HABundleTests(TestCase):
                 self.assertIn("custom_components/bapsim/runtime/domain/events/normalizer/core.py", names)
                 self.assertIn("custom_components/bapsim/runtime/service/observations.py", names)
                 self.assertIn("custom_components/bapsim/runtime/workflow/notification_controls.py", names)
+                self.assertIn("custom_components/bapsim/runtime/workflow/notification_policy.py", names)
+                self.assertIn("custom_components/bapsim/runtime/service/ha_notification_transport.py", names)
                 self.assertFalse(any(".storage" in name or "__pycache__" in name for name in names))
                 archive.extractall(root)
 
