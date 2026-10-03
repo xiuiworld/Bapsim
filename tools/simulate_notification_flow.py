@@ -67,7 +67,8 @@ def replay(state_file: Path) -> dict[str, object]:
     )
     restored_gap = next(item for item in restored.gap.dump_state()
                         if item["source"] == SOURCE and item["device_id"] == DEVICE)
-    if restored_gap["status"] != "resolved" or len(requested) != 1:
+    if (restored_gap["status"] != "resolved" or len(requested) != 2 or
+            [item.action for item in requested] != ["notify_requested", "usage_resumed_requested"]):
         raise RuntimeError("restart changed the resolved incident or repeated notification")
     states = [json.loads(payload) for topic, payload, _ in published
               if topic.endswith("/state")]

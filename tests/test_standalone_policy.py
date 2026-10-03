@@ -91,3 +91,35 @@ class PolicyTests(TestCase):
             service.tick(at(1, 8))
             self.assertEqual(len(sent), 1)
             self.assertEqual(service.pending_quiet, {})
+
+    def test_reminder_and_resumption_are_distinct_and_persisted(self):
+        with TemporaryDirectory() as directory:
+            sent = []
+            state_file = Path(directory) / "state.json"
+            service = AnalysisService("home", state_file, lambda *args: None,
+                                      lambda update: sent.append(update) or True)
+            key = ("matter", "cooker_01")
+            service.availability[key] = True
+
+            def missed(day):
+                return {"source": key[0], "device_id": key[1], "as_of": at(day, 12),
+                        "routine_status": "check_required", "reason_codes": ["EXPECTED_USE_MISSING"],
+                        "evidence": {"window_end": at(day, 11)}}
+
+            service.gap.ingest(missed(0))
+            service._handle(service.gap.ingest(missed(1)), service.gap, at(1, 12))
+            self.assertEqual([item.action for item in sent], ["notify_requested"])
+            service._handle(service.gap.ingest(missed(2)), service.gap, at(2, 12))
+            self.assertEqual([item.action for item in sent], ["notify_requested", "reminder_requested"])
+            self.assertNotEqual(sent[0].notification_id, sent[1].notification_id)
+            service.save()
+
+            restored = AnalysisService("home", state_file, lambda *args: None,
+                                       lambda update: sent.append(update) or True)
+            restored.availability[key] = True
+            restored._handle(restored.gap.ingest(missed(2)), restored.gap, at(2, 13))
+            self.assertEqual(len(sent), 2)
+            restored.process_event(event(2, 13, "lid_opened"), at(2, 13))
+            self.assertEqual([item.action for item in sent],
+                             ["notify_requested", "reminder_requested", "usage_resumed_requested"])
+            self.assertEqual(restored.gap.dump_state()[0]["status"], "resolved")

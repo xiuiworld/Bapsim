@@ -79,6 +79,7 @@ views:
           - sensor.bapsim_baseline
           - sensor.bapsim_features
           - sensor.bapsim_notification_delivery
+          - sensor.bapsim_observation_issue_status
           - sensor.bapsim_notification_controls
           - sensor.bapsim_output_state
           - sensor.bapsim_simulation_output_state
