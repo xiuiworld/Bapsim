@@ -21,6 +21,8 @@ class HABundleTests(TestCase):
             with ZipFile(archive_path) as archive:
                 names = archive.namelist()
                 self.assertIn("custom_components/bapsim/runtime/domain/events/normalizer/core.py", names)
+                self.assertIn("custom_components/bapsim/runtime/service/observations.py", names)
+                self.assertIn("custom_components/bapsim/runtime/workflow/notification_controls.py", names)
                 self.assertFalse(any(".storage" in name or "__pycache__" in name for name in names))
                 archive.extractall(root)
 

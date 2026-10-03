@@ -20,6 +20,7 @@ PRIORS = (
     ("slot_3", 19 * 60, 0.40),
     ("slot_4", 30, 0.10),
 )
+USAGE_GROUP = timedelta(minutes=60)
 
 
 def _time(value: str) -> datetime:
@@ -66,8 +67,9 @@ class PersonalUsageModel:
 
     def _device(self, source: str, device_id: str) -> dict[str, object]:
         return self._devices.setdefault((source, device_id), {
-            "opens": [], "coverage": [], "online_since": None,
-            "last_seen": None, "evaluations": {},
+            "opens": [], "raw_opens": [], "coverage": [], "online_since": None,
+            "last_seen": None, "evaluations": {}, "trend_evaluations": {},
+            "decline_streak": 0, "recovery_streak": 0, "trend_active": False,
         })
 
     def dump_state(self) -> dict[str, object]:
@@ -76,10 +78,15 @@ class PersonalUsageModel:
             devices.append({
                 "source": source, "device_id": device_id,
                 "opens": [at.isoformat() for at in state["opens"]],
+                "raw_opens": [at.isoformat() for at in state["raw_opens"]],
                 "coverage": [[start.isoformat(), end.isoformat()] for start, end in state["coverage"]],
                 "online_since": state["online_since"].isoformat() if state["online_since"] else None,
                 "last_seen": state["last_seen"].isoformat() if state["last_seen"] else None,
                 "evaluations": dict(state["evaluations"]),
+                "trend_evaluations": dict(state["trend_evaluations"]),
+                "decline_streak": state["decline_streak"],
+                "recovery_streak": state["recovery_streak"],
+                "trend_active": state["trend_active"],
             })
         return {
             "devices": devices,
@@ -92,9 +99,16 @@ class PersonalUsageModel:
         for item in stored.get("devices", []):
             source, device_id = item["source"], item["device_id"]
             state = self._device(source, device_id)
-            state["opens"] = sorted(_time(at) for at in item.get("opens", []))
+            # Older snapshots only stored group starts. Treat those as the
+            # available observations without inventing the missing raw opens.
+            state["raw_opens"] = sorted(_time(at) for at in item.get("raw_opens", item.get("opens", [])))
+            state["opens"] = self._group_opens(state["raw_opens"])
             state["coverage"] = [(_time(start), _time(end)) for start, end in item.get("coverage", [])]
             state["evaluations"] = dict(item.get("evaluations", {}))
+            state["trend_evaluations"] = dict(item.get("trend_evaluations", {}))
+            state["decline_streak"] = int(item.get("decline_streak", 0))
+            state["recovery_streak"] = int(item.get("recovery_streak", 0))
+            state["trend_active"] = bool(item.get("trend_active", False))
             # A process restart interrupts observed coverage. Close it at the
             # last actual heartbeat; never span an unobserved downtime.
             start = item.get("online_since")
@@ -149,21 +163,33 @@ class PersonalUsageModel:
         if event.get("availability") != "online":
             return
         state = self._device(source, device_id)
-        opens = state["opens"]
-        # Repeated openings during one cooking/serving episode count once.
-        if any(abs((moment - previous).total_seconds()) < 20 * 60 for previous in opens[-3:]):
-            return
-        opens.append(moment)
-        opens.sort()
+        raw_opens = state["raw_opens"]
+        if moment not in raw_opens:
+            raw_opens.append(moment)
+            raw_opens.sort()
+            state["opens"] = self._group_opens(raw_opens)
         self._prune(state, moment)
+
+    @staticmethod
+    def _group_opens(raw_opens: list[datetime]) -> list[datetime]:
+        starts: list[datetime] = []
+        for moment in raw_opens:
+            if not starts or moment >= starts[-1] + USAGE_GROUP:
+                starts.append(moment)
+        return starts
 
     def _prune(self, state: dict[str, object], now: datetime) -> None:
         cutoff = now - timedelta(days=self.history_days + 3)
-        state["opens"] = [at for at in state["opens"] if at >= cutoff]
+        state["raw_opens"] = [at for at in state["raw_opens"] if at >= cutoff]
+        state["opens"] = self._group_opens(state["raw_opens"])
         state["coverage"] = [(start, end) for start, end in state["coverage"] if end >= cutoff]
         state["evaluations"] = {
             key: status for key, status in state["evaluations"].items()
             if date.fromisoformat(key.split("|", 1)[0]) >= cutoff.astimezone(KST).date()
+        }
+        state["trend_evaluations"] = {
+            key: value for key, value in state["trend_evaluations"].items()
+            if date.fromisoformat(key) >= cutoff.astimezone(KST).date()
         }
         self._away_intervals = [(start, end) for start, end in self._away_intervals if end >= cutoff]
 
@@ -314,4 +340,52 @@ class PersonalUsageModel:
             "lid_open_count_24h": len(recent_opens),
             "last_lid_open_at": previous_opens[-1].isoformat() if previous_opens else None,
             "ready": any(window["covered_days"] >= self.min_covered_days for window in windows),
+        }
+
+    def evaluate_trend(self, source: str, device_id: str, as_of: str, *, online: bool,
+                       away: bool = False) -> dict[str, object] | None:
+        """Evaluate complete covered days; never treat an outage as zero use."""
+        now = _time(as_of)
+        state = self._device(source, device_id)
+        day = now.astimezone(KST).date() - timedelta(days=1)
+        key = day.isoformat()
+        if key in state["trend_evaluations"]:
+            return None
+        state["trend_evaluations"][key] = "insufficient"
+        if not online or away:
+            return None
+        counts: list[tuple[date, int]] = []
+        for offset in range(28, 0, -1):
+            sample_day = now.astimezone(KST).date() - timedelta(days=offset)
+            start = datetime.combine(sample_day, time.min, KST).astimezone(timezone.utc)
+            end = start + timedelta(days=1)
+            if not self._covered(state, start, end, now) or self._away_window(start, end):
+                continue
+            counts.append((sample_day, sum(start <= opening < end for opening in state["opens"])))
+        recent = [count for sample_day, count in counts if day - timedelta(days=6) <= sample_day <= day]
+        reference = [count for sample_day, count in counts if day - timedelta(days=27) <= sample_day < day - timedelta(days=6)]
+        if len(recent) < 5 or len(reference) < 10:
+            return None
+        recent_rate = sum(recent) / len(recent)
+        reference_rate = sum(reference) / len(reference)
+        decline = reference_rate > 0 and recent_rate <= reference_rate * 0.7
+        state["trend_evaluations"][key] = "declining" if decline else "normal"
+        state["decline_streak"] = state["decline_streak"] + 1 if decline else 0
+        state["recovery_streak"] = 0 if decline else state["recovery_streak"] + 1
+        if decline and state["decline_streak"] >= 3 and not state["trend_active"]:
+            state["trend_active"] = True
+            status, reason = "check_required", "DECLINING_USAGE"
+        elif not decline and state["recovery_streak"] >= 3 and state["trend_active"]:
+            state["trend_active"] = False
+            status, reason = "normal", "DECLINE_RESOLVED"
+        else:
+            return None
+        return {
+            "source": source, "device_id": device_id, "as_of": now.isoformat(),
+            "routine_status": status, "severity": "warning" if decline else "none",
+            "reason_codes": [reason],
+            "score": round(1 - recent_rate / reference_rate, 4) if reference_rate else None,
+            "evidence": {"model": "personal_usage_v1", "assessment_type": "declining_usage",
+                         "recent_days": len(recent), "reference_days": len(reference),
+                         "recent_rate": round(recent_rate, 4), "reference_rate": round(reference_rate, 4)},
         }

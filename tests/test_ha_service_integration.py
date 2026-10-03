@@ -131,6 +131,76 @@ def ha_modules(seed):
 
 
 class HAServiceIntegrationTests(TestCase):
+    def test_bounded_pause_service_is_persisted_and_can_be_cancelled(self):
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules({})):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_controls_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                self.assertTrue(await module.async_setup(hass, {}))
+                now = datetime.now(timezone.utc)
+                await hass.services.async_call("bapsim", "set_notification_control", {
+                    "command_id": "pause-1", "action": "pause_lifestyle", "pause_id": "trip-1",
+                    "starts_at": (now - timedelta(minutes=1)).isoformat(),
+                    "ends_at": (now + timedelta(hours=2)).isoformat(),
+                })
+                self.assertTrue(hass.data["bapsim"]["notification_controls"].is_paused(now.isoformat()))
+                self.assertEqual(hass.data["bapsim"]["store"].saved["notification_controls"]["revision"], 1)
+                await hass.services.async_call("bapsim", "set_notification_control", {
+                    "command_id": "pause-2", "action": "cancel_pause", "pause_id": "trip-1",
+                })
+                self.assertFalse(hass.data["bapsim"]["notification_controls"].is_paused(now.isoformat()))
+
+        asyncio.run(scenario())
+
+    def test_acknowledge_requires_active_assessment_and_records_expiry(self):
+        seed = {"workflow": [{"source": "matter", "device_id": "cooker_01", "status": "notified",
+                              "incident_id": "case-1", "reason_codes": ["EXPECTED_USE_MISSING"]}]}
+
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules(seed)):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_ack_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                self.assertTrue(await module.async_setup(hass, {}))
+                ends_at = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+                await hass.services.async_call("bapsim", "set_notification_control", {
+                    "command_id": "ack-1", "action": "acknowledge",
+                    "assessment_id": "case-1", "ends_at": ends_at,
+                })
+                self.assertEqual(hass.data["bapsim"]["workflow"].dump_state()[0]["status"], "checking")
+                self.assertTrue(hass.data["bapsim"]["notification_controls"].is_acknowledged(
+                    "case-1", datetime.now(timezone.utc).isoformat()))
+
+        asyncio.run(scenario())
+
+    def test_simulated_state_uses_separate_mqtt_topic(self):
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules({})):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_mqtt_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                async def publish(call):
+                    pass
+                hass.services.async_register("mqtt", "publish", publish)
+                self.assertTrue(await module.async_setup(hass, {}))
+                at = datetime.now(timezone.utc).isoformat()
+                hass.bus.async_fire(module.RAW_EVENT, {
+                    "device_id": "cooker_01", "event_type": "availability", "value": "online",
+                    "observed_at": at, "received_at": at, "source": "simulator",
+                    "availability": "online", "quality": "observed",
+                })
+                await asyncio.gather(*hass.tasks)
+                topics = [data["topic"] for domain, name, data in hass.services.calls
+                          if (domain, name) == ("mqtt", "publish")]
+                self.assertIn("bapsim/simulation/v1/household_01/state", topics)
+                self.assertNotIn("bapsim/v1/household_01/state", topics)
+
+        asyncio.run(scenario())
+
     def test_mobile_failure_retries_active_incident(self):
         seed = {
             "workflow": [{"source": "matter", "device_id": "cooker_01", "status": "notified",
@@ -520,7 +590,10 @@ class HAServiceIntegrationTests(TestCase):
                 after = len([data for name, data in hass.bus.events if name == module.COOKER_EVENT
                              and data["event_type"] == "cooking_finished"])
                 self.assertEqual(after, before)
-                self.assertNotEqual(hass.states.values["sensor.bapsim_detection_status"].state, "data_unavailable")
+                # A newly registered contact has no complete observation window
+                # yet. The unmapped cooking value must not disconnect that contact.
+                self.assertNotIn("device_offline", [data["event_type"] for name, data in hass.bus.events
+                                                    if name == module.COOKER_EVENT])
 
         asyncio.run(scenario())
 

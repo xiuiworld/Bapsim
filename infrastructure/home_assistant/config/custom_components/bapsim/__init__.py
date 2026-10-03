@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,10 +21,11 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.domain.features import CookerFeatureExtractor
     from .runtime.domain.sessions import CookingSessionBuilder
     from .runtime.domain.personal_model import PersonalUsageModel
-    from .runtime.workflow import DetectionStateManager
+    from .runtime.workflow import DetectionStateManager, NotificationControls
     from .runtime.workflow.evidence_boundary import cooker_only
     from .runtime.inputs.matter import MatterBoardSignalAdapter, MatterContactAdapter, MatterContextAdapter, MatterCookingStateAdapter
     from .runtime.inputs.base.journal import RawEventJournal
+    from .runtime.service import ObservationJournal, StatusOutput, AuxiliaryDeferral
 else:
     from domain.events.normalizer import CookerEventNormalizer, NormalizedCookerEvent
     from domain.baseline import PersonalBaselineEngine
@@ -31,10 +33,11 @@ else:
     from domain.features import CookerFeatureExtractor
     from domain.sessions import CookingSessionBuilder
     from domain.personal_model import PersonalUsageModel
-    from workflow import DetectionStateManager
+    from workflow import DetectionStateManager, NotificationControls
     from workflow.evidence_boundary import cooker_only
     from inputs.matter import MatterBoardSignalAdapter, MatterContactAdapter, MatterContextAdapter, MatterCookingStateAdapter
     from inputs.base.journal import RawEventJournal
+    from service import ObservationJournal, StatusOutput, AuxiliaryDeferral
 
 DOMAIN = "bapsim"
 RAW_EVENT = "bapsim_raw_event"
@@ -61,6 +64,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     detector = RuleDetector()
     usage_model = PersonalUsageModel()
     workflow = DetectionStateManager(candidate_window=timedelta(hours=36))
+    trend_workflow = DetectionStateManager(min_consecutive=1, candidate_window=timedelta(days=1))
+    controls = NotificationControls()
+    auxiliary = AuxiliaryDeferral()
+    settings = config.get(DOMAIN) or {}
+    if not isinstance(settings, dict):
+        settings = {}
     matter_contacts: dict[str, MatterContactAdapter] = {}
     matter_cooking_states: dict[str, MatterCookingStateAdapter] = {}
     matter_contexts: dict[str, MatterContextAdapter] = {}
@@ -76,8 +85,16 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     cancel_timer = None
     store = Store(hass, 1, "bapsim.pipeline", atomic_writes=True)
     journal = RawEventJournal(Path(hass.config.path("bapsim_events"))) if hasattr(hass, "config") else None
+    observations = ObservationJournal(Path(hass.config.path("bapsim_observations"))) if hasattr(hass, "config") else None
+    service_records = ObservationJournal(Path(hass.config.path("bapsim_records")), 180, "records") if hasattr(hass, "config") else None
     journal_lock = asyncio.Lock()
+    mqtt_lock = asyncio.Lock()
+    last_discovery_at = None
+    last_observation_prune_day = None
+    last_baseline_record_day: dict[tuple[str, str], str] = {}
     stored = await store.async_load()
+    output = StatusOutput(str(settings.get("household_id", "household_01")),
+                          int(stored.get("output_revision", 0)) if isinstance(stored, dict) else 0)
     if isinstance(stored, dict):
         try:
             normalizer.load_state(stored.get("normalizer", []))
@@ -86,6 +103,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             baseline.load_state(stored.get("baseline", []))
             usage_model.load_state(stored.get("usage_model", {}))
             workflow.load_state(stored.get("workflow", []))
+            trend_workflow.load_state(stored.get("trend_workflow", []))
+            controls.load_state(stored.get("notification_controls", {}))
+            auxiliary.load_state(stored.get("auxiliary", {}))
             for item in stored.get("matter_contacts", []):
                 for entity_id, adapter in tuple(matter_contacts.items()):
                     if adapter.device_id == item["device_id"]:
@@ -139,6 +159,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                     pending_mobile[item["incident_id"]] = item
         except (KeyError, TypeError, ValueError) as exc:
             _LOGGER.warning("Could not restore some Bapsim pipeline state: %s", exc)
+    model_away = away or controls.is_paused(datetime.now(timezone.utc).isoformat())
+    if model_away:
+        usage_model.set_away(True, datetime.now(timezone.utc).isoformat())
 
     @callback
     def state_snapshot() -> dict[str, object]:
@@ -149,6 +172,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             "baseline": baseline.dump_state(),
             "usage_model": usage_model.dump_state(),
             "workflow": workflow.dump_state(),
+            "trend_workflow": trend_workflow.dump_state(),
+            "notification_controls": controls.dump_state(),
+            "auxiliary": auxiliary.dump_state(),
+            "output_revision": output.revision,
             "matter_contacts": [
                 {"entity_id": entity_id, "device_id": adapter.device_id, "on_is_open": adapter.on_is_open}
                 for entity_id, adapter in matter_contacts.items()
@@ -203,8 +230,65 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     show("matter_board", "not_configured")
     show("board_history", len(board_history), {"latest": board_history[-3:]})
     show("away", "away" if away else "home")
+    show("notification_controls", controls.revision, controls.dump_state())
+
+    async def send_mqtt(source: str, payload: dict[str, object]) -> None:
+        async with mqtt_lock:
+            if payload["revision"] < output.revision:
+                return
+            await send_mqtt_current(source, payload)
+
+    async def send_mqtt_current(source: str, payload: dict[str, object]) -> None:
+        nonlocal last_discovery_at
+        if not hass.services.has_service("mqtt", "publish"):
+            show("mqtt_output", "broker_unavailable", {"topic": output.topic(source, "state")})
+            return
+        state_topic = output.topic(source, "state")
+        availability_topic = output.topic(source, "availability")
+        try:
+            publish_discovery = source == "matter" and (
+                last_discovery_at is None or
+                datetime.now(timezone.utc) - last_discovery_at >= timedelta(hours=1)
+            )
+            if publish_discovery:
+                discovery = {
+                    "name": "밥심 현재 안내", "unique_id": f"bapsim_{output.household_id}_summary",
+                    "state_topic": state_topic, "value_template": "{{ value_json.summary }}",
+                    "json_attributes_topic": state_topic, "availability_topic": availability_topic,
+                    "expire_after": 180,
+                }
+                await hass.services.async_call("mqtt", "publish", {
+                    "topic": f"homeassistant/sensor/bapsim_{output.household_id}/config",
+                    "payload": json.dumps(discovery, ensure_ascii=False), "qos": 1, "retain": True,
+                }, blocking=True)
+                last_discovery_at = datetime.now(timezone.utc)
+            for topic, value in ((availability_topic, "online" if payload["observation"] != "unavailable" else "offline"),
+                                 (state_topic, json.dumps(payload, ensure_ascii=False))):
+                await hass.services.async_call("mqtt", "publish", {
+                    "topic": topic, "payload": value, "qos": 1, "retain": True,
+                }, blocking=True)
+        except Exception:
+            _LOGGER.exception("Bapsim MQTT status publish failed")
+            show("mqtt_output", "failed", {"topic": state_topic})
+        else:
+            show("mqtt_output", "published", {"topic": state_topic, "revision": payload["revision"]})
+
+    async def send_controls() -> None:
+        async with mqtt_lock:
+            try:
+                await hass.services.async_call("mqtt", "publish", {
+                    "topic": output.topic("matter", "notification_controls"),
+                    "payload": json.dumps({"schema_version": "0.1.0", "household_id": output.household_id,
+                                           "revision": controls.revision, "pauses": controls.pauses,
+                                           "acknowledgements": controls.acknowledgements}, ensure_ascii=False),
+                    "qos": 1, "retain": True,
+                }, blocking=True)
+            except Exception:
+                _LOGGER.exception("Bapsim MQTT controls publish failed")
     for item in workflow.dump_state():
         show("workflow_status", item["status"], item)
+    for item in trend_workflow.dump_state():
+        show("decline_status", item["status"], item)
     for source, device_id in usage_model.device_keys:
         profile = usage_model.profile(source, device_id, datetime.now(timezone.utc).isoformat())
         show("baseline", "ready" if profile["ready"] else "learning", profile)
@@ -214,15 +298,25 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     @callback
     def publish_workflow(update) -> None:
         payload = update.as_dict()
+        archive_service_record("workflow", payload, update.as_of)
         if update.status == "resolved" and update.incident_id in pending_mobile:
             pending_mobile.pop(update.incident_id, None)
         hass.bus.async_fire(WORKFLOW_EVENT, payload)
-        show("workflow_status", update.status, payload)
+        if "DECLINING_USAGE" in update.reason_codes or "DECLINE_RESOLVED" in update.reason_codes:
+            show("decline_status", update.status, payload)
+        else:
+            show("workflow_status", update.status, payload)
         save_later()
 
-    async def create_notification(update) -> None:
-        title = "밥심 — 안부 확인 필요"
-        message = "평소와 다른 밥솥 사용 패턴이 관측되었습니다. 밥심 실험실에서 확인 상태를 기록하세요.\n\n근거: " + ", ".join(update.reason_codes)
+    async def create_notification(update, manager=workflow) -> None:
+        notification_time = datetime.now(timezone.utc).isoformat()
+        if controls.is_paused(notification_time) or controls.is_acknowledged(update.incident_id, notification_time):
+            show("notification_delivery", "paused", {"incident_id": update.incident_id})
+            return
+        declining = "DECLINING_USAGE" in update.reason_codes
+        title = "밥심 — 최근 사용 감소" if declining else "밥심 — 안부 확인 필요"
+        message = ("최근 밥솥 사용 기록이 평소보다 줄었습니다. 안부를 확인해 보세요."
+                   if declining else "평소와 다른 밥솥 사용 패턴이 관측되었습니다. 안부를 확인해 보세요.")
         try:
             await hass.services.async_call(
                 "persistent_notification", "create",
@@ -237,7 +331,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             _LOGGER.exception("Bapsim local notification failed")
             return
         delivery = "ha_local_created"
-        if notification_target:
+        if notification_target and update.source != "simulator":
             actions = [
                 {"action": f"BAPSIM|{response}|{update.source}|{update.device_id}|{update.incident_id}", "title": label}
                 for response, label in (("checking", "확인 중"), ("resolved", "안부 확인 완료"))
@@ -253,11 +347,16 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                     "source": update.source, "device_id": update.device_id,
                     "incident_id": str(update.incident_id), "message": message,
                     "reason_codes": list(update.reason_codes),
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
                 }
                 delivery = "mobile_retry_pending"
                 save_later()
         show("notification_delivery", delivery, {"incident_id": update.incident_id, "as_of": datetime.now(timezone.utc).isoformat()})
-        sent = workflow.mark_notified(update.source, update.device_id, datetime.now(timezone.utc).isoformat())
+        archive_service_record("notification", {
+            "incident_id": update.incident_id, "delivery": delivery,
+            "reason_codes": list(update.reason_codes),
+        }, datetime.now(timezone.utc).isoformat())
+        sent = manager.mark_notified(update.source, update.device_id, datetime.now(timezone.utc).isoformat())
         if sent is not None:
             publish_workflow(sent)
 
@@ -267,7 +366,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         for incident_id, item in tuple(pending_mobile.items()):
             if incident_id in retrying_mobile:
                 continue
-            current = next((state for state in workflow.dump_state()
+            now = datetime.now(timezone.utc).isoformat()
+            if (controls.is_paused(now) or controls.is_acknowledged(incident_id, now)
+                    or (item.get("expires_at") and datetime.fromisoformat(item["expires_at"]) <= datetime.now(timezone.utc))):
+                pending_mobile.pop(incident_id, None)
+                save_later()
+                continue
+            current = next((state for state in (*workflow.dump_state(), *trend_workflow.dump_state())
                             if state["source"] == item["source"] and state["device_id"] == item["device_id"]), None)
             if current is None or current.get("incident_id") != incident_id or current.get("status") not in {"notified", "checking"}:
                 pending_mobile.pop(incident_id, None)
@@ -296,13 +401,22 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     @callback
     def evaluate_model(source: str, device_id: str, as_of: str) -> None:
+        nonlocal model_away
+        effective_away = away or controls.is_paused(as_of)
+        if effective_away != model_away:
+            usage_model.set_away(effective_away, as_of)
+            model_away = effective_away
         profile = usage_model.profile(source, device_id, as_of)
+        record_day = datetime.fromisoformat(as_of.replace("Z", "+00:00")).date().isoformat()
+        if last_baseline_record_day.get((source, device_id)) != record_day:
+            archive_service_record("baseline", profile, as_of)
+            last_baseline_record_day[(source, device_id)] = record_day
         hass.bus.async_fire(BASELINE_EVENT, profile)
         show("baseline", "ready" if profile["ready"] else "learning", profile)
         online = availability_by_device.get((source, device_id)) == "online"
-        if not online or away:
-            status = "away" if away else "data_unavailable"
-            reason = "AWAY_DECLARED" if away else "COOKER_DATA_UNAVAILABLE"
+        if not online or effective_away:
+            status = "away" if effective_away else "data_unavailable"
+            reason = "AWAY_DECLARED" if effective_away else "COOKER_DATA_UNAVAILABLE"
             provisional = {
                 "source": source, "device_id": device_id, "as_of": as_of,
                 "routine_status": status, "severity": "info", "reason_codes": [reason],
@@ -312,18 +426,54 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             show("detection_status", status, provisional)
             for update in workflow.ingest(provisional):
                 publish_workflow(update)
+            if effective_away:
+                for update in trend_workflow.ingest(provisional):
+                    publish_workflow(update)
         decisions = usage_model.evaluate(
             source, device_id, as_of,
             online=online,
-            away=away,
+            away=effective_away,
         )
         for decision in decisions:
+            archive_service_record("assessment", decision, decision["as_of"])
+            if decision["routine_status"] == "check_required":
+                for item in workflow.dump_state():
+                    if (item["source"], item["device_id"]) == (source, device_id) and item["status"] == "checking":
+                        incident_id = item.get("incident_id")
+                        if incident_id in controls.acknowledgements and not controls.is_acknowledged(incident_id, as_of):
+                            resolved = workflow.caregiver_response(source, device_id, "resolved", as_of, incident_id)
+                            if resolved is not None:
+                                publish_workflow(resolved)
             hass.bus.async_fire(DETECTION_EVENT, decision)
             show("detection_status", decision["routine_status"], decision)
+            if auxiliary.defer(decision):
+                show("auxiliary_deferral", "deferred", {"device_id": device_id,
+                                                       "until": auxiliary.pending[-1]["due_at"]})
+                continue
             for update in workflow.ingest(cooker_only(decision)):
                 publish_workflow(update)
                 if update.action == "notify_requested":
                     hass.async_create_task(create_notification(update))
+        trend = usage_model.evaluate_trend(source, device_id, as_of, online=online, away=effective_away)
+        if trend is not None:
+            archive_service_record("assessment", trend, trend["as_of"])
+            hass.bus.async_fire(DETECTION_EVENT, trend)
+            show("decline_detection", trend["routine_status"], trend)
+            for update in trend_workflow.ingest(cooker_only(trend)):
+                publish_workflow(update)
+                if update.action == "notify_requested":
+                    hass.async_create_task(create_notification(update, trend_workflow))
+        gap_state = next((item for item in workflow.dump_state()
+                          if item["source"] == source and item["device_id"] == device_id), None)
+        decline_state = next((item for item in trend_workflow.dump_state()
+                              if item["source"] == source and item["device_id"] == device_id), None)
+        state = output.build(as_of, profile, "available" if online else "unavailable",
+                             gap_state, decline_state)
+        show("output_state", state["summary"], state)
+        if hass.services.has_service("mqtt", "publish"):
+            hass.async_create_task(send_mqtt(source, state))
+        else:
+            show("mqtt_output", "broker_unavailable", {"topic": output.topic(source, "state")})
         save_later()
 
     @callback
@@ -359,6 +509,34 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 await hass.async_add_executor_job(journal.append, stream, payload)
         except (OSError, ValueError) as exc:
             _LOGGER.warning("Could not archive raw %s event: %s", stream, exc)
+
+    async def write_observation(payload: dict[str, object]) -> None:
+        try:
+            async with journal_lock:
+                await hass.async_add_executor_job(observations.append, payload)
+        except (OSError, ValueError, TypeError) as exc:
+            _LOGGER.warning("Could not archive normalized observation: %s", exc)
+
+    @callback
+    def archive_service_record(category: str, payload: dict[str, object], at: str) -> None:
+        if service_records is not None:
+            hass.async_create_task(write_service_record({"category": category, "as_of": at, **payload}))
+
+    async def write_service_record(payload: dict[str, object]) -> None:
+        try:
+            async with journal_lock:
+                await hass.async_add_executor_job(service_records.append, payload)
+        except (OSError, ValueError, TypeError) as exc:
+            _LOGGER.warning("Could not archive service record: %s", exc)
+
+    async def prune_observations(now: datetime) -> None:
+        try:
+            async with journal_lock:
+                await hass.async_add_executor_job(observations.prune, now)
+                if service_records is not None:
+                    await hass.async_add_executor_job(service_records.prune, now)
+        except OSError as exc:
+            _LOGGER.warning("Could not prune normalized observations: %s", exc)
 
     @callback
     def on_raw(event: Event) -> None:
@@ -421,13 +599,26 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if not all(isinstance(item, str) for item in (source, device_id, observed_at)):
             _LOGGER.warning("Ignored canonical cooker event with missing identity or time")
             return
+        if observations is not None:
+            hass.async_create_task(write_observation(dict(event.data)))
         key = (source, device_id)
+        prior_groups = {
+            opening for item in usage_model.dump_state()["devices"]
+            if (item["source"], item["device_id"]) == key for opening in item["opens"]
+        } if event.data.get("event_type") == "lid_opened" else set()
         if event.data.get("event_type") in {"device_online", "device_offline"}:
             availability_by_device[key] = event.data["value"]
         try:
             usage_model.observe(event.data)
         except ValueError as exc:
             _LOGGER.warning("Ignored invalid usage-model event: %s", exc)
+        if event.data.get("event_type") == "lid_opened":
+            for item in usage_model.dump_state()["devices"]:
+                if (item["source"], item["device_id"]) == key:
+                    for opening in set(item["opens"]) - prior_groups:
+                        archive_service_record("usage_group", {
+                            "source": source, "device_id": device_id, "group_started_at": opening,
+                        }, opening)
         try:
             updates = sessions.ingest(event.data)
         except ValueError as exc:
@@ -745,7 +936,26 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     @callback
     def on_hourly_tick(now) -> None:
+        nonlocal last_observation_prune_day
         as_of = now.isoformat()
+        if away or controls.is_paused(as_of):
+            auxiliary.clear()
+        else:
+            for decision in auxiliary.due(as_of):
+                key = (decision["source"], decision["device_id"])
+                if availability_by_device.get(key) != "online":
+                    continue
+                latest_open = usage_model.profile(*key, as_of)["last_lid_open_at"]
+                if latest_open and datetime.fromisoformat(latest_open) > datetime.fromisoformat(decision["deferred_from"]):
+                    continue
+                show("auxiliary_deferral", "expired", {"device_id": decision["device_id"]})
+                for update in workflow.ingest(cooker_only(decision)):
+                    publish_workflow(update)
+                    if update.action == "notify_requested":
+                        hass.async_create_task(create_notification(update))
+        if observations is not None and last_observation_prune_day != now.date():
+            last_observation_prune_day = now.date()
+            hass.async_create_task(prune_observations(now))
         for source, device_id in tuple(latest_features):
             if source == "simulator":
                 state = hass.states.get("input_select.bapsim_availability")
@@ -765,7 +975,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if pending_mobile and notification_target:
             hass.async_create_task(retry_mobile_notifications())
 
-    unsubscribe_tick = async_track_time_interval(hass, on_hourly_tick, timedelta(hours=1))
+    unsubscribe_tick = async_track_time_interval(hass, on_hourly_tick, timedelta(seconds=60))
 
     async def register_matter_contact(call) -> None:
         device_id = call.data["device_id"]
@@ -897,7 +1107,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         device_id = call.data.get("device_id")
         if source is None and device_id is None:
             active = [
-                item for item in workflow.dump_state()
+                item for item in (*workflow.dump_state(), *trend_workflow.dump_state())
                 if item["status"] in {"check_required", "notified", "checking"}
             ]
             if len(active) != 1:
@@ -906,7 +1116,18 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             source, device_id = active[0]["source"], active[0]["device_id"]
         elif not isinstance(source, str) or not isinstance(device_id, str):
             raise ValueError("source and device_id must be supplied together")
-        update = workflow.caregiver_response(source, device_id, response, datetime.now(timezone.utc).isoformat())
+        incident_id = call.data.get("incident_id")
+        if incident_id is None and sum(
+            item["status"] in {"check_required", "notified", "checking"}
+            and item["source"] == source and item["device_id"] == device_id
+            for item in (*workflow.dump_state(), *trend_workflow.dump_state())
+        ) > 1:
+            raise ValueError("incident_id is required when both assessments are active")
+        manager = trend_workflow if incident_id and any(
+            item["incident_id"] == incident_id for item in trend_workflow.dump_state()
+        ) else workflow
+        update = manager.caregiver_response(source, device_id, response,
+                                            datetime.now(timezone.utc).isoformat(), incident_id)
         if update is not None:
             publish_workflow(update)
 
@@ -925,12 +1146,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.services.async_register(DOMAIN, "set_notification_target", set_notification_target)
 
     async def set_away(call) -> None:
-        nonlocal away
+        nonlocal away, model_away
         value = call.data.get("away")
         if not isinstance(value, bool):
             raise ValueError("away must be true or false")
         away = value
-        usage_model.set_away(away, datetime.now(timezone.utc).isoformat())
+        model_away = away or controls.is_paused(datetime.now(timezone.utc).isoformat())
+        usage_model.set_away(model_away, datetime.now(timezone.utc).isoformat())
         show("away", "away" if away else "home")
         show("detection_status", "away" if away else "monitoring", {
             "model": "personal_usage_v1", "as_of": datetime.now(timezone.utc).isoformat(),
@@ -947,6 +1169,60 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     hass.services.async_register(DOMAIN, "set_away", set_away)
 
+    async def set_notification_control(call) -> None:
+        nonlocal model_away
+        command = dict(call.data)
+        if command.get("household_id", output.household_id) != output.household_id:
+            raise ValueError("household_id does not match this Bapsim instance")
+        if command.get("action") == "acknowledge":
+            incident_id = command.get("assessment_id", command.get("incident_id"))
+            active = [item for item in (*workflow.dump_state(), *trend_workflow.dump_state())
+                      if item.get("incident_id") == incident_id and item["status"] in
+                      {"check_required", "notified", "checking"}]
+            if len(active) != 1:
+                raise ValueError("acknowledge requires one active incident_id")
+        now = datetime.now(timezone.utc).isoformat()
+        result = controls.apply(command, now)
+        show("notification_controls", controls.revision, controls.dump_state())
+        show("notification_control_result", result["status"], result)
+        if hass.services.has_service("mqtt", "publish"):
+            hass.async_create_task(send_controls())
+        if command.get("action") == "acknowledge":
+            incident_id = command.get("assessment_id", command.get("incident_id"))
+            for manager in (workflow, trend_workflow):
+                for item in manager.dump_state():
+                    if item.get("incident_id") == incident_id:
+                        update = manager.caregiver_response(item["source"], item["device_id"],
+                                                            "checking", now, incident_id)
+                        if update is not None:
+                            publish_workflow(update)
+        if controls.is_paused(now):
+            if not model_away:
+                usage_model.set_away(True, now)
+                model_away = True
+            for manager in (workflow, trend_workflow):
+                for item in manager.dump_state():
+                    for update in manager.ingest({
+                        "source": item["source"], "device_id": item["device_id"],
+                        "as_of": now, "routine_status": "away", "reason_codes": [],
+                    }):
+                        publish_workflow(update)
+        save_later()
+
+    hass.services.async_register(DOMAIN, "set_notification_control", set_notification_control)
+
+    async def record_simulated_activity(call) -> None:
+        device_id = call.data.get("device_id")
+        signal = call.data.get("signal")
+        if not isinstance(device_id, str) or not device_id or not isinstance(signal, str):
+            raise ValueError("device_id and signal are required")
+        at = call.data.get("at") or datetime.now(timezone.utc).isoformat()
+        auxiliary.record(device_id, at, signal)
+        show("auxiliary_activity", signal, {"device_id": device_id, "as_of": at, "mode": "simulation"})
+        save_later()
+
+    hass.services.async_register(DOMAIN, "record_simulated_activity", record_simulated_activity)
+
     @callback
     def on_mobile_action(event: Event) -> None:
         action = event.data.get("action", "")
@@ -956,7 +1232,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if len(parts) != 5 or parts[0] != "BAPSIM" or parts[1] not in {"checking", "resolved"}:
             return
         _, response, source, device_id, incident_id = parts
-        update = workflow.caregiver_response(source, device_id, response, datetime.now(timezone.utc).isoformat(), incident_id)
+        manager = trend_workflow if any(
+            item["incident_id"] == incident_id for item in trend_workflow.dump_state()
+        ) else workflow
+        update = manager.caregiver_response(source, device_id, response,
+                                            datetime.now(timezone.utc).isoformat(), incident_id)
         if update is not None:
             publish_workflow(update)
 
@@ -982,6 +1262,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         hass.services.async_remove(DOMAIN, "unregister_matter_board_signal")
         hass.services.async_remove(DOMAIN, "set_notification_target")
         hass.services.async_remove(DOMAIN, "set_away")
+        hass.services.async_remove(DOMAIN, "set_notification_control")
+        hass.services.async_remove(DOMAIN, "record_simulated_activity")
         if cancel_timer is not None:
             cancel_timer()
             cancel_timer = None
@@ -995,6 +1277,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         "detector": detector,
         "usage_model": usage_model,
         "workflow": workflow,
+        "trend_workflow": trend_workflow,
+        "notification_controls": controls,
+        "auxiliary": auxiliary,
         "matter_contacts": matter_contacts,
         "matter_cooking_states": matter_cooking_states,
         "matter_contexts": matter_contexts,

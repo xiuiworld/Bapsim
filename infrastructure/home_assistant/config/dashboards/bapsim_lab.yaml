@@ -73,9 +73,15 @@ views:
         entities:
           - sensor.bapsim_detection_status
           - sensor.bapsim_workflow_status
+          - sensor.bapsim_decline_status
+          - sensor.bapsim_decline_detection
           - sensor.bapsim_baseline
           - sensor.bapsim_features
           - sensor.bapsim_notification_delivery
+          - sensor.bapsim_notification_controls
+          - sensor.bapsim_output_state
+          - sensor.bapsim_mqtt_output
+          - sensor.bapsim_auxiliary_deferral
           - sensor.bapsim_matter_input
           - sensor.bapsim_away
           - input_select.bapsim_availability
@@ -121,4 +127,4 @@ views:
         entities:
           - sensor.bapsim_detection_status
           - sensor.bapsim_workflow_status
-
+          - sensor.bapsim_decline_status
