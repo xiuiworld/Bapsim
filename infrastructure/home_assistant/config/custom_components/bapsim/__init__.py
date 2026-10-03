@@ -141,6 +141,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 ((item["source"], item["device_id"]), item["availability"])
                 for item in stored.get("availability", [])
             )
+            forwarded_devices.update(
+                (item["source"], item["device_id"])
+                for item in stored.get("forwarded_devices", [])
+                if isinstance(item, dict) and item.get("source") in {"matter", "simulator"}
+                and isinstance(item.get("device_id"), str) and item["device_id"]
+            )
             latest_features.update(
                 ((item["source"], item["device_id"]), item)
                 for item in stored.get("latest_features", [])
@@ -210,6 +216,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             "availability": [
                 {"source": source, "device_id": device_id, "availability": value}
                 for (source, device_id), value in availability_by_device.items()
+            ],
+            "forwarded_devices": [
+                {"source": source, "device_id": device_id}
+                for source, device_id in sorted(forwarded_devices)
             ],
             "latest_features": list(latest_features.values()),
             "board_history": board_history[-BOARD_HISTORY_LIMIT:],
@@ -649,7 +659,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if observations is not None:
             hass.async_create_task(write_observation(dict(event.data)))
         if external_service:
-            forwarded_devices.add((source, device_id))
+            if (source, device_id) not in forwarded_devices:
+                forwarded_devices.add((source, device_id))
+                save_later()
             if hass.services.has_service("mqtt", "publish"):
                 hass.async_create_task(hass.services.async_call("mqtt", "publish", {
                     "topic": output.topic(source, "observations"),
