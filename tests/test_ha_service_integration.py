@@ -139,6 +139,23 @@ def ha_modules(seed):
 
 
 class HAServiceIntegrationTests(TestCase):
+    def test_stop_removes_every_registered_bapsim_service(self):
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules({})):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_service_cleanup", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                self.assertTrue(await module.async_setup(hass, {}))
+                registered = {name for domain, name in hass.services.handlers if domain == "bapsim"}
+                self.assertIn("register_matter_contact", registered)
+                self.assertIn("set_notification_control", registered)
+                self.assertIn("record_simulated_activity", registered)
+                hass.bus.async_fire(module.EVENT_HOMEASSISTANT_STOP, {})
+                self.assertFalse(any(domain == "bapsim" for domain, _ in hass.services.handlers))
+
+        asyncio.run(scenario())
+
     def test_internal_ha_and_worker_keep_same_gap_state_for_same_observations(self):
         async def scenario():
             with TemporaryDirectory() as directory, patch.dict(sys.modules, ha_modules({})):

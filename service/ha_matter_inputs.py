@@ -329,7 +329,7 @@ def bind_matter_inputs(
 
 
 def register_matter_services(
-        hass, domain, raw_event, context_raw_event, matter_contacts, matter_cooking_states,
+        hass, register_service, raw_event, context_raw_event, matter_contacts, matter_cooking_states,
         matter_contexts, matter_board_signals, is_matter_entity, publish_matter_offline,
         publish_cooking_input_offline, forward_matter_state, forward_context_state,
         forward_board_state, show_matter_readiness, show_context_readiness,
@@ -356,7 +356,7 @@ def register_matter_services(
         forward_matter_state(entity_id, hass.states.get(entity_id), snapshot=True)
         save_later()
 
-    hass.services.async_register(domain, "register_matter_contact", register_matter_contact)
+    register_service("register_matter_contact", register_matter_contact)
 
     async def register_matter_cooking_state(call) -> None:
         device_id = call.data["device_id"]
@@ -382,7 +382,7 @@ def register_matter_services(
         forward_matter_state(entity_id, hass.states.get(entity_id), snapshot=True)
         save_later()
 
-    hass.services.async_register(domain, "register_matter_cooking_state", register_matter_cooking_state)
+    register_service("register_matter_cooking_state", register_matter_cooking_state)
 
     async def unregister_matter_input(call) -> None:
         device_id = call.data["device_id"]
@@ -406,7 +406,7 @@ def register_matter_services(
         show_matter_readiness()
         save_later()
 
-    hass.services.async_register(domain, "unregister_matter_input", unregister_matter_input)
+    register_service("unregister_matter_input", unregister_matter_input)
 
     async def register_matter_context(call) -> None:
         entity_id = call.data["entity_id"]
@@ -419,7 +419,7 @@ def register_matter_services(
         forward_context_state(entity_id, hass.states.get(entity_id))
         save_later()
 
-    hass.services.async_register(domain, "register_matter_context", register_matter_context)
+    register_service("register_matter_context", register_matter_context)
 
     async def unregister_matter_context(call) -> None:
         entity_id = call.data["entity_id"]
@@ -432,7 +432,7 @@ def register_matter_services(
         show_context_readiness()
         save_later()
 
-    hass.services.async_register(domain, "unregister_matter_context", unregister_matter_context)
+    register_service("unregister_matter_context", unregister_matter_context)
 
     async def register_matter_board_signal(call) -> None:
         entity_id = call.data["entity_id"]
@@ -447,7 +447,7 @@ def register_matter_services(
         forward_board_state(entity_id, hass.states.get(entity_id))
         save_later()
 
-    hass.services.async_register(domain, "register_matter_board_signal", register_matter_board_signal)
+    register_service("register_matter_board_signal", register_matter_board_signal)
 
     async def unregister_matter_board_signal(call) -> None:
         entity_id = call.data["entity_id"]
@@ -458,4 +458,4 @@ def register_matter_services(
         show_board_readiness()
         save_later()
 
-    hass.services.async_register(domain, "unregister_matter_board_signal", unregister_matter_board_signal)
+    register_service("unregister_matter_board_signal", unregister_matter_board_signal)
