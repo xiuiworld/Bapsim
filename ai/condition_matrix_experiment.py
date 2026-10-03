@@ -90,6 +90,7 @@ def household(seed: int, rhythm: str, condition: str,
                                            resumption_alerts=False)
     last_open: datetime | None = None
     rows: list[dict[str, object]] = []
+    carry_actions: list[tuple[datetime, str]] = []
     for day in range(HISTORY_DAYS + FUTURE_DAYS):
         start = _at(day)
         away = day == HISTORY_DAYS + 4
@@ -108,7 +109,7 @@ def household(seed: int, rhythm: str, condition: str,
                  1.0 if condition == "skip_and_late" else 0) + float(variation.get("shift_hours", 0))
         model.set_away(away, start.isoformat())
         model.observe(_event(device, "device_offline" if offline else "device_online", start))
-        actions: list[tuple[datetime, str]] = []
+        actions: list[tuple[datetime, str]] = carry_actions
         if scheduled and not (away or offline or interruption or natural_skip):
             for hour in spec["hours"]:
                 jitter = max(-90, min(90, rng.gauss(0, float(variation.get("jitter_minutes", 35)))))
@@ -122,12 +123,17 @@ def household(seed: int, rhythm: str, condition: str,
         grace = setting["late_grace_hours"]
         actions.extend((datetime.fromisoformat(window["expected_time"]) +
                         timedelta(hours=2.5 + grace), "evaluate") for window in windows)
+        carry_actions = [item for item in actions if item[0] >= _at(day + 1)]
+        actions = [item for item in actions if item[0] < _at(day + 1)]
         flagged = False
         requested = False
         request_times: list[str] = []
         for moment, action in sorted(actions):
             if action in {"open", "repeat"}:
                 model.observe(_event(device, "lid_opened", moment))
+                notifications.ingest({"source": "simulator", "device_id": device,
+                                      "as_of": moment.isoformat(), "routine_status": "normal",
+                                      "reason_codes": ["USAGE_RESUMED"]})
                 last_open = moment
             else:
                 decisions = model.evaluate("simulator", device, moment.isoformat(),

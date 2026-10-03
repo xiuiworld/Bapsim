@@ -774,13 +774,13 @@
   "holdout_current": {
     "households": 16,
     "eligible_days": 304,
-    "tp": 12,
-    "fp": 14,
-    "fn": 52,
-    "tn": 226,
-    "recall": 0.1875,
-    "false_positive_rate": 0.0583,
-    "nuisance_per_home_21d": 0.875,
+    "tp": 13,
+    "fp": 12,
+    "fn": 51,
+    "tn": 228,
+    "recall": 0.2031,
+    "false_positive_rate": 0.05,
+    "nuisance_per_home_21d": 0.75,
     "excluded_days": 32,
     "alerted_away_or_offline": 0
   },
@@ -799,10 +799,10 @@
   },
   "holdout_episodes_current": {
     "episodes": 32,
-    "caught": 12,
-    "missed": 20,
-    "recall": 0.375,
-    "median_delay_hours": 24.48,
+    "caught": 13,
+    "missed": 19,
+    "recall": 0.4062,
+    "median_delay_hours": 24.32,
     "p90_delay_hours": 25.73,
     "missed_examples": [
       {
@@ -822,8 +822,8 @@
         "episode_id": 2
       },
       {
-        "household": "middle_evening_gradual_drift_1613_combined_unseen",
-        "episode_id": 2
+        "household": "older_alternate_gradual_drift_1613_combined_unseen",
+        "episode_id": 1
       }
     ]
   },
@@ -874,13 +874,13 @@
     "middle_evening": {
       "households": 4,
       "eligible_days": 76,
-      "tp": 3,
-      "fp": 4,
-      "fn": 13,
-      "tn": 56,
-      "recall": 0.1875,
-      "false_positive_rate": 0.0667,
-      "nuisance_per_home_21d": 1.0,
+      "tp": 4,
+      "fp": 3,
+      "fn": 12,
+      "tn": 57,
+      "recall": 0.25,
+      "false_positive_rate": 0.05,
+      "nuisance_per_home_21d": 0.75,
       "excluded_days": 8,
       "alerted_away_or_offline": 0
     },
@@ -888,12 +888,12 @@
       "households": 4,
       "eligible_days": 76,
       "tp": 2,
-      "fp": 6,
+      "fp": 5,
       "fn": 14,
-      "tn": 54,
+      "tn": 55,
       "recall": 0.125,
-      "false_positive_rate": 0.1,
-      "nuisance_per_home_21d": 1.5,
+      "false_positive_rate": 0.0833,
+      "nuisance_per_home_21d": 1.25,
       "excluded_days": 8,
       "alerted_away_or_offline": 0
     },
