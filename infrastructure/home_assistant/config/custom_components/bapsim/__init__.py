@@ -1454,6 +1454,36 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     hass.services.async_register(DOMAIN, "set_away", set_away)
 
+    async def set_initial_routine(call) -> None:
+        device_id = call.data.get("device_id")
+        windows = call.data.get("windows")
+        if external_service and not hass.services.has_service("mqtt", "publish"):
+            raise ValueError("MQTT broker is required for external analysis service")
+        previous = usage_model.initial_routine("matter", device_id) if isinstance(device_id, str) else []
+        usage_model.configure_initial_routine("matter", device_id, windows)
+        if external_service:
+            routines = [{"source": "matter", "device_id": current_device,
+                         "windows": usage_model.initial_routine("matter", current_device)}
+                        for source, current_device in usage_model.device_keys
+                        if source == "matter" and usage_model.initial_routine(source, current_device)]
+            try:
+                await hass.services.async_call("mqtt", "publish", {
+                    "topic": f"bapsim/v1/{output.household_id}/routine_config",
+                    "payload": json.dumps({"schema_version": "0.1.0",
+                                           "household_id": output.household_id,
+                                           "routines": routines}, ensure_ascii=False),
+                    "qos": 1, "retain": True,
+                }, blocking=True)
+            except Exception:
+                usage_model.configure_initial_routine("matter", device_id, previous)
+                raise
+        show("initial_routine", "configured" if windows else "cleared", {
+            "device_id": device_id, "windows": usage_model.initial_routine("matter", device_id),
+        })
+        save_later()
+
+    hass.services.async_register(DOMAIN, "set_initial_routine", set_initial_routine)
+
     async def set_notification_control(call) -> None:
         nonlocal model_away
         command = dict(call.data)

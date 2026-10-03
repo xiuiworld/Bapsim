@@ -22,6 +22,27 @@ def event(day: int, hour: int, kind: str) -> dict[str, str]:
 
 
 class PolicyTests(TestCase):
+    def test_retained_initial_routine_is_validated_replaced_and_persisted(self):
+        with TemporaryDirectory() as directory:
+            state_file = Path(directory) / "state.json"
+            service = AnalysisService("home", state_file, lambda *args: None, lambda update: True)
+            payload = {"schema_version": "0.1.0", "household_id": "home", "routines": [
+                {"source": "matter", "device_id": "cooker_01", "windows": [
+                    {"time": "08:00", "weekdays": [0, 1, 2, 3, 4]}]}]}
+            service.process_routine_config(payload)
+            restored = AnalysisService("home", state_file, lambda *args: None, lambda update: True)
+            self.assertEqual(restored.model.initial_routine("matter", "cooker_01"),
+                             [{"time": "08:00", "weekdays": [0, 1, 2, 3, 4]}])
+            with self.assertRaises(ValueError):
+                restored.process_routine_config({**payload, "household_id": "other"})
+            with self.assertRaises(ValueError):
+                restored.process_routine_config({**payload, "routines": [
+                    {"source": "matter", "device_id": "cooker_01", "windows": [
+                        {"time": "25:00"}]}]})
+            self.assertEqual(len(restored.model.initial_routine("matter", "cooker_01")), 1)
+            restored.process_routine_config({**payload, "routines": []})
+            self.assertEqual(restored.model.initial_routine("matter", "cooker_01"), [])
+
     def test_quiet_hours_cross_midnight_and_changeable(self):
         policy = QuietHours()
         self.assertTrue(policy.is_quiet(at(0, 23)))

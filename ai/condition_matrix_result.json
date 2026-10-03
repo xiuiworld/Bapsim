@@ -451,6 +451,9 @@
       "label": 0,
       "candidate": 0,
       "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
       "fixed_24h": 0,
       "reason": "routine"
     },
@@ -464,6 +467,9 @@
       "label": 0,
       "candidate": 0,
       "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
       "fixed_24h": 0,
       "reason": "routine"
     },
@@ -477,6 +483,9 @@
       "label": 0,
       "candidate": 0,
       "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
       "fixed_24h": 0,
       "reason": "routine"
     },
@@ -490,6 +499,9 @@
       "label": 0,
       "candidate": 0,
       "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
       "fixed_24h": 0,
       "reason": "routine"
     },
@@ -503,6 +515,9 @@
       "label": null,
       "candidate": 0,
       "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
       "fixed_24h": 0,
       "reason": "away"
     },
@@ -516,6 +531,9 @@
       "label": 0,
       "candidate": 0,
       "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
       "fixed_24h": 0,
       "reason": "routine"
     },
@@ -529,6 +547,9 @@
       "label": 0,
       "candidate": 0,
       "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
       "fixed_24h": 0,
       "reason": "routine"
     },
@@ -542,6 +563,9 @@
       "label": 1,
       "candidate": 1,
       "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": 1,
+      "missed_use_at": "2026-03-02T09:00:00+09:00",
       "fixed_24h": 1,
       "reason": "interruption"
     }

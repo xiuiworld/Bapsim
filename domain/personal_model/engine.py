@@ -74,7 +74,47 @@ class PersonalUsageModel:
             "opens": [], "raw_opens": [], "coverage": [], "online_since": None,
             "last_seen": None, "evaluations": {}, "trend_evaluations": {},
             "decline_streak": 0, "recovery_streak": 0, "trend_active": False,
+            "initial_windows": [],
         })
+
+    @staticmethod
+    def parse_initial_windows(windows: object) -> list[dict[str, object]]:
+        """Validate optional KST home-use times and expected weekdays (Mon=0)."""
+        if not isinstance(windows, list) or len(windows) > len(PRIORS):
+            raise ValueError("windows must be a list of at most four entries")
+        result: list[dict[str, object]] = []
+        available = set(range(len(PRIORS)))
+        for item in windows:
+            if not isinstance(item, Mapping) or not isinstance(item.get("time"), str):
+                raise ValueError("each window needs HH:MM time")
+            value = item["time"]
+            try:
+                parsed = time.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError("window time must be HH:MM") from exc
+            if len(value) != 5 or parsed.second or parsed.microsecond:
+                raise ValueError("window time must be HH:MM")
+            minute = parsed.hour * 60 + parsed.minute
+            weekdays = item.get("weekdays", list(range(7)))
+            if (not isinstance(weekdays, list) or not weekdays or
+                    any(type(day) is not int or day not in range(7) for day in weekdays) or
+                    len(set(weekdays)) != len(weekdays)):
+                raise ValueError("weekdays must be unique integers 0..6")
+            slot = min(available, key=lambda index: _distance(minute, PRIORS[index][1]))
+            available.remove(slot)
+            result.append({"slot": slot, "time": value, "minute": minute,
+                           "weekdays": sorted(weekdays)})
+        return sorted(result, key=lambda item: item["slot"])
+
+    def configure_initial_routine(self, source: str, device_id: str, windows: object) -> None:
+        if source not in {"matter", "simulator"} or not isinstance(device_id, str) or not device_id:
+            raise ValueError("initial routine needs source and device_id")
+        parsed = self.parse_initial_windows(windows)
+        self._device(source, device_id)["initial_windows"] = parsed
+
+    def initial_routine(self, source: str, device_id: str) -> list[dict[str, object]]:
+        return [{"time": item["time"], "weekdays": list(item["weekdays"])}
+                for item in self._device(source, device_id)["initial_windows"]]
 
     def dump_state(self) -> dict[str, object]:
         devices = []
@@ -91,6 +131,7 @@ class PersonalUsageModel:
                 "decline_streak": state["decline_streak"],
                 "recovery_streak": state["recovery_streak"],
                 "trend_active": state["trend_active"],
+                "initial_windows": self.initial_routine(source, device_id),
             })
         return {
             "devices": devices,
@@ -113,6 +154,7 @@ class PersonalUsageModel:
             state["decline_streak"] = int(item.get("decline_streak", 0))
             state["recovery_streak"] = int(item.get("recovery_streak", 0))
             state["trend_active"] = bool(item.get("trend_active", False))
+            state["initial_windows"] = self.parse_initial_windows(item.get("initial_windows", []))
             # A process restart interrupts observed coverage. Close it at the
             # last actual heartbeat; never span an unobserved downtime.
             start = item.get("online_since")
@@ -204,7 +246,10 @@ class PersonalUsageModel:
             if cutoff <= at.astimezone(KST).date() < before
             and not self._away_at(at)
         ]
-        centers = [float(prior) for _, prior, _ in PRIORS]
+        configured = {int(item["slot"]): float(item["minute"])
+                      for item in state["initial_windows"]}
+        centers = [configured.get(index, float(prior))
+                   for index, (_, prior, _) in enumerate(PRIORS)]
         for _ in range(4):
             groups = [[] for _ in PRIORS]
             for item in samples:
@@ -212,7 +257,8 @@ class PersonalUsageModel:
                 if _distance(item, centers[closest]) <= 6 * 60:
                     groups[closest].append(item)
             centers = [
-                _circular_mean(group, float(PRIORS[index][1])) if group else float(PRIORS[index][1])
+                _circular_mean(group, configured.get(index, float(PRIORS[index][1])))
+                if group else configured.get(index, float(PRIORS[index][1]))
                 for index, group in enumerate(groups)
             ]
         return centers
@@ -254,6 +300,7 @@ class PersonalUsageModel:
     def _profile(self, state: dict[str, object], day: date, slot: int, center: float,
                  now: datetime) -> dict[str, object]:
         count = positive = group_count = group_positive = weekday_count = weekday_positive = 0.0
+        positive_days = 0
         covered_days = 0
         for offset in range(1, self.history_days + 1):
             previous = day - timedelta(days=offset)
@@ -264,6 +311,7 @@ class PersonalUsageModel:
             flagged = state["evaluations"].get(f"{previous.isoformat()}|{slot}") == "check_required"
             weight = 0.15 if flagged else 1.0
             used = self._used(state, start, end)
+            positive_days += int(used)
             count += weight
             positive += weight * used
             if (previous.weekday() >= 5) == (day.weekday() >= 5):
@@ -272,7 +320,9 @@ class PersonalUsageModel:
             if previous.weekday() == day.weekday():
                 weekday_count += weight
                 weekday_positive += weight * used
-        prior_probability = PRIORS[slot][2]
+        configured = next((item for item in state["initial_windows"] if item["slot"] == slot), None)
+        expected_today = configured is not None and day.weekday() in configured["weekdays"]
+        prior_probability = (0.80 if expected_today else 0.05) if configured else PRIORS[slot][2]
         all_probability = (2 * prior_probability + positive) / (2 + count)
         group_probability = (4 * all_probability + group_positive) / (4 + group_count)
         probability = (3 * group_probability + weekday_positive) / (3 + weekday_count)
@@ -283,6 +333,10 @@ class PersonalUsageModel:
             "probability": round(probability, 4),
             "covered_days": covered_days,
             "personal_weight": round(count / (2 + count), 4),
+            "initial_ready": bool(expected_today and 3 <= covered_days < self.min_covered_days
+                                  and positive_days >= 2),
+            "schedule_excluded": bool(configured and not expected_today and weekday_positive < 3),
+            "initial_configured": configured is not None,
         }
 
     def evaluate(self, source: str, device_id: str, as_of: str, *, online: bool,
@@ -307,11 +361,13 @@ class PersonalUsageModel:
                     status, reason, score = "away", "AWAY_DECLARED", None
                 elif not self._covered(state, start, decision_at, now):
                     status, reason, score = "data_unavailable", "COOKER_DATA_UNAVAILABLE", None
-                elif profile["covered_days"] < self.min_covered_days:
+                elif profile["schedule_excluded"]:
+                    status, reason, score = "no_expectation", None, profile["probability"]
+                elif profile["covered_days"] < self.min_covered_days and not profile["initial_ready"]:
                     status, reason, score = "learning", "PATTERN_LEARNING", None
                 elif self._used(state, start, decision_at):
                     status, reason, score = "normal", None, round(1 - profile["probability"], 4)
-                elif profile["probability"] >= self.alert_probability:
+                elif profile["probability"] >= (0.65 if profile["initial_ready"] else self.alert_probability):
                     status, reason, score = "check_required", "EXPECTED_USE_MISSING", profile["probability"]
                 else:
                     status, reason, score = "no_expectation", None, profile["probability"]
@@ -345,7 +401,8 @@ class PersonalUsageModel:
             "windows": windows,
             "lid_open_count_24h": len(recent_opens),
             "last_lid_open_at": previous_opens[-1].isoformat() if previous_opens else None,
-            "ready": any(window["covered_days"] >= self.min_covered_days for window in windows),
+            "ready": any(window["covered_days"] >= self.min_covered_days or window["initial_ready"]
+                         for window in windows),
         }
 
     def evaluate_interval(self, source: str, device_id: str, as_of: str, *, online: bool,
@@ -356,8 +413,10 @@ class PersonalUsageModel:
         if not online or away or not state["opens"]:
             return None
         profile = self.profile(source, device_id, as_of)
-        if any(window["probability"] >= self.alert_probability and
-               window["covered_days"] >= self.min_covered_days for window in profile["windows"]):
+        if any(not window["schedule_excluded"] and
+               window["probability"] >= (0.65 if window["initial_ready"] else self.alert_probability) and
+               (window["covered_days"] >= self.min_covered_days or window["initial_ready"])
+               for window in profile["windows"]):
             return None
         opens = [at for at in state["opens"] if at <= now and not self._away_at(at)]
         intervals = [right - left for left, right in zip(opens, opens[1:])
