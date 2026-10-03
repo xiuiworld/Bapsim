@@ -14,7 +14,7 @@ class NotificationFlowDemoTests(TestCase):
         self.assertEqual(result["acknowledgement"], "accepted")
         self.assertEqual(result["after_resumed_use"], "resolved")
         self.assertEqual(result["after_restart"], "resolved")
-        self.assertEqual(result["notification_requests"], 1)
+        self.assertEqual(result["notification_requests"], 2)
         self.assertEqual(result["simulation_state_topic"],
                          "bapsim/simulation/v1/demo_household/state")
         self.assertFalse(result["real_push_sent"])

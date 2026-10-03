@@ -62,16 +62,28 @@ def main() -> None:
             return False
 
     def notify(update) -> bool:
+        resumed = update.action == "usage_resumed_requested"
+        reminder = update.action == "reminder_requested"
+        issue = update.action == "observation_issue_requested"
+        notification_id = "bapsim_" + str(update.notification_id or update.incident_id)
         if update.source == "simulator":
             return ha_call("persistent_notification", "create", {
-                "title": "밥심 시뮬레이션", "message": "시뮬레이션에서 사용 변화가 관측되었습니다.",
-                "notification_id": "bapsim_" + str(update.incident_id),
+                "title": "밥심 시뮬레이션", "message": (
+                    "밥솥 연결 상태를 확인하기 어렵습니다." if issue else
+                    "밥솥을 다시 사용한 기록이 확인되었습니다." if resumed else
+                    "다음 예상 사용 시점에도 사용 기록이 없습니다." if reminder else
+                    "시뮬레이션에서 사용 변화가 관측되었습니다."),
+                "notification_id": notification_id,
             })
-        title = "밥심 — 최근 사용 감소" if "DECLINING_USAGE" in update.reason_codes else "밥심 — 안부 확인 필요"
-        message = "평소와 다른 밥솥 사용 기록이 있습니다. 안부를 확인해 보세요."
+        title = ("밥심 — 연결 상태 확인" if issue else "밥심 — 사용 재개" if resumed else "밥심 — 최근 사용 감소"
+                 if "DECLINING_USAGE" in update.reason_codes else "밥심 — 안부 확인 필요")
+        message = ("현재 밥솥 사용 기록을 확인하기 어려워요. 연결 상태를 확인해 주세요." if issue else
+                   "밥솥을 다시 사용하신 기록이 확인됐어요." if resumed else
+                   "다음 예상 사용 시점에도 밥솥 사용 기록이 없습니다. 안부를 확인해 보세요."
+                   if reminder else "평소와 다른 밥솥 사용 기록이 있습니다. 안부를 확인해 보세요.")
         if not ha_call("persistent_notification", "create", {
             "title": title, "message": message,
-            "notification_id": "bapsim_" + str(update.incident_id),
+            "notification_id": notification_id,
         }):
             return False
         if mobile and not ha_call("notify", mobile, {"title": title, "message": message}):
