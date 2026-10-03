@@ -152,16 +152,22 @@ class PersonalUsageModelTests(TestCase):
         current = PersonalUsageModel()
         predictive = PersonalUsageModel(interval_strategy="robust_predictive",
                                         interval_quantile=0.90)
-        for model in (current, predictive):
+        guarded = PersonalUsageModel(interval_strategy="guarded_predictive",
+                                     interval_quantile=0.90)
+        for model in (current, predictive, guarded):
             model.observe(event(0, 0, kind="device_online"))
             for day in (0, 2, 4, 6, 8, 10, 12, 16, 18):
                 model.observe(event(day, 17))
         as_of = at(20, 23)
         baseline = current.evaluate_interval("matter", "cooker_01", as_of, online=True)
         candidate = predictive.evaluate_interval("matter", "cooker_01", as_of, online=True)
+        combined = guarded.evaluate_interval("matter", "cooker_01", as_of, online=True)
         self.assertEqual(baseline["evidence"]["p95_hours"], 96.0)
         self.assertLess(candidate["evidence"]["threshold_hours"], 96.0)
         self.assertEqual(candidate["evidence"]["interval_strategy"], "robust_predictive")
+        self.assertEqual(combined["evidence"]["threshold_hours"],
+                         min(baseline["evidence"]["threshold_hours"],
+                             candidate["evidence"]["threshold_hours"]))
         with self.assertRaises(ValueError):
             PersonalUsageModel(interval_strategy="unknown")
 
