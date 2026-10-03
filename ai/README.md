@@ -7,3 +7,7 @@
 - [결과 JSON](personal_usage_result.json)은 **가상 상황의 기능·민감도 실험**입니다. 실제 식사·건강 상태, 실제 생활 오경보율, 휴대폰 푸시 성능을 뜻하지 않습니다. 후보 값은 운영 설정에 자동 적용되지 않습니다.
 
 기존 [가중치 실험 노트북](밥심_가중치_실험_Colab.ipynb)과 `calibration.py`는 이전 `RuleDetector` 비교용 기록입니다. 현재 개인화 모델의 학습 결과로 사용하지 않습니다.
+
+## 실제 기록 평가를 위한 로컬 준비
+
+[평가 기록 규약](../docs/개인화_평가_기록_규약.md)에 가명 관측·별도 확인 라벨의 JSONL 형식과 제외 기준을 적었습니다. `python -m ai.demo_usage_records --output-dir local-data/usage-demo`로 두 가상 가구의 관측·라벨·보고서를 만들고, `python -m ai.usage_record_pipeline --help`로 별도 기록 평가 명령을 확인할 수 있습니다. 이 경로는 로컬 오프라인 평가용이며 Colab 노트북이나 운영 알림 기준을 자동으로 바꾸지 않습니다.
