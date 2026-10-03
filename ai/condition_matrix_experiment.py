@@ -75,6 +75,9 @@ def household(seed: int, rhythm: str, condition: str,
     model = PersonalUsageModel(**{key: setting[key] for key in
                                   ("alert_probability", "late_grace_hours", "interval_quantile")})
     planned = _planned_days(rhythm, condition)
+    episodes = {planned[index + offset]: number
+                for number, index in enumerate((len(planned) // 3, 2 * len(planned) // 3), 1)
+                for offset in (0, 1)}
     # Two separate, consecutive planned-use interruptions let the real
     # two-candidate notification policy be evaluated rather than just the
     # model's first internal warning.
@@ -121,6 +124,7 @@ def household(seed: int, rhythm: str, condition: str,
                         timedelta(hours=2.5 + grace), "evaluate") for window in windows)
         flagged = False
         requested = False
+        request_times: list[str] = []
         for moment, action in sorted(actions):
             if action in {"open", "repeat"}:
                 model.observe(_event(device, "lid_opened", moment))
@@ -133,6 +137,7 @@ def household(seed: int, rhythm: str, condition: str,
                     for update in notifications.ingest(decision):
                         if update.action == "notify_requested":
                             requested = True
+                            request_times.append(update.as_of)
                             notifications.mark_notified("simulator", device, update.as_of)
         end = _at(day, 23 + 59 / 60)
         if not offline:
@@ -144,6 +149,7 @@ def household(seed: int, rhythm: str, condition: str,
             for update in notifications.ingest(interval):
                 if update.action == "notify_requested":
                     requested = True
+                    request_times.append(update.as_of)
                     notifications.mark_notified("simulator", device, update.as_of)
         if day >= HISTORY_DAYS:
             rows.append({"household": device, "rhythm": rhythm, "age_group": spec["age"],
@@ -152,6 +158,11 @@ def household(seed: int, rhythm: str, condition: str,
                          "label": None if away or offline else int(interruption),
                          "candidate": int(flagged),
                          "notification_request": int(requested),
+                         "notification_request_times": request_times,
+                         "episode_id": episodes.get(day) if interruption else None,
+                         "missed_use_at": (_at(day, float(spec["hours"][0])) +
+                                           timedelta(hours=shift)).isoformat()
+                         if interruption else None,
                          "fixed_24h": int(not away and not offline and last_open is not None and
                                           end - last_open > timedelta(hours=24)),
                          "reason": "away" if away else "offline" if offline else

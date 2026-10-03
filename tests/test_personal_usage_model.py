@@ -51,6 +51,44 @@ class PersonalUsageModelTests(TestCase):
         midday = [item for item in decisions if item["evidence"]["slot"] == "slot_2"]
         self.assertEqual(midday[0]["routine_status"], "learning")
 
+    def test_configured_home_time_uses_early_confirmed_history_and_survives_restart(self):
+        model = PersonalUsageModel()
+        model.configure_initial_routine("matter", "cooker_01", [
+            {"time": "07:00", "weekdays": list(range(7))}])
+        model.observe(event(0, 0, kind="device_online"))
+        for day in (0, 1):
+            model.observe(event(day, 7))
+        restored = PersonalUsageModel()
+        model.availability("matter", "cooker_01", True, at(3, 0))
+        restored.load_state(model.dump_state())
+        restored.observe(event(3, 0, kind="device_online"))
+        decisions = restored.evaluate("matter", "cooker_01", at(3, 9, 30), online=True)
+        morning = next(item for item in decisions if item["evidence"]["slot"] == "slot_1")
+        self.assertEqual(morning["routine_status"], "check_required")
+        self.assertTrue(morning["evidence"]["initial_ready"])
+        self.assertEqual(restored.initial_routine("matter", "cooker_01"),
+                         [{"time": "07:00", "weekdays": list(range(7))}])
+
+    def test_regular_outing_weekday_suppresses_configured_home_window(self):
+        model = PersonalUsageModel()
+        model.configure_initial_routine("matter", "cooker_01", [
+            {"time": "13:00", "weekdays": [0, 1, 2, 3]}])
+        model.observe(event(0, 0, kind="device_online"))
+        for day in (0, 1):
+            model.observe(event(day, 13))
+        # START is Tuesday, so day 3 is Friday and is excluded.
+        decisions = model.evaluate("matter", "cooker_01", at(3, 15, 30), online=True)
+        midday = next(item for item in decisions if item["evidence"]["slot"] == "slot_2")
+        self.assertEqual(midday["routine_status"], "no_expectation")
+        self.assertTrue(midday["evidence"]["schedule_excluded"])
+
+    def test_initial_routine_rejects_invalid_weekday_and_time(self):
+        model = PersonalUsageModel()
+        with self.assertRaises(ValueError):
+            model.configure_initial_routine("matter", "cooker_01", [{"time": "8am"}])
+        with self.assertRaises(ValueError):
+            model.configure_initial_routine("matter", "cooker_01", [{"time": "08:00", "weekdays": [7]}])
+
     def test_optional_late_grace_waits_for_a_late_opening(self):
         model = PersonalUsageModel(late_grace_hours=1.0)
         model.observe(event(0, 0, kind="device_online"))

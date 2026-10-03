@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Mapping
 
 from ai.condition_matrix_experiment import SETTINGS, RHYTHMS, household, score
+from ai.episode_evaluation import episode_score
 
 
 TRAIN_SEEDS = (113, 127)
@@ -78,6 +79,8 @@ def experiment() -> dict[str, object]:
         "selected_settings": SETTINGS[selected],
         "holdout_current": score(current_rows, "notification_request"),
         "holdout_selected": score(selected_rows, "notification_request"),
+        "holdout_episodes_current": episode_score(current_rows),
+        "holdout_episodes_selected": episode_score(selected_rows),
         "holdout_by_rhythm_current": {rhythm: score(
             [row for row in current_rows if row["rhythm"] == rhythm], "notification_request")
             for rhythm in RHYTHMS},

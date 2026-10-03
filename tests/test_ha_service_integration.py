@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sys
@@ -281,6 +282,42 @@ class HAServiceIntegrationTests(TestCase):
                 ])
 
         asyncio.run(scenario())
+
+    def test_initial_routine_service_persists_and_forwards_retained_configuration(self):
+        async def scenario(external):
+            environment = {"BAPSIM_EXTERNAL_SERVICE": "1" if external else "0"}
+            with patch.dict(sys.modules, ha_modules({})), patch.dict(os.environ, environment):
+                spec = importlib.util.spec_from_file_location(
+                    f"bapsim_ha_routine_{external}_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                async def publish(call):
+                    pass
+                if external:
+                    hass.services.async_register("mqtt", "publish", publish)
+                self.assertTrue(await module.async_setup(hass, {}))
+                windows = [{"time": "08:00", "weekdays": [0, 1, 2, 3, 4]}]
+                await hass.services.async_call("bapsim", "set_initial_routine",
+                                               {"device_id": "cooker_01", "windows": windows})
+                self.assertEqual(hass.data["bapsim"]["usage_model"].initial_routine(
+                    "matter", "cooker_01"), windows)
+                self.assertEqual(hass.data["bapsim"]["store"].saved["usage_model"]["devices"][0]
+                                 ["initial_windows"], windows)
+                if external:
+                    sent = [data for domain, name, data in hass.services.calls
+                            if (domain, name) == ("mqtt", "publish") and
+                            data["topic"].endswith("/routine_config")]
+                    self.assertEqual(len(sent), 1)
+                    self.assertTrue(sent[0]["retain"])
+                    self.assertEqual(json.loads(sent[0]["payload"])["routines"][0]["windows"], windows)
+                await hass.services.async_call("bapsim", "set_initial_routine",
+                                               {"device_id": "cooker_01", "windows": []})
+                self.assertEqual(hass.data["bapsim"]["usage_model"].initial_routine(
+                    "matter", "cooker_01"), [])
+
+        asyncio.run(scenario(False))
+        asyncio.run(scenario(True))
 
     def test_external_worker_restores_forwarded_device_heartbeat(self):
         async def scenario():

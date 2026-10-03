@@ -107,6 +107,7 @@ def main() -> None:
         for prefix in (f"bapsim/v1/{household}", f"bapsim/simulation/v1/{household}"):
             client.subscribe(f"{prefix}/observations", qos=1)
         client.subscribe(f"bapsim/v1/{household}/control", qos=1)
+        client.subscribe(f"bapsim/v1/{household}/routine_config", qos=1)
         publish(live_topic, "online", True)
         publish(f"homeassistant/sensor/bapsim_{household}/config", json.dumps({
             "name": "밥심 현재 안내", "unique_id": f"bapsim_{household}_summary",
@@ -129,12 +130,14 @@ def main() -> None:
         while True:
             try:
                 topic, raw, retained = inbound.get(timeout=1)
-                if retained:
+                if retained and not topic.endswith("/routine_config"):
                     continue
                 payload = json.loads(raw)
                 if not isinstance(payload, dict):
                     raise ValueError("MQTT payload must be an object")
-                if topic.endswith("/control"):
+                if topic.endswith("/routine_config"):
+                    service.process_routine_config(payload)
+                elif topic.endswith("/control"):
                     service.process_control(payload, utc_now())
                 elif topic.endswith("/observations"):
                     service.process_event(payload, utc_now())

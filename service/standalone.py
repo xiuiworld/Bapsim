@@ -118,6 +118,31 @@ class AnalysisService:
         self.publish(self.output.topic("matter", "control_result"), json.dumps(response), False)
         return response
 
+    def process_routine_config(self, payload: Mapping[str, object]) -> None:
+        if (payload.get("schema_version") != "0.1.0" or
+                payload.get("household_id") != self.output.household_id or
+                not isinstance(payload.get("routines"), list)):
+            raise ValueError("invalid initial routine configuration")
+        incoming = {}
+        for item in payload["routines"]:
+            if not isinstance(item, Mapping):
+                raise ValueError("invalid routine entry")
+            source, device_id = item.get("source"), item.get("device_id")
+            if source != "matter" or not isinstance(device_id, str) or not device_id:
+                raise ValueError("routine entry needs matter device_id")
+            key = source, device_id
+            if key in incoming:
+                raise ValueError("duplicate routine device")
+            self.model.parse_initial_windows(item.get("windows"))
+            incoming[key] = item["windows"]
+        for source, device_id in self.model.device_keys:
+            if (source == "matter" and (source, device_id) not in incoming and
+                    self.model.initial_routine(source, device_id)):
+                self.model.configure_initial_routine(source, device_id, [])
+        for (source, device_id), windows in incoming.items():
+            self.model.configure_initial_routine(source, device_id, windows)
+        self.save()
+
     def process_event(self, event: Mapping[str, object], received_at: str) -> None:
         if event.get("event_type") == "away_state":
             self.away = bool(event.get("away"))

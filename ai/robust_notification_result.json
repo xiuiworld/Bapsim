@@ -797,6 +797,66 @@
     "excluded_days": 32,
     "alerted_away_or_offline": 0
   },
+  "holdout_episodes_current": {
+    "episodes": 32,
+    "caught": 12,
+    "missed": 20,
+    "recall": 0.375,
+    "median_delay_hours": 24.48,
+    "p90_delay_hours": 25.73,
+    "missed_examples": [
+      {
+        "household": "older_twice_gradual_drift_1601_combined_unseen",
+        "episode_id": 1
+      },
+      {
+        "household": "older_twice_gradual_drift_1601_combined_unseen",
+        "episode_id": 2
+      },
+      {
+        "household": "older_alternate_gradual_drift_1601_combined_unseen",
+        "episode_id": 1
+      },
+      {
+        "household": "older_alternate_gradual_drift_1601_combined_unseen",
+        "episode_id": 2
+      },
+      {
+        "household": "middle_evening_gradual_drift_1613_combined_unseen",
+        "episode_id": 2
+      }
+    ]
+  },
+  "holdout_episodes_selected": {
+    "episodes": 32,
+    "caught": 9,
+    "missed": 23,
+    "recall": 0.2812,
+    "median_delay_hours": 11.23,
+    "p90_delay_hours": 38.48,
+    "missed_examples": [
+      {
+        "household": "older_morning_gradual_drift_1601_combined_unseen",
+        "episode_id": 1
+      },
+      {
+        "household": "older_morning_gradual_drift_1601_combined_unseen",
+        "episode_id": 2
+      },
+      {
+        "household": "middle_evening_gradual_drift_1601_combined_unseen",
+        "episode_id": 2
+      },
+      {
+        "household": "older_twice_gradual_drift_1601_combined_unseen",
+        "episode_id": 2
+      },
+      {
+        "household": "older_alternate_gradual_drift_1601_combined_unseen",
+        "episode_id": 1
+      }
+    ]
+  },
   "holdout_by_rhythm_current": {
     "older_morning": {
       "households": 4,
