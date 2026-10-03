@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 import importlib.util
+import os
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -131,6 +132,35 @@ def ha_modules(seed):
 
 
 class HAServiceIntegrationTests(TestCase):
+    def test_external_worker_mode_forwards_observations_and_controls(self):
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules({})), patch.dict(os.environ, {"BAPSIM_EXTERNAL_SERVICE": "1"}):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_external_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                async def publish(call):
+                    pass
+                hass.services.async_register("mqtt", "publish", publish)
+                self.assertTrue(await module.async_setup(hass, {}))
+                hass.bus.async_fire(module.COOKER_EVENT, {
+                    "source": "simulator", "device_id": "cooker_01",
+                    "event_type": "lid_opened", "observed_at": datetime.now(timezone.utc).isoformat(),
+                    "availability": "online",
+                })
+                await hass.services.async_call("bapsim", "set_notification_control", {
+                    "command_id": "pause-test", "action": "pause_lifestyle", "pause_id": "trip-test",
+                    "starts_at": datetime.now(timezone.utc).isoformat(),
+                    "ends_at": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
+                })
+                await asyncio.gather(*hass.tasks)
+                sent = [data for domain, name, data in hass.services.calls
+                        if (domain, name) == ("mqtt", "publish")]
+                self.assertTrue(any(item["topic"].endswith("/observations") and not item["retain"] for item in sent))
+                self.assertTrue(any(item["topic"].endswith("/control") and not item["retain"] for item in sent))
+                self.assertFalse(hass.data["bapsim"]["usage_model"].device_keys)
+
+        asyncio.run(scenario())
     def test_bounded_pause_service_is_persisted_and_can_be_cancelled(self):
         async def scenario():
             with patch.dict(sys.modules, ha_modules({})):

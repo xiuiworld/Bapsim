@@ -23,6 +23,7 @@ recorder:
       - sensor.bapsim_workflow_status
       - sensor.bapsim_decline_status
       - sensor.bapsim_decline_detection
+      - sensor.bapsim_interval_detection
       - sensor.bapsim_baseline
       - sensor.bapsim_features
       - sensor.bapsim_notification_delivery

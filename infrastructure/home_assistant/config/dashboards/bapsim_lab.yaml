@@ -75,6 +75,7 @@ views:
           - sensor.bapsim_workflow_status
           - sensor.bapsim_decline_status
           - sensor.bapsim_decline_detection
+          - sensor.bapsim_interval_detection
           - sensor.bapsim_baseline
           - sensor.bapsim_features
           - sensor.bapsim_notification_delivery
@@ -84,6 +85,7 @@ views:
           - sensor.bapsim_auxiliary_deferral
           - sensor.bapsim_matter_input
           - sensor.bapsim_away
+          - input_datetime.bapsim_control_until
           - input_select.bapsim_availability
       - type: markdown
         content: |
@@ -102,6 +104,25 @@ views:
           - 최근 24시간 취사 세션: **{{ cooks ~ '회' if cooks is not none else '미관측' }}** / 뚜껑 열림: **{{ opens ~ '회' if opens is not none else '미관측' }}**
           - 판정 근거: **{{ (d.get('reason_codes') or []) | join(', ') if d.get('reason_codes') else '없음' }}**
           - 밥솥 판정: **{{ states('sensor.bapsim_detection_status') }}**
+      - type: grid
+        title: 보호자 알림 조작
+        columns: 2
+        square: false
+        cards:
+          - type: button
+            name: 확인했어요 (위 종료 시각까지)
+            icon: mdi:check-decagram
+            tap_action:
+              action: perform-action
+              perform_action: bapsim.dashboard_control
+              data: {action: acknowledge}
+          - type: button
+            name: 알림 쉬기 (위 종료 시각까지)
+            icon: mdi:bell-sleep
+            tap_action:
+              action: perform-action
+              perform_action: bapsim.dashboard_control
+              data: {action: pause_lifestyle}
       - type: grid
         title: 보호자 확인 기록
         columns: 2

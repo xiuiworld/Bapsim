@@ -8,7 +8,7 @@ dominate them. Missing reports and declared absence never become inactivity.
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
-from math import atan2, cos, pi, sin
+from math import atan2, ceil, cos, pi, sin
 from typing import Mapping
 
 
@@ -340,6 +340,40 @@ class PersonalUsageModel:
             "lid_open_count_24h": len(recent_opens),
             "last_lid_open_at": previous_opens[-1].isoformat() if previous_opens else None,
             "ready": any(window["covered_days"] >= self.min_covered_days for window in windows),
+        }
+
+    def evaluate_interval(self, source: str, device_id: str, as_of: str, *, online: bool,
+                          away: bool = False) -> dict[str, object] | None:
+        """Use covered inter-use intervals when no clock-time window is reliable."""
+        now = _time(as_of)
+        state = self._device(source, device_id)
+        if not online or away or not state["opens"]:
+            return None
+        profile = self.profile(source, device_id, as_of)
+        if any(window["probability"] >= self.alert_probability and
+               window["covered_days"] >= self.min_covered_days for window in profile["windows"]):
+            return None
+        opens = [at for at in state["opens"] if at <= now and not self._away_at(at)]
+        intervals = [right - left for left, right in zip(opens, opens[1:])
+                     if self._covered(state, left, right, now) and not self._away_window(left, right)]
+        if len(intervals) < self.min_covered_days:
+            return None
+        intervals.sort()
+        limit = intervals[ceil(0.95 * len(intervals)) - 1]
+        last = opens[-1]
+        if not self._covered(state, last, now, now) or self._away_window(last, now):
+            return None
+        elapsed = now - last
+        status = "normal" if elapsed <= limit else "watch" if elapsed <= limit + timedelta(hours=2) else "check_required"
+        return {
+            "source": source, "device_id": device_id, "as_of": as_of,
+            "routine_status": status,
+            "severity": "warning" if status == "check_required" else "none",
+            "reason_codes": ["UNUSUAL_USE_GAP"] if status == "check_required" else [],
+            "score": None,
+            "evidence": {"model": "personal_interval_v1", "sample_count": len(intervals),
+                         "last_use_at": last.isoformat(), "p95_hours": round(limit.total_seconds() / 3600, 2),
+                         "elapsed_hours": round(elapsed.total_seconds() / 3600, 2)},
         }
 
     def evaluate_trend(self, source: str, device_id: str, as_of: str, *, online: bool,

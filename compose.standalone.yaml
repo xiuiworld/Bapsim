@@ -1,0 +1,33 @@
+services:
+  homeassistant:
+    environment:
+      BAPSIM_EXTERNAL_SERVICE: "1"
+    depends_on:
+      - mosquitto
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./infrastructure/mosquitto/local.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./local-data/mosquitto:/mosquitto/data
+  bapsim-worker:
+    build:
+      context: .
+      dockerfile: service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+      - homeassistant
+    environment:
+      BAPSIM_HOUSEHOLD_ID: ${BAPSIM_HOUSEHOLD_ID:-household_01}
+      BAPSIM_MQTT_HOST: mosquitto
+      BAPSIM_HA_URL: http://homeassistant:8123
+      BAPSIM_HA_TOKEN: ${BAPSIM_HA_TOKEN:-}
+      BAPSIM_NOTIFY_SERVICE: ${BAPSIM_NOTIFY_SERVICE:-}
+      BAPSIM_QUIET_START: ${BAPSIM_QUIET_START:-22:00}
+      BAPSIM_QUIET_END: ${BAPSIM_QUIET_END:-08:00}
+      BAPSIM_STATE_FILE: /data/state.json
+    volumes:
+      - ./local-data/worker:/data
