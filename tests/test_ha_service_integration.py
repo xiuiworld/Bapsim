@@ -15,6 +15,7 @@ from unittest.mock import patch
 from domain.baseline import PersonalBaselineEngine
 from domain.events.normalizer import CookerEventNormalizer
 from domain.personal_model import PersonalUsageModel
+from service.standalone import AnalysisService
 from workflow import DeliveryLedger
 
 
@@ -138,6 +139,70 @@ def ha_modules(seed):
 
 
 class HAServiceIntegrationTests(TestCase):
+    def test_internal_ha_and_worker_keep_same_gap_state_for_same_observations(self):
+        async def scenario():
+            with TemporaryDirectory() as directory, patch.dict(sys.modules, ha_modules({})):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_parity_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                self.assertTrue(await module.async_setup(hass, {}))
+                worker = AnalysisService("household_01", Path(directory) / "state.json",
+                                         lambda *args: None, lambda update: True)
+                start = datetime(2026, 9, 1, tzinfo=timezone(timedelta(hours=9)))
+
+                def feed(day, hour, minute, kind):
+                    observed_at = (start + timedelta(days=day, hours=hour, minutes=minute)).isoformat()
+                    payload = {"source": "simulator", "device_id": "cooker_01",
+                               "event_type": kind, "observed_at": observed_at,
+                               "availability": "online", "value": "online" if kind == "device_online" else "open"}
+                    hass.bus.async_fire(module.COOKER_EVENT, payload)
+                    worker.process_event(payload, observed_at)
+
+                feed(0, 0, 0, "device_online")
+                for day in range(7):
+                    feed(day, 15, 30, "lid_opened")
+                feed(7, 18, 0, "device_online")
+                ha_state = hass.data["bapsim"]["workflow"].current_state("simulator", "cooker_01")
+                worker_state = worker.gap.current_state("simulator", "cooker_01")
+                self.assertGreater(ha_state["candidate_count"], 0)
+                self.assertEqual(ha_state["status"], worker_state["status"])
+                self.assertEqual(ha_state["candidate_count"], worker_state["candidate_count"])
+                self.assertEqual(ha_state["reason_codes"], worker_state["reason_codes"])
+                if hass.tasks:
+                    await asyncio.gather(*hass.tasks)
+
+        asyncio.run(scenario())
+
+    def test_external_worker_receives_simulated_activity_on_separate_topic(self):
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules({})):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_activity_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+
+                async def accept_mqtt(call):
+                    return None
+
+                hass.services.async_register("mqtt", "publish", accept_mqtt)
+                self.assertTrue(await module.async_setup(hass, {"bapsim": {
+                    "external_service": True, "household_id": "home"}}))
+                await hass.services.async_call("bapsim", "record_simulated_activity", {
+                    "device_id": "cooker_01", "signal": "door_opened",
+                    "at": datetime.now(timezone.utc).isoformat(),
+                })
+                published = [call for call in hass.services.calls if call[:2] == ("mqtt", "publish")]
+                self.assertEqual(len(published), 1)
+                self.assertEqual(published[0][2]["topic"],
+                                 "bapsim/simulation/v1/home/auxiliary_activity")
+                payload = json.loads(published[0][2]["payload"])
+                self.assertEqual(payload["source"], "simulator")
+                self.assertEqual(payload["signal"], "door_opened")
+                self.assertFalse(published[0][2]["retain"])
+
+        asyncio.run(scenario())
+
     def test_failed_mobile_check_in_does_not_create_resumption_alert(self):
         now = datetime.now(timezone.utc)
         local = now.astimezone(timezone(timedelta(hours=9)))

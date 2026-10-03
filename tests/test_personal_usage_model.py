@@ -229,6 +229,8 @@ class PersonalUsageModelTests(TestCase):
         model.observe(event(0, 12))
         model.observe(event(0, 12, 5))
         self.assertEqual(len(model.dump_state()["devices"][0]["opens"]), 1)
+        self.assertEqual(model.grouped_open_times("matter", "cooker_01"),
+                         (datetime.fromisoformat(at(0, 12)).astimezone(timezone.utc).isoformat(),))
 
     def test_fixed_sixty_minute_group_does_not_extend_with_later_openings(self):
         model = PersonalUsageModel()

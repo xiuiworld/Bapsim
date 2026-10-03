@@ -18,6 +18,15 @@ def detection(minute: int, status: str) -> dict[str, object]:
 
 
 class DetectionStateManagerTests(unittest.TestCase):
+    def test_current_state_is_an_independent_snapshot(self) -> None:
+        manager = DetectionStateManager(min_consecutive=1)
+        self.assertIsNone(manager.current_state("simulator", "cooker_01"))
+        manager.ingest(detection(0, "check_required"))
+        snapshot = manager.current_state("simulator", "cooker_01")
+        self.assertEqual(snapshot["status"], "check_required")
+        snapshot["status"] = "normal"
+        self.assertEqual(manager.current_state("simulator", "cooker_01")["status"], "check_required")
+
     def test_reminder_waits_for_new_expected_window_and_resumption_requires_sent_alert(self) -> None:
         manager = DetectionStateManager(min_consecutive=1)
         first = {**detection(0, "check_required"), "evidence": {"window_end": detection(0, "normal")["as_of"]}}

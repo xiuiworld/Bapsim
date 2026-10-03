@@ -122,6 +122,10 @@ class PersonalUsageModel:
         return [{"time": item["time"], "weekdays": list(item["weekdays"])}
                 for item in self._device(source, device_id)["initial_windows"]]
 
+    def grouped_open_times(self, source: str, device_id: str) -> tuple[str, ...]:
+        """Expose observed usage groups without requiring a persisted snapshot."""
+        return tuple(at.isoformat() for at in self._device(source, device_id)["opens"])
+
     def dump_state(self) -> dict[str, object]:
         devices = []
         for (source, device_id), state in self._devices.items():

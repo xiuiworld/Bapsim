@@ -30,6 +30,7 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.inputs.matter import MatterBoardSignalAdapter, MatterContactAdapter, MatterContextAdapter, MatterCookingStateAdapter
     from .runtime.inputs.base.journal import RawEventJournal
     from .runtime.service import ObservationJournal, StatusOutput, AuxiliaryDeferral
+    from .runtime.service.analysis_policy import assess_personal_use
 else:
     from domain.events.normalizer import CookerEventNormalizer, NormalizedCookerEvent
     from domain.baseline import PersonalBaselineEngine
@@ -43,6 +44,7 @@ else:
     from inputs.matter import MatterBoardSignalAdapter, MatterContactAdapter, MatterContextAdapter, MatterCookingStateAdapter
     from inputs.base.journal import RawEventJournal
     from service import ObservationJournal, StatusOutput, AuxiliaryDeferral
+    from service.analysis_policy import assess_personal_use
 
 DOMAIN = "bapsim"
 RAW_EVENT = "bapsim_raw_event"
@@ -652,12 +654,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             if effective_away:
                 for update in trend_workflow.ingest(provisional):
                     publish_workflow(update)
-        decisions = usage_model.evaluate(
-            source, device_id, as_of,
-            online=online,
-            away=effective_away,
-        )
-        for decision in decisions:
+        assessments = assess_personal_use(usage_model, source, device_id, as_of,
+                                          online=online, away=effective_away)
+        for decision in assessments.windows:
             archive_service_record("assessment", decision, decision["as_of"])
             if decision["routine_status"] == "check_required":
                 for item in workflow.dump_state():
@@ -675,7 +674,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 continue
             for update in workflow.ingest(cooker_only(decision)):
                 dispatch_workflow(update)
-        interval = usage_model.evaluate_interval(source, device_id, as_of, online=online, away=effective_away)
+        interval = assessments.interval
         if interval is not None:
             archive_service_record("assessment", interval, as_of)
             if interval["routine_status"] in {"watch", "check_required", "normal"}:
@@ -684,17 +683,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             if interval["routine_status"] in {"normal", "check_required"}:
                 for update in workflow.ingest(cooker_only(interval)):
                     dispatch_workflow(update)
-        trend = usage_model.evaluate_trend(source, device_id, as_of, online=online, away=effective_away)
+        trend = assessments.trend
         if trend is not None:
             archive_service_record("assessment", trend, trend["as_of"])
             hass.bus.async_fire(DETECTION_EVENT, trend)
             show("decline_detection", trend["routine_status"], trend)
             for update in trend_workflow.ingest(cooker_only(trend)):
                 dispatch_workflow(update, trend_workflow)
-        gap_state = next((item for item in workflow.dump_state()
-                          if item["source"] == source and item["device_id"] == device_id), None)
-        decline_state = next((item for item in trend_workflow.dump_state()
-                              if item["source"] == source and item["device_id"] == device_id), None)
+        gap_state = workflow.current_state(source, device_id)
+        decline_state = trend_workflow.current_state(source, device_id)
         state = output.build(as_of, profile, "available" if online else "unavailable",
                              gap_state, decline_state)
         show("output_state", state["summary"], state)
@@ -844,10 +841,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 show("mqtt_output", "broker_unavailable", {"topic": output.topic(source, "observations")})
             return
         key = (source, device_id)
-        prior_groups = {
-            opening for item in usage_model.dump_state()["devices"]
-            if (item["source"], item["device_id"]) == key for opening in item["opens"]
-        } if event.data.get("event_type") == "lid_opened" else set()
+        prior_groups = set(usage_model.grouped_open_times(*key)) if event.data.get("event_type") == "lid_opened" else set()
         if event.data.get("event_type") in {"device_online", "device_offline"}:
             availability_by_device[key] = event.data["value"]
         try:
@@ -860,12 +854,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 "routine_status": "normal", "reason_codes": ["USAGE_RESUMED"],
             }):
                 dispatch_workflow(update)
-            for item in usage_model.dump_state()["devices"]:
-                if (item["source"], item["device_id"]) == key:
-                    for opening in set(item["opens"]) - prior_groups:
-                        archive_service_record("usage_group", {
-                            "source": source, "device_id": device_id, "group_started_at": opening,
-                        }, opening)
+            for opening in set(usage_model.grouped_open_times(*key)) - prior_groups:
+                archive_service_record("usage_group", {
+                    "source": source, "device_id": device_id, "group_started_at": opening,
+                }, opening)
         try:
             updates = sessions.ingest(event.data)
         except ValueError as exc:
@@ -1716,7 +1708,20 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if not isinstance(device_id, str) or not device_id or not isinstance(signal, str):
             raise ValueError("device_id and signal are required")
         at = call.data.get("at") or datetime.now(timezone.utc).isoformat()
+        if not isinstance(at, str):
+            raise ValueError("at must be a timezone-aware timestamp")
+        if external_service and not hass.services.has_service("mqtt", "publish"):
+            raise ValueError("MQTT broker is required for external simulated activity")
         auxiliary.record(device_id, at, signal)
+        if external_service:
+            await hass.services.async_call("mqtt", "publish", {
+                "topic": output.topic("simulator", "auxiliary_activity"),
+                "payload": json.dumps({"schema_version": "0.1.0",
+                                       "household_id": output.household_id,
+                                       "source": "simulator", "device_id": device_id,
+                                       "at": at, "signal": signal}),
+                "qos": 1, "retain": False,
+            }, blocking=True)
         show("auxiliary_activity", signal, {"device_id": device_id, "as_of": at, "mode": "simulation"})
         save_later()
 

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 
 from domain.personal_model import PersonalUsageModel
 from service.standalone import AnalysisService
@@ -22,6 +23,40 @@ def event(day: int, hour: int, kind: str) -> dict[str, str]:
 
 
 class PolicyTests(TestCase):
+    def test_worker_defers_simulated_activity_and_restores_pending_decision(self):
+        with TemporaryDirectory() as directory:
+            state_file = Path(directory) / "state.json"
+            service = AnalysisService("home", state_file, lambda *args: None, lambda update: True)
+            activity_at = at(7, 10)
+            decision_at = (datetime.fromisoformat(activity_at) + timedelta(minutes=5)).isoformat()
+            service.process_simulated_activity({"schema_version": "0.1.0", "household_id": "home",
+                                                "source": "simulator", "device_id": "cooker_01",
+                                                "at": activity_at, "signal": "door_opened"})
+            with self.assertRaises(ValueError):
+                service.process_simulated_activity({"schema_version": "0.1.0", "household_id": "home",
+                                                    "source": "matter", "device_id": "cooker_01",
+                                                    "at": activity_at, "signal": "door_opened"})
+            service.availability[("simulator", "cooker_01")] = True
+            decision = {"source": "simulator", "device_id": "cooker_01", "as_of": decision_at,
+                        "routine_status": "check_required", "reason_codes": ["EXPECTED_USE_MISSING"]}
+            with patch.object(service.model, "evaluate", return_value=[decision]), \
+                 patch.object(service.model, "evaluate_interval", return_value=None), \
+                 patch.object(service.model, "evaluate_trend", return_value=None):
+                service.evaluate("simulator", "cooker_01", decision_at)
+            self.assertEqual(len(service.auxiliary.pending), 1)
+            self.assertEqual(service.gap.dump_state(), [])
+            restored = AnalysisService("home", state_file, lambda *args: None, lambda update: True)
+            self.assertEqual(len(restored.auxiliary.pending), 1)
+            due = (datetime.fromisoformat(decision_at) + timedelta(minutes=31)).isoformat()
+            restored.availability[("simulator", "cooker_01")] = True
+            restored.last_heartbeat[("simulator", "cooker_01")] = datetime.fromisoformat(due)
+            with patch.object(restored.model, "evaluate", return_value=[]), \
+                 patch.object(restored.model, "evaluate_interval", return_value=None), \
+                 patch.object(restored.model, "evaluate_trend", return_value=None):
+                restored.tick(due)
+            self.assertEqual(restored.auxiliary.pending, [])
+            self.assertEqual(restored.gap.dump_state()[0]["status"], "normal")
+
     def test_retained_initial_routine_is_validated_replaced_and_persisted(self):
         with TemporaryDirectory() as directory:
             state_file = Path(directory) / "state.json"
