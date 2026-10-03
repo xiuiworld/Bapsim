@@ -206,6 +206,11 @@ class DetectionStateManager:
             for (source, device_id), state in self._states.items()
         ]
 
+    def current_state(self, source: str, device_id: str) -> dict[str, object] | None:
+        """Return one independent snapshot without exposing the storage layout."""
+        state = self._states.get((source, device_id))
+        return {"source": source, "device_id": device_id, **asdict(state)} if state else None
+
     def load_state(self, stored: list[dict[str, object]]) -> None:
         self._states.clear()
         for item in stored:

@@ -13,6 +13,8 @@ from workflow import (DeliveryLedger, DetectionStateManager, NotificationControl
                       ObservationIssueTracker, WorkflowUpdate)
 from workflow.quiet_hours import QuietHours
 from service.output import StatusOutput
+from service.analysis_policy import assess_personal_use
+from service.auxiliary import AuxiliaryDeferral
 
 
 class AnalysisService:
@@ -30,6 +32,7 @@ class AnalysisService:
         self.controls = NotificationControls()
         self.observation_issues = ObservationIssueTracker()
         self.delivery = DeliveryLedger()
+        self.auxiliary = AuxiliaryDeferral()
         self.quiet = QuietHours(quiet_start, quiet_end)
         self.output = StatusOutput(household_id)
         self.availability: dict[tuple[str, str], bool] = {}
@@ -46,6 +49,7 @@ class AnalysisService:
         self.controls.load_state(saved.get("controls", {}))
         self.observation_issues.load_state(saved.get("observation_issues", []))
         self.delivery.load_state(saved.get("delivery", []))
+        self.auxiliary.load_state(saved.get("auxiliary", {}))
         self.output.revision = int(saved.get("revision", 0))
         self.away = bool(saved.get("away", False))
         self.pending_quiet = {item.get("notification_id", item["incident_id"]): item
@@ -65,6 +69,7 @@ class AnalysisService:
             "decline": self.decline.dump_state(), "controls": self.controls.dump_state(),
             "observation_issues": self.observation_issues.dump_state(),
             "delivery": self.delivery.dump_state(),
+            "auxiliary": self.auxiliary.dump_state(),
             "revision": self.output.revision, "away": self.away,
             "pending_quiet": list(self.pending_quiet.values()),
             "devices": [{"source": source, "device_id": device_id}
@@ -141,6 +146,19 @@ class AnalysisService:
                 self.model.configure_initial_routine(source, device_id, [])
         for (source, device_id), windows in incoming.items():
             self.model.configure_initial_routine(source, device_id, windows)
+        self.save()
+
+    def process_simulated_activity(self, payload: Mapping[str, object]) -> None:
+        """Accept simulation-only activity on its separate MQTT topic."""
+        if (payload.get("schema_version") != "0.1.0" or
+                payload.get("household_id") != self.output.household_id or
+                payload.get("source") != "simulator"):
+            raise ValueError("invalid simulated activity envelope")
+        device_id, at, signal = (payload.get("device_id"), payload.get("at"),
+                                 payload.get("signal"))
+        if not all(isinstance(value, str) and value for value in (device_id, at, signal)):
+            raise ValueError("simulated activity needs device_id, at and signal")
+        self.auxiliary.record(device_id, at, signal)
         self.save()
 
     def process_event(self, event: Mapping[str, object], received_at: str) -> None:
@@ -284,19 +302,21 @@ class AnalysisService:
                 self._handle(manager.ingest({"source": source, "device_id": device_id,
                                              "as_of": now, "routine_status": status,
                                              "reason_codes": []}), manager, now)
-        for decision in self.model.evaluate(source, device_id, now, online=online, away=paused):
+        assessments = assess_personal_use(self.model, source, device_id, now,
+                                          online=online, away=paused)
+        for decision in assessments.windows:
+            if self.auxiliary.defer(decision):
+                continue
             self._handle(self.gap.ingest(decision), self.gap, now)
-        interval = self.model.evaluate_interval(source, device_id, now, online=online, away=paused)
+        interval = assessments.interval
         if interval and interval["routine_status"] in {"normal", "check_required"}:
             self._handle(self.gap.ingest(interval), self.gap, now)
-        trend = self.model.evaluate_trend(source, device_id, now, online=online, away=paused)
+        trend = assessments.trend
         if trend:
             self._handle(self.decline.ingest(trend), self.decline, now)
         profile = self.model.profile(source, device_id, now)
-        gap = next((item for item in self.gap.dump_state()
-                    if (item["source"], item["device_id"]) == (source, device_id)), None)
-        decline = next((item for item in self.decline.dump_state()
-                        if (item["source"], item["device_id"]) == (source, device_id)), None)
+        gap = self.gap.current_state(source, device_id)
+        decline = self.decline.current_state(source, device_id)
         state = self.output.build(now, profile, "available" if online else "unavailable", gap, decline)
         self.publish(self.output.topic(source, "state"), json.dumps(state, ensure_ascii=False), True)
         self.publish(self.output.topic(source, "availability"), "online" if online else "offline", True)
@@ -311,6 +331,18 @@ class AnalysisService:
                 self.availability[key] = False
                 self.model.availability(*key, False, now)
             self.evaluate(*key, now)
+        if self.away or self.controls.is_paused(now):
+            self.auxiliary.clear()
+        else:
+            for decision in self.auxiliary.due(now):
+                key = str(decision["source"]), str(decision["device_id"])
+                if not self.availability.get(key, False):
+                    continue
+                latest_open = self.model.profile(*key, now)["last_lid_open_at"]
+                if (latest_open and datetime.fromisoformat(latest_open) >
+                        datetime.fromisoformat(str(decision["deferred_from"]))):
+                    continue
+                self._handle(self.gap.ingest(decision), self.gap, now)
         if not self.quiet.is_quiet(now):
             active = {item["incident_id"]: item for item in
                       (*self.gap.dump_state(), *self.decline.dump_state()) if item["incident_id"]}
