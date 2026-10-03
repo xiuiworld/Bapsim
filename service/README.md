@@ -14,7 +14,7 @@ HA에서 MQTT 통합과 브로커를 설정하면 기본 모드의 통합이 `mq
 2. 저장소 루트에서 `.env.example`을 `.env`로 복사합니다. HA를 처음 실행할 때는 토큰을 비워 두어도 되지만, 알림 전달 전에 HA 사용자 프로필에서 장기 액세스 토큰을 만든 뒤 `.env`의 `BAPSIM_HA_TOKEN`에 넣습니다. 등록된 휴대폰 알림 서비스가 있으면 `BAPSIM_NOTIFY_SERVICE=mobile_app_...`을 지정합니다. `.env`는 Git 추적 대상이 아닙니다.
 3. `docker compose -f compose.yaml -f compose.standalone.yaml up -d --build`로 HA, 로컬 Mosquitto, 작업자를 실행합니다.
 4. `http://localhost:8123`에서 HA 초기 설정 후 **설정 → 기기 및 서비스 → 통합 추가 → MQTT**를 선택하고 브로커 호스트 `mosquitto`, 포트 `1883`을 입력합니다. HA 컨테이너 안에서 `localhost`는 브로커가 아닙니다.
-5. HA를 재시작한 뒤 `docker compose -f compose.yaml -f compose.standalone.yaml logs -f bapsim-worker`로 구독·상태를 확인합니다. `sensor.bapsim_household_01_summary`는 실제 입력이나 시뮬레이터 이벤트가 들어와야 값을 표시합니다.
+5. HA를 재시작한 뒤 `docker compose -f compose.yaml -f compose.standalone.yaml logs -f bapsim-worker`로 구독·상태를 확인합니다. MQTT discovery의 **밥심 현재 안내** 센서는 실제 Matter 입력이 들어와야 값을 표시합니다. 시뮬레이터 상태는 별도 MQTT 토픽에만 게시됩니다.
 
 이 Mosquitto 설정은 **한 PC의 개발 시험용**으로 외부 포트를 `127.0.0.1`에만 묶고 익명 접속을 허용합니다. 실제 가정망에 배포할 때는 브로커 인증과 접근 제어를 구성하고 이 설정을 그대로 사용하지 마세요. 실물 Matter 입력, 폰 푸시 도착, 원격 접속 시험은 실제 장치와 계정이 준비된 뒤 수행합니다.
 
