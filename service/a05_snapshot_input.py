@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from .a05_contract_records import MAX_AGE, valid_snapshot
+
 
 PATH = "1/4294048769/4293984260"
-MAX_AGE = timedelta(minutes=3)
 
 
 def verified_report(entry, state, matter_entry_id: str, node_id: int) -> dict | None:
@@ -23,7 +24,7 @@ def verified_report(entry, state, matter_entry_id: str, node_id: int) -> dict | 
             attrs.get("schema_version") != 1):
         return None
     raw = attrs.get("raw_snapshot")
-    if not isinstance(raw, dict) or raw.get("SchemaVersion") != 1:
+    if not valid_snapshot(raw):
         return None
     boot, sequence, counter = (raw.get(key) for key in
                                ("BootId", "ObservationSequence", "ReportCounter"))
@@ -33,10 +34,6 @@ def verified_report(entry, state, matter_entry_id: str, node_id: int) -> dict | 
     if (str(counter) != state.state or attrs.get("boot_id") != boot or
             attrs.get("observation_sequence") != sequence or
             attrs.get("report_counter") != counter):
-        return None
-    quality = raw.get("SignalQuality")
-    if (not isinstance(quality, dict) or quality.get("LidOpen") != 1 or
-            type(raw.get("LidOpen")) is not bool):
         return None
     return raw
 
