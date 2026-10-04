@@ -23,6 +23,29 @@ def event(day: int, hour: int, kind: str) -> dict[str, str]:
 
 
 class PolicyTests(TestCase):
+    def test_old_or_duplicate_lid_opening_cannot_resolve_current_incident(self):
+        with TemporaryDirectory() as directory:
+            sent = []
+            service = AnalysisService("home", Path(directory) / "state.json",
+                                      lambda *args: None, lambda update: sent.append(update) or True)
+            service.availability[("matter", "cooker_01")] = True
+            for hour in (8, 13):
+                updates = service.gap.ingest({"source": "matter", "device_id": "cooker_01",
+                                              "as_of": at(10, hour), "routine_status": "check_required",
+                                              "reason_codes": ["EXPECTED_USE_MISSING"]})
+                service._handle(updates, service.gap, at(10, hour))
+            self.assertEqual(service.gap.current_state("matter", "cooker_01")["status"], "notified")
+            with patch.object(service.model, "evaluate", return_value=[]), \
+                 patch.object(service.model, "evaluate_interval", return_value=None), \
+                 patch.object(service.model, "evaluate_trend", return_value=None):
+                service.process_event(event(9, 13, "lid_opened"), at(10, 14))
+                self.assertEqual(service.gap.current_state("matter", "cooker_01")["status"], "notified")
+                service.process_event(event(10, 14, "lid_opened"), at(10, 14))
+                service.process_event(event(10, 14, "lid_opened"), at(10, 15))
+            self.assertEqual(service.gap.current_state("matter", "cooker_01")["status"], "resolved")
+            self.assertEqual([item.action for item in sent],
+                             ["notify_requested", "usage_resumed_requested"])
+
     def test_worker_defers_simulated_activity_and_restores_pending_decision(self):
         with TemporaryDirectory() as directory:
             state_file = Path(directory) / "state.json"

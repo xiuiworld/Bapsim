@@ -38,6 +38,7 @@ class _State:
     pending_action: str | None = None
     interval_hours: float | None = None
     next_reminder_at: str | None = None
+    last_lid_open_at: str | None = None
 
 
 class DetectionStateManager:
@@ -153,6 +154,23 @@ class DetectionStateManager:
                 updates.append(self._update(source, device_id, state, "usage_resumed_requested", as_of))
             return updates
         return []
+
+    def ingest_lid_opening(self, source: str, device_id: str, observed_at: str) -> list[WorkflowUpdate]:
+        """Resolve a gap only with a new opening after its current evidence."""
+        moment = self._time(observed_at)
+        state = self._states.setdefault((source, device_id), _State())
+        if state.last_lid_open_at and moment <= self._time(state.last_lid_open_at):
+            return []
+        if state.candidate_at and moment <= self._time(state.candidate_at):
+            return []
+        if state.status in {"check_required", "notified", "checking"} and state.incident_id:
+            prefix = f"{source}:{device_id}:"
+            if state.incident_id.startswith(prefix) and moment <= self._time(state.incident_id[len(prefix):]):
+                return []
+        state.last_lid_open_at = observed_at
+        return self.ingest({"source": source, "device_id": device_id,
+                            "as_of": observed_at, "routine_status": "normal",
+                            "reason_codes": ["USAGE_RESUMED"]})
 
     def mark_notified(self, source: str, device_id: str, as_of: str) -> WorkflowUpdate | None:
         state = self._states.get((source, device_id))

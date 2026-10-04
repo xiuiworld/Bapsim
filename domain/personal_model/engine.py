@@ -305,7 +305,9 @@ class PersonalUsageModel:
         return any(left < end and right > start for left, right in intervals)
 
     def _used(self, state: dict[str, object], start: datetime, end: datetime) -> bool:
-        return any(start <= at < end for at in state["opens"])
+        # A usage group can start before this window (or on the previous day)
+        # while a later, real opening still falls inside it.
+        return any(start <= at < end for at in state["raw_opens"])
 
     def _profile(self, state: dict[str, object], day: date, slot: int, center: float,
                  now: datetime) -> dict[str, object]:
@@ -488,9 +490,8 @@ class PersonalUsageModel:
         state = self._device(source, device_id)
         day = now.astimezone(KST).date() - timedelta(days=1)
         key = day.isoformat()
-        if key in state["trend_evaluations"]:
+        if state["trend_evaluations"].get(key) in {"declining", "normal"}:
             return None
-        state["trend_evaluations"][key] = "insufficient"
         if not online or away:
             return None
         counts: list[tuple[date, int]] = []
@@ -504,10 +505,16 @@ class PersonalUsageModel:
         recent = [count for sample_day, count in counts if day - timedelta(days=6) <= sample_day <= day]
         reference = [count for sample_day, count in counts if day - timedelta(days=27) <= sample_day < day - timedelta(days=6)]
         if len(recent) < 5 or len(reference) < 10:
+            state["trend_evaluations"][key] = "insufficient"
             return None
         recent_rate = sum(recent) / len(recent)
         reference_rate = sum(reference) / len(reference)
         decline = reference_rate > 0 and recent_rate <= reference_rate * 0.7
+        previous = state["trend_evaluations"].get((day - timedelta(days=1)).isoformat())
+        if previous != "declining":
+            state["decline_streak"] = 0
+        if previous != "normal":
+            state["recovery_streak"] = 0
         state["trend_evaluations"][key] = "declining" if decline else "normal"
         state["decline_streak"] = state["decline_streak"] + 1 if decline else 0
         state["recovery_streak"] = 0 if decline else state["recovery_streak"] + 1
