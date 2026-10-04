@@ -80,7 +80,9 @@ def household(seed: int, rhythm: str, condition: str,
         device += f"_{variation_name}"
     model = PersonalUsageModel(**{key: setting[key] for key in
                                   ("alert_probability", "late_grace_hours", "interval_quantile")},
-                               cadence_window_support=bool(setting.get("cadence_window_support", False)))
+                               cadence_window_support=bool(setting.get("cadence_window_support", False)),
+                               interval_with_clock_windows=bool(
+                                   setting.get("interval_with_clock_windows", False)))
     planned = _planned_days(rhythm, condition, future_days)
     if opportunity_interruptions:
         opportunities = [(day, int(hour)) for day in planned for hour in spec["hours"]]
@@ -211,7 +213,11 @@ def household(seed: int, rhythm: str, condition: str,
                          "notification_request_times": request_times,
                          "episode_id": episodes.get(day) if interruption else None,
                          **({"missed_opportunities": sum(missed_day == day for missed_day, _
-                                                         in interrupted_opportunities)}
+                                                         in interrupted_opportunities),
+                             "missed_opportunity_times": [
+                                 (_at(day, float(hour)) + timedelta(hours=shift)).isoformat()
+                                 for missed_day, hour in interrupted_opportunities
+                                 if missed_day == day]}
                             if opportunity_interruptions else {}),
                          "missed_use_at": (_at(day, float(min(
                              (hour for (missed_day, hour) in interrupted_opportunities

@@ -14,6 +14,8 @@ class ConditionMatrixTests(TestCase):
             for episode in (1, 2):
                 self.assertEqual(sum(row["missed_opportunities"] for row in rows
                                      if row["episode_id"] == episode), 2)
+                self.assertEqual(sum(len(row["missed_opportunity_times"]) for row in rows
+                                     if row["episode_id"] == episode), 2)
 
     def test_training_and_holdout_have_distinct_conditions_and_homes(self):
         self.assertFalse(set(TRAIN_CONDITIONS) & set(HOLDOUT_CONDITIONS))

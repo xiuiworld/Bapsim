@@ -7,6 +7,8 @@ The future replay evaluates every minute; earlier history uses sparse ticks.
 from __future__ import annotations
 
 import json
+from collections import defaultdict
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ai.condition_matrix_experiment import household, score
@@ -19,6 +21,7 @@ BASE = {"alert_probability": 0.72, "late_grace_hours": 0.0,
 CANDIDATES = {
     "current": BASE,
     "cadence_window_support": {**BASE, "cadence_window_support": True},
+    "interval_with_clock_windows": {**BASE, "interval_with_clock_windows": True},
 }
 DEVELOPMENT = {"seeds": (3101, 3119),
                "conditions": ("stable", "natural_skips"),
@@ -30,6 +33,26 @@ CHALLENGE = {"seeds": (7103, 7121),
                            "missed_open_probability": 0.05}}
 
 
+def nuisance_normal_days(rows: list[dict[str, object]]) -> dict[str, int]:
+    """Exclude normal-day requests that still belong to a scripted episode."""
+    # The two episodes are separated in these scripts. Build their response
+    # windows individually so a later normal day is not hidden indefinitely.
+    episodes = defaultdict(list)
+    for row in rows:
+        if isinstance(row.get("episode_id"), int):
+            episodes[(str(row["household"]), int(row["episode_id"]))].extend(
+                datetime.fromisoformat(at) for at in row.get("missed_opportunity_times", []))
+    windows = defaultdict(list)
+    for (household, _), times in episodes.items():
+        if times:
+            windows[household].append((min(times), max(times) + timedelta(days=1)))
+    normal = [row for row in rows if row["label"] == 0]
+    nuisance = sum(any(not any(start <= datetime.fromisoformat(at) < end
+                                for start, end in windows[str(row["household"])])
+                       for at in row["notification_request_times"]) for row in normal)
+    return {"normal_days": len(normal), "days_with_unrelated_request": nuisance}
+
+
 def evaluate(setting: dict[str, object], cohort: dict[str, object],
              *, tick_minutes: int) -> dict[str, object]:
     rows = [row for condition in cohort["conditions"]
@@ -39,6 +62,7 @@ def evaluate(setting: dict[str, object], cohort: dict[str, object],
                                  opportunity_interruptions=True, runtime_ticks=True,
                                  tick_minutes=tick_minutes, future_days=14)]
     return {"notification_days": score(rows, "notification_request"),
+            "nuisance_normal_days": nuisance_normal_days(rows),
             "candidate_days": score(rows, "candidate"),
             "episodes": episode_score(rows),
             "by_rhythm": {rhythm: {
@@ -49,20 +73,27 @@ def evaluate(setting: dict[str, object], cohort: dict[str, object],
 
 
 def experiment() -> dict[str, object]:
-    development = {name: evaluate(setting, DEVELOPMENT, tick_minutes=5)
-                   for name, setting in CANDIDATES.items()}
+    development = {}
+    for name, setting in CANDIDATES.items():
+        development[name] = evaluate(setting, DEVELOPMENT, tick_minutes=5)
+        print(f"development {name} complete", flush=True)
     baseline = development["current"]
     eligible = [name for name, item in development.items()
-                if item["notification_days"]["fp"] <= baseline["notification_days"]["fp"]]
+                if item["nuisance_normal_days"]["days_with_unrelated_request"] <=
+                baseline["nuisance_normal_days"]["days_with_unrelated_request"]]
     selected = min(eligible, key=lambda name: (
         -development[name]["episodes"]["caught"],
-        development[name]["notification_days"]["fp"], name != "current"))
-    challenge_current = evaluate(CANDIDATES["current"], CHALLENGE, tick_minutes=1)
-    challenge_selected = (challenge_current if selected == "current" else
-                          evaluate(CANDIDATES[selected], CHALLENGE, tick_minutes=1))
+        development[name]["nuisance_normal_days"]["days_with_unrelated_request"],
+        name != "current"))
+    challenge_results = {}
+    for name, setting in CANDIDATES.items():
+        challenge_results[name] = evaluate(setting, CHALLENGE, tick_minutes=1)
+        print(f"challenge {name} complete", flush=True)
+    challenge_current = challenge_results["current"]
+    challenge_selected = challenge_results[selected]
     adopted = (challenge_selected["episodes"]["caught"] > challenge_current["episodes"]["caught"]
-               and challenge_selected["notification_days"]["fp"] <=
-               challenge_current["notification_days"]["fp"])
+               and challenge_selected["nuisance_normal_days"]["days_with_unrelated_request"] <=
+               challenge_current["nuisance_normal_days"]["days_with_unrelated_request"])
     return {
         "scope": "Synthetic age-65-plus daily cooker-use opportunities only",
         "labels": "Two scripted missed openings per episode, not meals or health outcomes",
@@ -71,7 +102,7 @@ def experiment() -> dict[str, object]:
         "adopted": adopted,
         "operating_setting": selected if adopted else "current",
         "challenge": {"cohort": CHALLENGE, "tick_minutes": 1,
-                      "current": challenge_current, "selected": challenge_selected},
+                      "results": challenge_results},
     }
 
 
@@ -84,6 +115,9 @@ if __name__ == "__main__":
                       "development": {name: {"caught": item["episodes"]["caught"],
                                              "fp": item["notification_days"]["fp"]}
                                       for name, item in result["development"]["results"].items()},
-                      "challenge": {name: {"caught": result["challenge"][name]["episodes"]["caught"],
-                                           "fp": result["challenge"][name]["notification_days"]["fp"]}
-                                    for name in ("current", "selected")}}, ensure_ascii=False))
+                      "challenge": {name: {"caught": item["episodes"]["caught"],
+                                           "raw_normal_day_requests": item["notification_days"]["fp"],
+                                           "nuisance_days": item["nuisance_normal_days"]["days_with_unrelated_request"],
+                                           "early_only": item["episodes"]["early_request_only"]}
+                                    for name, item in result["challenge"]["results"].items()}},
+                     ensure_ascii=False))

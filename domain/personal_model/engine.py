@@ -53,7 +53,8 @@ class PersonalUsageModel:
                  window_hours: float = 2.0, alert_probability: float = 0.72,
                  late_grace_hours: float = 0.0, interval_quantile: float = 0.95,
                  interval_strategy: str = "empirical",
-                 cadence_window_support: bool = False) -> None:
+                 cadence_window_support: bool = False,
+                 interval_with_clock_windows: bool = False) -> None:
         if min_covered_days < 1 or history_days < min_covered_days:
             raise ValueError("invalid learning window")
         if (not 0 < window_hours <= 3 or not 0 < alert_probability <= 1 or
@@ -69,6 +70,7 @@ class PersonalUsageModel:
         self.interval_quantile = interval_quantile
         self.interval_strategy = interval_strategy
         self.cadence_window_support = cadence_window_support
+        self.interval_with_clock_windows = interval_with_clock_windows
         self._devices: dict[tuple[str, str], dict[str, object]] = {}
         self._away_intervals: list[tuple[datetime, datetime]] = []
         self._away_since: datetime | None = None
@@ -482,10 +484,11 @@ class PersonalUsageModel:
         if not online or away or not state["opens"]:
             return None
         profile = self.profile(source, device_id, as_of)
-        if any(not window["schedule_excluded"] and
-               window["probability"] >= (0.65 if window["initial_ready"] else self.alert_probability) and
-               (window["covered_days"] >= self.min_covered_days or window["initial_ready"])
-               for window in profile["windows"]):
+        clock_available = any(not window["schedule_excluded"] and
+                              window["probability"] >= (0.65 if window["initial_ready"] else self.alert_probability) and
+                              (window["covered_days"] >= self.min_covered_days or window["initial_ready"])
+                              for window in profile["windows"])
+        if clock_available and not self.interval_with_clock_windows:
             return None
         opens = [at for at in state["opens"] if at <= now and not self._away_at(at)]
         intervals = [right - left for left, right in zip(opens, opens[1:])
@@ -515,6 +518,10 @@ class PersonalUsageModel:
             return None
         elapsed = now - last
         status = "normal" if elapsed <= limit else "watch" if elapsed <= limit + timedelta(hours=2) else "check_required"
+        # A normal interval does not refute a missed clock window. Sending it
+        # through the shared workflow would erase that window's confirmation.
+        if clock_available and status != "check_required":
+            return None
         return {
             "source": source, "device_id": device_id, "as_of": as_of,
             "routine_status": status,

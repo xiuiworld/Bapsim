@@ -148,6 +148,24 @@ class PersonalUsageModelTests(TestCase):
         self.assertLess(candidate["evidence"]["threshold_hours"],
                         candidate["evidence"]["p95_hours"])
 
+    def test_optional_interval_check_can_coexist_with_reliable_clock_window(self):
+        baseline = PersonalUsageModel()
+        combined = PersonalUsageModel(interval_with_clock_windows=True)
+        for model in (baseline, combined):
+            model.observe(event(0, 0, kind="device_online"))
+            for day in range(10):
+                model.observe(event(day, 7))
+                model.observe(event(day, (16, 21, 19, 22, 15)[day % 5]))
+        as_of = at(10, 23, 30)
+        self.assertIsNone(baseline.evaluate_interval("matter", "cooker_01", as_of,
+                                                    online=True))
+        self.assertIsNone(combined.evaluate_interval("matter", "cooker_01", at(10, 8),
+                                                    online=True))
+        decision = combined.evaluate_interval("matter", "cooker_01", as_of,
+                                              online=True)
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision["routine_status"], "check_required")
+
     def test_robust_interval_prediction_does_not_copy_one_long_gap(self):
         current = PersonalUsageModel()
         predictive = PersonalUsageModel(interval_strategy="robust_predictive",
