@@ -1,0 +1,85 @@
+{
+  "schema_version": "a05-handoff-1",
+  "status": "test_transport_verified_B_not_connected",
+  "input_kind": "test",
+  "matter_entry_id": "01M42JG6BJ84TBN5G7SCZZQRN0",
+  "node_id": 4,
+  "platform": "bapsim_matter_probe",
+  "snapshot_attribute_path": "1/4294048769/4293984260",
+  "receiver_method": "explicit_read_5s",
+  "entities": {
+    "ReportCounter": {
+      "entity_id": "sensor.a05_reportcounter",
+      "quality_attribute": null
+    },
+    "BootId": {
+      "entity_id": "sensor.a05_bootid",
+      "quality_attribute": null
+    },
+    "ObservationSequence": {
+      "entity_id": "sensor.a05_observationsequence",
+      "quality_attribute": null
+    },
+    "UptimeMs": {
+      "entity_id": "sensor.a05_uptimems",
+      "quality_attribute": null
+    },
+    "SchemaVersion": {
+      "entity_id": "sensor.a05_schemaversion",
+      "quality_attribute": null
+    },
+    "LidOpen": {
+      "entity_id": "sensor.a05_lidopen",
+      "quality_attribute": "quality"
+    },
+    "TemperatureCentiC": {
+      "entity_id": "sensor.a05_temperaturecentic",
+      "quality_attribute": "quality"
+    },
+    "LockLed": {
+      "entity_id": "sensor.a05_lockled",
+      "quality_attribute": "quality"
+    },
+    "WarmLed": {
+      "entity_id": "sensor.a05_warmled",
+      "quality_attribute": "quality"
+    },
+    "WhiteRiceLed": {
+      "entity_id": "sensor.a05_whitericeled",
+      "quality_attribute": "quality"
+    },
+    "TimerFirstLed": {
+      "entity_id": "sensor.a05_timerfirstled",
+      "quality_attribute": "quality"
+    },
+    "CookerPhase": {
+      "entity_id": "sensor.a05_cookerphase",
+      "quality_attribute": "quality"
+    },
+    "InferenceMethod": {
+      "entity_id": "sensor.a05_inferencemethod",
+      "quality_attribute": null
+    },
+    "ModelVersion": {
+      "entity_id": "sensor.a05_modelversion",
+      "quality_attribute": null
+    },
+    "InferenceScore": {
+      "entity_id": "sensor.a05_inferencescore",
+      "quality_attribute": null
+    }
+  },
+  "B_compatibility": {
+    "accepted_by_current_platform_guard": false,
+    "reason": "Current B code requires registry platform matter; these entities use bapsim_matter_probe",
+    "counter_candidate": "sensor.a05_reportcounter",
+    "required_checks": [
+      "registry integration provenance",
+      "Matter entry/node/path binding",
+      "supported schema",
+      "test/live origin isolation",
+      "quality and enum conversion",
+      "boot/sequence continuity"
+    ]
+  }
+}

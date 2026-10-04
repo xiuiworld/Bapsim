@@ -1,0 +1,8 @@
+# Merge into the existing sensor list; do not replace configuration.yaml.
+# A04 trial only. Validate node, path and Matter entry before installation.
+sensor:
+  - platform: bapsim_matter_probe
+    name: A04 Board Report Counter
+    matter_entry_id: 01M42JG6BJ84TBN5G7SCZZQRN0
+    node_id: 4
+    attribute_path: "1/4294048769/4293984259"
