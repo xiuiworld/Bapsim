@@ -78,7 +78,8 @@ class PersonalUsageModel:
     def _device(self, source: str, device_id: str) -> dict[str, object]:
         return self._devices.setdefault((source, device_id), {
             "opens": [], "raw_opens": [], "coverage": [], "online_since": None,
-            "last_seen": None, "evaluations": {}, "trend_evaluations": {},
+            "last_seen": None, "last_open_at": None,
+            "evaluations": {}, "trend_evaluations": {},
             "decline_streak": 0, "recovery_streak": 0, "trend_active": False,
             "initial_windows": [],
         })
@@ -136,6 +137,7 @@ class PersonalUsageModel:
                 "coverage": [[start.isoformat(), end.isoformat()] for start, end in state["coverage"]],
                 "online_since": state["online_since"].isoformat() if state["online_since"] else None,
                 "last_seen": state["last_seen"].isoformat() if state["last_seen"] else None,
+                "last_open_at": state["last_open_at"].isoformat() if state["last_open_at"] else None,
                 "evaluations": dict(state["evaluations"]),
                 "trend_evaluations": dict(state["trend_evaluations"]),
                 "decline_streak": state["decline_streak"],
@@ -158,6 +160,10 @@ class PersonalUsageModel:
             # available observations without inventing the missing raw opens.
             state["raw_opens"] = sorted(_time(at) for at in item.get("raw_opens", item.get("opens", [])))
             state["opens"] = self._group_opens(state["raw_opens"])
+            latest_open = item.get("last_open_at")
+            state["last_open_at"] = max(
+                [*state["raw_opens"], *([_time(latest_open)] if latest_open else [])],
+                default=None)
             state["coverage"] = [(_time(start), _time(end)) for start, end in item.get("coverage", [])]
             state["evaluations"] = dict(item.get("evaluations", {}))
             state["trend_evaluations"] = dict(item.get("trend_evaluations", {}))
@@ -219,11 +225,16 @@ class PersonalUsageModel:
         if event.get("availability") != "online":
             return
         state = self._device(source, device_id)
+        last_open = state["last_open_at"]
+        if last_open is not None and moment <= last_open:
+            return
+        last_seen = state["last_seen"]
+        if last_seen is not None and moment < last_seen - MAX_REPLAY_DELAY:
+            return
         raw_opens = state["raw_opens"]
-        if moment not in raw_opens:
-            raw_opens.append(moment)
-            raw_opens.sort()
-            state["opens"] = self._group_opens(raw_opens)
+        state["last_open_at"] = moment
+        raw_opens.append(moment)
+        state["opens"] = self._group_opens(raw_opens)
         self._prune(state, moment)
 
     @staticmethod
@@ -308,6 +319,15 @@ class PersonalUsageModel:
         # A usage group can start before this window (or on the previous day)
         # while a later, real opening still falls inside it.
         return any(start <= at < end for at in state["raw_opens"])
+
+    def _daily_group_count(self, state: dict[str, object], start: datetime,
+                           end: datetime) -> int:
+        # The daily trend has a calendar-day grain. Group after selecting the
+        # local day so a real opening after midnight is not lost in yesterday's
+        # episode; these counts are observed activity, not meal counts.
+        daily_opens = [opening for opening in state["raw_opens"]
+                       if start <= opening < end]
+        return len(self._group_opens(daily_opens))
 
     def _profile(self, state: dict[str, object], day: date, slot: int, center: float,
                  now: datetime) -> dict[str, object]:
@@ -501,7 +521,7 @@ class PersonalUsageModel:
             end = start + timedelta(days=1)
             if not self._covered(state, start, end, now) or self._away_window(start, end):
                 continue
-            counts.append((sample_day, sum(start <= opening < end for opening in state["opens"])))
+            counts.append((sample_day, self._daily_group_count(state, start, end)))
         recent = [count for sample_day, count in counts if day - timedelta(days=6) <= sample_day <= day]
         reference = [count for sample_day, count in counts if day - timedelta(days=27) <= sample_day < day - timedelta(days=6)]
         if len(recent) < 5 or len(reference) < 10:
