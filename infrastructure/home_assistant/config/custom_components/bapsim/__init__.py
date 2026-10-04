@@ -35,6 +35,7 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.service.ha_dashboard import HADashboard
     from .runtime.service.ha_mqtt_output import HAMQTTOutput
     from .runtime.service.ha_matter_inputs import bind_matter_inputs, register_matter_services
+    from .runtime.service.a05_snapshot_input import A05SnapshotInput, verified_report
     from .runtime.service.ha_journal import HAJournal
     from .runtime.service.ha_analysis_flow import AnalysisMode, bind_analysis
     from .runtime.service.ha_cooker_events import bind_cooker_events
@@ -63,6 +64,7 @@ else:
     from service.ha_dashboard import HADashboard
     from service.ha_mqtt_output import HAMQTTOutput
     from service.ha_matter_inputs import bind_matter_inputs, register_matter_services
+    from service.a05_snapshot_input import A05SnapshotInput, verified_report
     from service.ha_journal import HAJournal
     from service.ha_analysis_flow import AnalysisMode, bind_analysis
     from service.ha_cooker_events import bind_cooker_events
@@ -111,6 +113,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     matter_cooking_states: dict[str, MatterCookingStateAdapter] = {}
     matter_contexts: dict[str, MatterContextAdapter] = {}
     matter_board_signals: dict[str, MatterBoardSignalAdapter] = {}
+    a05_inputs: dict[str, A05SnapshotInput] = {}
     matter_report_at: dict[str, datetime] = {}
     availability_by_device: dict[tuple[str, str], str] = {}
     forwarded_devices: set[tuple[str, str]] = set()
@@ -167,6 +170,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 matter_board_signals[item["entity_id"]] = MatterBoardSignalAdapter(
                     item["device_id"], kind=item["kind"], signal=item["signal"]
                 )
+            for item in stored.get("a05_inputs", []):
+                a05_inputs[item["entity_id"]] = A05SnapshotInput(
+                    item["device_id"], item["matter_entry_id"], item["node_id"])
             availability_by_device.update(
                 ((item["source"], item["device_id"]), item["availability"])
                 for item in stored.get("availability", [])
@@ -269,6 +275,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 {"entity_id": entity_id, "device_id": adapter.device_id,
                  "kind": adapter.kind, "signal": adapter.signal}
                 for entity_id, adapter in matter_board_signals.items()
+            ],
+            "a05_inputs": [
+                {"entity_id": entity_id, "device_id": adapter.device_id,
+                 "matter_entry_id": adapter.matter_entry_id, "node_id": adapter.node_id}
+                for entity_id, adapter in a05_inputs.items()
             ],
             "availability": [
                 {"source": source, "device_id": device_id, "availability": value}
@@ -471,6 +482,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     matter_inputs = bind_matter_inputs(
         hass, er, callback, EVENT_HOMEASSISTANT_STARTED, RAW_EVENT, CONTEXT_RAW_EVENT,
         matter_contacts, matter_cooking_states, matter_contexts, matter_board_signals,
+        a05_inputs,
         matter_report_at, availability_by_device, usage_model, pending_mobile,
         retry_mobile_notifications, show, MatterContactAdapter, MatterCookingStateAdapter)
     (is_matter_entity, matter_inputs_available, connection_deadline, show_matter_readiness,
@@ -483,7 +495,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     on_hourly_tick = bind_periodic(
         callback, hass, periodic_state, show_initial_routines, delivery, external_service,
         forwarded_devices, matter_inputs_available, connection_deadline,
-        lambda device_id: any(adapter.device_id == device_id for adapter in matter_contacts.values()),
+        lambda device_id: any(adapter.device_id == device_id for adapter in
+                              (*matter_contacts.values(), *a05_inputs.values())),
         publish_matter_offline, show_matter_readiness,
         output, quiet_hours, pending_quiet,
         workflow, trend_workflow, controls, observation_issues, availability_by_device,
@@ -497,11 +510,76 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     service_registry = HAServiceRegistry(hass, DOMAIN)
     register_matter_services(
         hass, service_registry.register, RAW_EVENT, CONTEXT_RAW_EVENT, matter_contacts, matter_cooking_states,
-        matter_contexts, matter_board_signals, is_matter_entity, publish_matter_offline,
+        matter_contexts, matter_board_signals, a05_inputs, is_matter_entity, publish_matter_offline,
         publish_cooking_input_offline, forward_matter_state, forward_context_state,
         forward_board_state, show_matter_readiness, show_context_readiness,
         show_board_readiness, save_later, MatterContactAdapter, MatterCookingStateAdapter,
         MatterContextAdapter, MatterBoardSignalAdapter)
+
+    @callback
+    def on_a05_state(event: Event) -> None:
+        entity_id = event.data.get("entity_id")
+        adapter = a05_inputs.get(entity_id)
+        if adapter is None:
+            return
+        state = event.data.get("new_state")
+        previous = event.data.get("old_state")
+        entry = er.async_get(hass).async_get(entity_id)
+        raw = verified_report(entry, state, adapter.matter_entry_id, adapter.node_id)
+        if raw is not None and previous is None:
+            return  # HA's initial cached state is not a fresh board report.
+        if raw is not None and previous is not None and previous.state == state.state:
+            return
+        now = datetime.now(timezone.utc)
+        for item in adapter.accept(raw, now):
+            hass.bus.async_fire(RAW_EVENT, item)
+        show_matter_readiness(now)
+
+    unsubscribe_a05 = hass.bus.async_listen("state_changed", on_a05_state)
+
+    @callback
+    def on_a05_registry_change(event: Event) -> None:
+        adapter = a05_inputs.get(event.data.get("entity_id"))
+        if adapter is not None:
+            for item in adapter.offline(datetime.now(timezone.utc)):
+                hass.bus.async_fire(RAW_EVENT, item)
+            show_matter_readiness()
+
+    unsubscribe_a05_registry = hass.bus.async_listen(
+        er.EVENT_ENTITY_REGISTRY_UPDATED, on_a05_registry_change)
+
+    async def register_a05_snapshot(call) -> None:
+        entity_id = call.data["entity_id"]
+        device_id = call.data["device_id"]
+        adapter = A05SnapshotInput(device_id, call.data["matter_entry_id"], call.data["node_id"])
+        entry = er.async_get(hass).async_get(entity_id)
+        if (entry is None or entry.platform != "bapsim_matter_probe" or
+                entry.unique_id != f"a05_{adapter.matter_entry_id}_{adapter.node_id}_ReportCounter"):
+            raise ValueError("A05 ReportCounter entity and Matter identity must match")
+        if any(bound.device_id == device_id for bound in
+               (*matter_contacts.values(), *matter_cooking_states.values())):
+            raise ValueError("A05 snapshot cannot share a device with separate Matter inputs")
+        if any(bound.device_id == device_id and key != entity_id
+               for key, bound in a05_inputs.items()):
+            raise ValueError("One A05 snapshot per logical cooker")
+        if entity_id in a05_inputs:
+            for item in a05_inputs[entity_id].offline(datetime.now(timezone.utc)):
+                hass.bus.async_fire(RAW_EVENT, item)
+        a05_inputs[entity_id] = adapter
+        show_matter_readiness()
+        save_later()
+
+    service_registry.register("register_a05_snapshot", register_a05_snapshot)
+
+    async def unregister_a05_snapshot(call) -> None:
+        adapter = a05_inputs.pop(call.data["entity_id"], None)
+        if adapter is not None:
+            for item in adapter.offline(datetime.now(timezone.utc)):
+                hass.bus.async_fire(RAW_EVENT, item)
+        show_matter_readiness()
+        save_later()
+
+    service_registry.register("unregister_a05_snapshot", unregister_a05_snapshot)
 
 
     async def set_notification_target(call) -> None:
@@ -633,6 +711,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         unsubscribe_sessions()
         unsubscribe_matter()
         unsubscribe_registry()
+        unsubscribe_a05()
+        unsubscribe_a05_registry()
         unsubscribe_tick()
         unsubscribe_mobile_action()
         stop_mqtt_subscriptions()

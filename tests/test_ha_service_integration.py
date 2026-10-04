@@ -777,7 +777,8 @@ class HAServiceIntegrationTests(TestCase):
                 self.assertEqual(hass.data["bapsim"]["store"].saved["pending_mobile"], [])
                 self.assertEqual(hass.states.values["sensor.bapsim_notification_delivery"].state, "ha_accepted")
 
-        asyncio.run(scenario())
+        with patch("workflow.quiet_hours.QuietHours.is_quiet", return_value=False):
+            asyncio.run(scenario())
 
     def test_resolved_incident_is_not_retried_after_restart(self):
         seed = {
@@ -802,7 +803,8 @@ class HAServiceIntegrationTests(TestCase):
                 await asyncio.gather(*hass.tasks)
                 self.assertEqual(hass.data["bapsim"]["store"].saved["pending_mobile"], [])
 
-        asyncio.run(scenario())
+        with patch("workflow.quiet_hours.QuietHours.is_quiet", return_value=False):
+            asyncio.run(scenario())
 
     def test_declared_away_and_raw_journal_work_without_hardware(self):
         async def scenario(directory):
@@ -883,7 +885,8 @@ class HAServiceIntegrationTests(TestCase):
                 await hass.services.async_call("bapsim", "respond", {"response": "resolved"})
                 self.assertEqual(hass.states.values["sensor.bapsim_workflow_status"].state, "resolved")
 
-        asyncio.run(scenario())
+        with patch("workflow.quiet_hours.QuietHours.is_quiet", return_value=False):
+            asyncio.run(scenario())
 
     def test_dashboard_response_uses_unique_matter_incident(self):
         seed = {"workflow": [{
