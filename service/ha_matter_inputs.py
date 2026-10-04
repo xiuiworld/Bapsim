@@ -39,6 +39,7 @@ class MatterInputHandlers(NamedTuple):
 def bind_matter_inputs(
         hass, er, callback, started_event, raw_event, context_raw_event,
         matter_contacts, matter_cooking_states, matter_contexts, matter_board_signals,
+        a05_inputs,
         matter_report_at, availability_by_device, usage_model, pending_mobile,
         retry_mobile_notifications, show, MatterContactAdapter, MatterCookingStateAdapter
 ) -> MatterInputHandlers:
@@ -69,10 +70,16 @@ def bind_matter_inputs(
             and (state := hass.states.get(entity_id)) is not None
             and state.state not in {"unknown", "unavailable"}
         ]
+        deadlines.extend(adapter.deadline() for adapter in a05_inputs.values()
+                         if adapter.device_id == device_id and adapter.deadline() is not None)
         return max(deadlines, default=None)
 
     @callback
     def matter_inputs_available(device_id: str, as_of: datetime | None = None) -> bool:
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        if any(adapter.device_id == device_id and adapter.available(now)
+               for adapter in a05_inputs.values()):
+            return True
         bindings = matter_bindings(device_id)
         contact_ready = any(
             isinstance(adapter, MatterContactAdapter)
@@ -83,7 +90,6 @@ def bind_matter_inputs(
         )
         if not contact_ready:
             return False
-        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
         deadline = connection_deadline(device_id)
         return deadline is not None and deadline - CONNECTION_REPORT_MAX_AGE <= now <= deadline
 
@@ -130,11 +136,31 @@ def bind_matter_inputs(
                 "cooking_available": matter_cooking_available(device_id),
                 "source_verified": all(is_matter_entity(entity_id) for entity_id, _ in matter_bindings(device_id)),
             })
+        for entity_id, adapter in sorted(a05_inputs.items()):
+            current = hass.states.get(entity_id)
+            registry_entry = er.async_get(hass).async_get(entity_id)
+            verified = (registry_entry is not None and
+                        registry_entry.platform == "bapsim_matter_probe" and
+                        registry_entry.unique_id ==
+                        f"a05_{adapter.matter_entry_id}_{adapter.node_id}_ReportCounter")
+            devices.append({
+                "device_id": adapter.device_id, "a05_snapshot_entity": entity_id,
+                "lid_entity": entity_id, "cooking_entity": None,
+                "lid_state": current.state if current is not None else None,
+                "cooking_state": None, "lid_state_unmapped": False,
+                "cooking_state_unmapped": False,
+                "inputs_available": matter_inputs_available(adapter.device_id, as_of),
+                "cooking_available": False, "source_verified": verified,
+            })
         if not devices:
             status = "not_configured"
         elif any(not item["lid_entity"] for item in devices):
             status = "missing_input"
-        elif any(not is_matter_entity(item["lid_entity"]) for item in devices):
+        elif any(not is_matter_entity(item["lid_entity"]) for item in devices
+                 if "a05_snapshot_entity" not in item):
+            status = "source_unverified"
+        elif any(not item["source_verified"] for item in devices
+                 if "a05_snapshot_entity" in item):
             status = "source_unverified"
         elif any(item["lid_state_unmapped"] for item in devices):
             status = "state_unmapped"
@@ -397,7 +423,7 @@ def bind_matter_inputs(
 
 def register_matter_services(
         hass, register_service, raw_event, context_raw_event, matter_contacts, matter_cooking_states,
-        matter_contexts, matter_board_signals, is_matter_entity, publish_matter_offline,
+        matter_contexts, matter_board_signals, a05_inputs, is_matter_entity, publish_matter_offline,
         publish_cooking_input_offline, forward_matter_state, forward_context_state,
         forward_board_state, show_matter_readiness, show_context_readiness,
         show_board_readiness, save_later, MatterContactAdapter, MatterCookingStateAdapter,
@@ -406,6 +432,8 @@ def register_matter_services(
     async def register_matter_contact(call) -> None:
         device_id = call.data["device_id"]
         entity_id = call.data["entity_id"]
+        if any(adapter.device_id == device_id for adapter in a05_inputs.values()):
+            raise ValueError("Separate Matter contact cannot share an A05 snapshot device")
         if not is_matter_entity(entity_id):
             raise ValueError("Contact entity must belong to the Matter integration")
         if entity_id in matter_cooking_states or entity_id in matter_contexts:
@@ -428,6 +456,8 @@ def register_matter_services(
     async def register_matter_cooking_state(call) -> None:
         device_id = call.data["device_id"]
         entity_id = call.data["entity_id"]
+        if any(adapter.device_id == device_id for adapter in a05_inputs.values()):
+            raise ValueError("Separate Matter cooking state cannot share an A05 snapshot device")
         if not is_matter_entity(entity_id):
             raise ValueError("Cooking entity must belong to the Matter integration")
         if entity_id in matter_contacts or entity_id in matter_contexts:
