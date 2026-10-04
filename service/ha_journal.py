@@ -7,11 +7,12 @@ from datetime import datetime
 
 
 class HAJournal:
-    def __init__(self, hass, raw, observations, records, logger) -> None:
+    def __init__(self, hass, raw, observations, records, logger, contract=None) -> None:
         self.hass = hass
         self.raw = raw
         self.observations = observations
         self.records = records
+        self.contract = contract
         self.logger = logger
         self.lock = asyncio.Lock()
 
@@ -33,6 +34,18 @@ class HAJournal:
         except (OSError, ValueError, TypeError) as exc:
             self.logger.warning("Could not archive normalized observation: %s", exc)
 
+    def archive_contract(self, payloads: list[dict]) -> None:
+        if self.contract is not None and payloads:
+            self.hass.async_create_task(self._write_contract(payloads))
+
+    async def _write_contract(self, payloads: list[dict]) -> None:
+        try:
+            async with self.lock:
+                for payload in payloads:
+                    await self.hass.async_add_executor_job(self.contract.append, payload)
+        except (OSError, ValueError, TypeError) as exc:
+            self.logger.warning("Could not archive A05 contract records: %s", exc)
+
     def archive_service_record(self, category: str, payload: dict[str, object], at: str) -> None:
         if self.records is not None:
             self.hass.async_create_task(self._write_service_record({"category": category, "as_of": at, **payload}))
@@ -50,5 +63,7 @@ class HAJournal:
                 await self.hass.async_add_executor_job(self.observations.prune, now)
                 if self.records is not None:
                     await self.hass.async_add_executor_job(self.records.prune, now)
+                if self.contract is not None:
+                    await self.hass.async_add_executor_job(self.contract.prune, now)
         except OSError as exc:
             self.logger.warning("Could not prune normalized observations: %s", exc)
