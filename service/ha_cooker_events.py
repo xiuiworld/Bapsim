@@ -41,11 +41,12 @@ def bind_cooker_events(
         prior_groups = set(usage_model.grouped_open_times(*key)) if event.data.get("event_type") == "lid_opened" else set()
         if event.data.get("event_type") in {"device_online", "device_offline"}:
             availability_by_device[key] = event.data["value"]
+        accepted_open = False
         try:
-            usage_model.observe(event.data)
+            accepted_open = usage_model.observe(event.data)
         except ValueError as exc:
             _LOGGER.warning("Ignored invalid usage-model event: %s", exc)
-        if event.data.get("event_type") == "lid_opened":
+        if event.data.get("event_type") == "lid_opened" and accepted_open:
             for update in workflow.ingest_lid_opening(source, device_id, observed_at):
                 dispatch_workflow(update)
             for opening in set(usage_model.grouped_open_times(*key)) - prior_groups:
