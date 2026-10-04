@@ -134,7 +134,8 @@ class PersonalUsageModelTests(TestCase):
                          (expected + timedelta(hours=3)).astimezone(timezone.utc).isoformat())
 
     def test_optional_interval_quantile_exposes_earlier_candidate(self):
-        models = (PersonalUsageModel(), PersonalUsageModel(interval_quantile=0.75))
+        models = (PersonalUsageModel(interval_strategy="empirical"),
+                  PersonalUsageModel(interval_strategy="empirical", interval_quantile=0.75))
         for model in models:
             model.observe(event(0, 0, kind="device_online"))
             for day in (0, 2, 4, 6, 8, 10, 12, 16, 18):
@@ -149,7 +150,7 @@ class PersonalUsageModelTests(TestCase):
                         candidate["evidence"]["p95_hours"])
 
     def test_robust_interval_prediction_does_not_copy_one_long_gap(self):
-        current = PersonalUsageModel()
+        current = PersonalUsageModel(interval_strategy="empirical")
         predictive = PersonalUsageModel(interval_strategy="robust_predictive",
                                         interval_quantile=0.90)
         guarded = PersonalUsageModel(interval_strategy="guarded_predictive",
@@ -170,6 +171,28 @@ class PersonalUsageModelTests(TestCase):
                              candidate["evidence"]["threshold_hours"]))
         with self.assertRaises(ValueError):
             PersonalUsageModel(interval_strategy="unknown")
+
+    def test_sparse_interval_guard_only_changes_long_cadence(self):
+        for openings, query_day, active in (
+            (tuple((day, 17) for day in (0, 2, 4, 6, 8, 10, 12, 16, 18)), 20, True),
+            (tuple((day, 8 if day % 2 == 0 else 20) for day in range(9)), 10, False),
+        ):
+            empirical = PersonalUsageModel(interval_strategy="empirical")
+            adaptive = PersonalUsageModel()
+            for model in (empirical, adaptive):
+                model.observe(event(0, 0, kind="device_online"))
+                for day, hour in openings:
+                    model.observe(event(day, hour))
+            baseline = empirical.evaluate_interval("matter", "cooker_01", at(query_day, 23), online=True)
+            selected = adaptive.evaluate_interval("matter", "cooker_01", at(query_day, 23), online=True)
+            self.assertEqual(selected["evidence"]["sparse_guard_active"], active)
+            if active:
+                self.assertLess(selected["evidence"]["threshold_hours"],
+                                baseline["evidence"]["threshold_hours"])
+                self.assertEqual(selected["evidence"]["effective_quantile"], 0.90)
+            else:
+                self.assertEqual(selected["evidence"]["threshold_hours"],
+                                 baseline["evidence"]["threshold_hours"])
 
     def test_regular_evening_user_is_not_expected_at_midday(self):
         model = PersonalUsageModel()
