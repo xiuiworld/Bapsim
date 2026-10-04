@@ -758,6 +758,9 @@ class HAServiceIntegrationTests(TestCase):
                 spec = importlib.util.spec_from_file_location("bapsim_ha_retry_under_test", COMPONENT)
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
+                quiet_patch = patch.object(module.QuietHours, "is_quiet", return_value=False)
+                quiet_patch.start()
+                self.addCleanup(quiet_patch.stop)
                 hass = FakeHass()
                 attempts = []
 
@@ -794,6 +797,9 @@ class HAServiceIntegrationTests(TestCase):
                 spec = importlib.util.spec_from_file_location("bapsim_ha_stale_retry_under_test", COMPONENT)
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
+                quiet_patch = patch.object(module.QuietHours, "is_quiet", return_value=False)
+                quiet_patch.start()
+                self.addCleanup(quiet_patch.stop)
                 hass = FakeHass()
                 async def mobile(call):
                     self.fail("resolved incident must not send a mobile notification")
@@ -845,6 +851,9 @@ class HAServiceIntegrationTests(TestCase):
                 spec = importlib.util.spec_from_file_location("bapsim_ha_under_test", COMPONENT)
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
+                quiet_patch = patch.object(module.QuietHours, "is_quiet", return_value=False)
+                quiet_patch.start()
+                self.addCleanup(quiet_patch.stop)
                 hass = FakeHass()
                 self.assertTrue(await module.async_setup(hass, {}))
                 hass.states.async_set("input_select.bapsim_availability", "online", {})

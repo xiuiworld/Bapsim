@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Mapping
 
-from domain.personal_model import PersonalUsageModel
+from domain.personal_model import operating_usage_model
 from workflow import (DeliveryLedger, DetectionStateManager, NotificationControls,
                       ObservationIssueTracker, WorkflowUpdate)
 from workflow.quiet_hours import QuietHours
@@ -27,7 +27,7 @@ class AnalysisService:
         self.state_file = state_file
         self.publish = publish
         self.notify = notify
-        self.model = PersonalUsageModel()
+        self.model = operating_usage_model()
         self.gap = DetectionStateManager(candidate_window=timedelta(hours=36))
         self.decline = DetectionStateManager(min_consecutive=1, candidate_window=timedelta(days=1),
                                              reminder_cadence=timedelta(days=7), resumption_alerts=False)

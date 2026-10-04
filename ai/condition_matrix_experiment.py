@@ -82,7 +82,10 @@ def household(seed: int, rhythm: str, condition: str,
                                   ("alert_probability", "late_grace_hours", "interval_quantile")},
                                cadence_window_support=bool(setting.get("cadence_window_support", False)),
                                interval_with_clock_windows=bool(
-                                   setting.get("interval_with_clock_windows", False)))
+                                   setting.get("interval_with_clock_windows", False)),
+                               window_history_days=setting.get("window_history_days"),
+                               historical_slot_lock=bool(setting.get("historical_slot_lock", False)),
+                               drift_gate_minutes=setting.get("drift_gate_minutes"))
     planned = _planned_days(rhythm, condition, future_days)
     if opportunity_interruptions:
         opportunities = [(day, int(hour)) for day in planned for hour in spec["hours"]]

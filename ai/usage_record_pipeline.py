@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 from typing import Iterable
 
-from domain.personal_model import PersonalUsageModel
+from domain.personal_model import operating_usage_model
 from workflow import DetectionStateManager
 
 
@@ -206,7 +206,7 @@ def evaluate(observations: Iterable[dict[str, object]], labels: Iterable[dict[st
                moment(events[-1]["observed_at"]).astimezone(KST).date() for row in day_labels):
             raise ValueError("label extends beyond observations")
         indexed_labels = {date.fromisoformat(str(row["local_date"])): row for row in day_labels}
-        model = PersonalUsageModel()
+        model = operating_usage_model()
         gap = DetectionStateManager(candidate_window=timedelta(hours=36))
         decline = DetectionStateManager(min_consecutive=1, candidate_window=timedelta(days=1))
         cursor = 0
