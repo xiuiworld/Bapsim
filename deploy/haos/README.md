@@ -36,8 +36,9 @@ whole `infrastructure/home_assistant/config` directory over the HA OS config.
   configuration service for changing that window; B must provide one if a
   different window is required.
 * Optional mobile target: identify a registered `notify.mobile_app_*` service
-  for a test phone. Set it through `bapsim.set_notification_target` only after
-  validating its owner. Leave it unset for the A05 test-origin check.
+  for a test phone. `bapsim.set_notification_target` accepts that full name or
+  its `mobile_app_*` suffix. Validate its owner first. Leave it unset for the
+  A05 test-origin check.
 
 ## Install
 
@@ -96,6 +97,35 @@ bapsim:
 Do not set `external_service: true`. Validate HA configuration and restart
 HA Core. Confirm Bapsim services and `sensor.bapsim_matter_input` exist.
 Keep the existing `bapsim_matter_probe` installation that produces A05 sensors.
+The generated ZIP contains the Bapsim integration code, **not** the lab
+dashboard YAML. If A uses the repository lab dashboard, update the HA OS copy
+of `dashboards/bapsim_lab.yaml` from
+`infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml` at the same
+commit. Merge the simulator recorder entities from the repository
+`configuration.yaml` only if A wants their history; do not overwrite the HA
+OS configuration. The Simulator view now has separate analysis cards.
+
+In internal mode, simulator evaluations update `sensor.bapsim_simulation_*`
+cards and the simulation MQTT prefix; they do not replace the live
+`sensor.bapsim_output_state`. Both output cards are created at startup.
+Before a fresh evaluation, live displays `awaiting_matter`, simulation
+displays `waiting`, and `sensor.bapsim_mqtt_output=waiting` means no result
+has yet been published. Each output card switches to `expired` at its own
+`valid_until` (180 seconds after generation). Both MQTT discovery sensors
+also use `expire_after: 180`. Verify this with a simulator result and then
+call B's bounded test service in HA Developer Tools:
+
+```yaml
+action: bapsim.test_pause_simulation_output
+data:
+  duration_seconds: 240
+```
+
+It pauses **only simulation result publication**; analysis and live output
+continue. About 180 seconds after the last result, the simulation output card
+must show `expired`, and the simulation MQTT discovery sensor must expire.
+Publication resumes automatically after 240 seconds or an HA restart. This
+checks the consumer expiry path using the B simulator, not A05 board ingestion.
 
 ## A05 test-origin verification
 
@@ -124,8 +154,13 @@ be rejected by the registration service. Do not change the probe's origin to
 This is currently a **test-input rejection test**, not a full test-origin
 ingestion test. B's existing bridge accepts only a verified `live` report.
 If A05 needs test-origin data to traverse the B raw-event boundary, B must
-implement and verify a separate test source/isolated storage and notification
-path. A should not reimplement B's collection or normalization code.
+implement and verify a separate test source, explicit storage policy and
+test-only notification target. A should not reimplement B's collection or
+normalization code.
+There is no board test-input→B analysis→test-phone path in this release.
+A supported live producer is required for the full Matter-to-phone test unless
+B later supplies a separate test path. A manual HA phone notification and the
+offline scenario are separate checks, not that end-to-end evidence.
 
 For the remaining pipeline, use B's offline simulation command
 `python -m tools.simulate_notification_flow` or the simulator in a separately
@@ -138,7 +173,10 @@ MQTT topics are `bapsim/v1/<household_id>/...` for Matter and
 `bapsim/simulation/v1/<household_id>/...` for simulator. Use different
 household IDs and mobile targets for separate installations. The HA internal
 state store itself contains both sources, so topic separation alone is not
-an independent data store. A05 test reports are rejected before that store.
+an independent data store. Physical separation is not a requirement of the
+current development contract; independent deletion, backup or access control
+of test and live data would require a separate B storage design. A05 test
+reports are rejected before the live model store.
 
 HA OS stores Bapsim state in `.storage/bapsim.pipeline`, raw events in
 `bapsim_events/`, normalized observations in `bapsim_observations/` (90 days),

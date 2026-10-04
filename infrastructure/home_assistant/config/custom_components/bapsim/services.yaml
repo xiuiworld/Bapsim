@@ -161,11 +161,22 @@ unregister_matter_board_signal:
         entity:
 set_notification_target:
   name: Set caregiver mobile notification service
-  description: Supply a registered notify.mobile_app_* service, or leave empty to disable mobile delivery. Local HA notifications stay enabled.
+  description: Supply a registered mobile_app_* service name (notify.mobile_app_* is also accepted), or leave empty to disable mobile delivery. Local HA notifications stay enabled.
   fields:
     service:
       selector:
         text:
+test_pause_simulation_output:
+  name: Pause simulation output for expiry test
+  description: Temporarily stop refreshing only simulation result cards and MQTT state. Analysis and live output continue. Automatically resumes after the requested seconds or HA restart.
+  fields:
+    duration_seconds:
+      required: true
+      selector:
+        number:
+          min: 181
+          max: 600
+          mode: box
 set_away:
   name: Set declared absence
   description: Mark the household as away or home. A declared absence pauses routine-change alerts and is saved across restarts.

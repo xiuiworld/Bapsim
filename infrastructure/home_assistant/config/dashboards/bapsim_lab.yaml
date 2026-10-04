@@ -60,6 +60,15 @@ views:
           - input_select.bapsim_cooking_state
           - input_select.bapsim_availability
           - input_select.bapsim_away_state
+      - type: entities
+        title: 시뮬레이션 분석 결과
+        entities:
+          - sensor.bapsim_simulation_output_state
+          - sensor.bapsim_simulation_baseline
+          - sensor.bapsim_simulation_features
+          - sensor.bapsim_simulation_detection_status
+          - sensor.bapsim_simulation_workflow_status
+          - sensor.bapsim_simulation_notification_delivery
   - title: 밥심 상태
     path: status
     icon: mdi:heart-pulse

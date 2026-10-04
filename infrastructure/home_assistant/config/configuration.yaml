@@ -31,6 +31,11 @@ recorder:
       - sensor.bapsim_notification_control_result
       - sensor.bapsim_output_state
       - sensor.bapsim_simulation_output_state
+      - sensor.bapsim_simulation_baseline
+      - sensor.bapsim_simulation_features
+      - sensor.bapsim_simulation_detection_status
+      - sensor.bapsim_simulation_workflow_status
+      - sensor.bapsim_simulation_notification_delivery
       - sensor.bapsim_mqtt_output
       - sensor.bapsim_auxiliary_deferral
       - sensor.bapsim_matter_input

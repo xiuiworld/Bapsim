@@ -870,8 +870,9 @@ class HAServiceIntegrationTests(TestCase):
                     hass.hourly_callback(start + timedelta(days=day, hours=15, minutes=30))
                 self.assertEqual(hass.states.values["sensor.bapsim_workflow_status"].state, "normal")
                 hass.hourly_callback(start + timedelta(days=7, hours=15, minutes=30))
-                self.assertEqual(hass.states.values["sensor.bapsim_baseline"].state, "ready")
-                self.assertEqual(hass.states.values["sensor.bapsim_detection_status"].state, "check_required")
+                self.assertEqual(hass.states.values["sensor.bapsim_simulation_baseline"].state, "ready")
+                self.assertEqual(hass.states.values["sensor.bapsim_simulation_detection_status"].state, "check_required")
+                self.assertEqual(hass.states.values["sensor.bapsim_baseline"].state, "waiting")
                 self.assertEqual(len(hass.tasks), 0)
                 hass.hourly_callback(start + timedelta(days=8, hours=15, minutes=30))
                 self.assertEqual(len(hass.tasks), 1)
@@ -880,7 +881,7 @@ class HAServiceIntegrationTests(TestCase):
                     [(domain, name) for domain, name, _ in hass.services.calls],
                     [("persistent_notification", "create")],
                 )
-                self.assertEqual(hass.states.values["sensor.bapsim_workflow_status"].state, "notified")
+                self.assertEqual(hass.states.values["sensor.bapsim_simulation_workflow_status"].state, "notified")
                 hass.hourly_callback(start + timedelta(days=9, hours=15, minutes=30))
                 await asyncio.gather(*hass.tasks[1:])
                 notifications = [body for domain, name, body in hass.services.calls
@@ -888,9 +889,9 @@ class HAServiceIntegrationTests(TestCase):
                 self.assertEqual(len(notifications), 2)
                 self.assertNotEqual(notifications[0]["notification_id"], notifications[1]["notification_id"])
                 await hass.services.async_call("bapsim", "respond", {"response": "checking"})
-                self.assertEqual(hass.states.values["sensor.bapsim_workflow_status"].state, "checking")
+                self.assertEqual(hass.states.values["sensor.bapsim_simulation_workflow_status"].state, "checking")
                 await hass.services.async_call("bapsim", "respond", {"response": "resolved"})
-                self.assertEqual(hass.states.values["sensor.bapsim_workflow_status"].state, "resolved")
+                self.assertEqual(hass.states.values["sensor.bapsim_simulation_workflow_status"].state, "resolved")
 
         asyncio.run(scenario())
 

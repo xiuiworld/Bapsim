@@ -127,6 +127,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     retrying_mobile: set[str] = set()
     away = False
     notification_target: str | None = None
+    simulation_output_pause_until: datetime | None = None
     cancel_timer = None
     store = Store(hass, 1, "bapsim.pipeline", atomic_writes=True)
     journal = RawEventJournal(Path(hass.config.path("bapsim_events"))) if hasattr(hass, "config") else None
@@ -313,8 +314,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         # A timeout or unknown service error may have occurred after HA accepted the call.
         return "failed" if isinstance(exc, ConnectionError) else "uncertain"
 
-    dashboard = HADashboard(hass, usage_model, routine_updated_at)
+    dashboard = HADashboard(hass, usage_model, routine_updated_at, async_track_point_in_utc_time)
     show = dashboard.show
+    show_output = dashboard.show_output
     show_initial_routines = dashboard.show_initial_routines
 
     # Restore dashboard cards without treating old detections as new evidence.
@@ -335,9 +337,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     show("board_history", len(board_history), {"latest": board_history[-3:]})
     show("away", "away" if away else "home")
     show("notification_controls", controls.revision, controls.dump_state())
-    if external_service:
-        show("output_state", "awaiting_matter", {"mode": "external_service"})
-        show("simulation_output_state", "waiting", {"mode": "simulation"})
+    show("output_state", "awaiting_matter", {"mode": "external_service" if external_service else "internal"})
+    show("simulation_output_state", "waiting", {"mode": "simulation"})
+    for entity in ("baseline", "features", "detection_status", "interval_detection",
+                   "decline_detection", "workflow_status", "decline_status",
+                   "observation_issue_status", "notification_delivery", "auxiliary_deferral"):
+        show(f"simulation_{entity}", "waiting", {"source": "simulator"})
 
     mqtt_output = HAMQTTOutput(hass, output, controls, show, _LOGGER)
     send_mqtt = mqtt_output.send_state
@@ -389,12 +394,17 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             hass.async_create_task(create_notification(update, manager))
 
     analysis_mode = AnalysisMode(model_away)
+
+    def allow_output(source: str) -> bool:
+        return (source != "simulator" or simulation_output_pause_until is None or
+                datetime.now(timezone.utc) >= simulation_output_pause_until)
+
     evaluate_model = bind_analysis(
         callback, hass, usage_model, workflow, trend_workflow, controls, observation_issues,
         auxiliary, output, availability_by_device, last_baseline_record_day, analysis_mode,
         lambda: away, lambda category, payload, at: archive_service_record(category, payload, at),
         dispatch_workflow, publish_workflow,
-        show, send_mqtt, save_later, assess_personal_use, cooker_only,
+        show, show_output, allow_output, send_mqtt, save_later, assess_personal_use, cooker_only,
         BASELINE_EVENT, DETECTION_EVENT)
 
     @callback
@@ -620,14 +630,30 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async def set_notification_target(call) -> None:
         nonlocal notification_target
         target = call.data.get("service")
-        if target and (not isinstance(target, str) or not target.startswith("mobile_app_") or not hass.services.has_service("notify", target)):
-            raise ValueError("A registered notify.mobile_app_* service is required")
+        if isinstance(target, str) and target.startswith("notify."):
+            target = target.removeprefix("notify.")
+        if target and (not isinstance(target, str) or not target.startswith("mobile_app_") or
+                       not hass.services.has_service("notify", target)):
+            raise ValueError("Use a registered mobile_app_* or notify.mobile_app_* service")
         notification_target = target or None
         save_later()
         if notification_target and pending_mobile:
             hass.async_create_task(retry_mobile_notifications())
 
     service_registry.register("set_notification_target", set_notification_target)
+
+    async def test_pause_simulation_output(call) -> None:
+        nonlocal simulation_output_pause_until
+        duration = call.data.get("duration_seconds")
+        if (isinstance(duration, bool) or not isinstance(duration, (int, float)) or
+                duration != int(duration) or not 181 <= duration <= 600):
+            raise ValueError("duration_seconds must be an integer from 181 to 600")
+        current = hass.states.get("sensor.bapsim_simulation_output_state")
+        if current is None or not current.attributes.get("valid_until"):
+            raise ValueError("Generate a simulation result before testing expiry")
+        simulation_output_pause_until = datetime.now(timezone.utc) + timedelta(seconds=duration)
+
+    service_registry.register("test_pause_simulation_output", test_pause_simulation_output)
 
     async def set_away(call) -> None:
         nonlocal away
@@ -741,6 +767,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     @callback
     def on_stop(event: Event) -> None:
         nonlocal cancel_timer
+        dashboard.close()
         unsubscribe()
         unsubscribe_context()
         unsubscribe_sessions()
