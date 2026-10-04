@@ -139,15 +139,15 @@ def ha_modules(seed):
 
 
 async def confirm_matter_connection(hass, device_id):
-    """Simulate a changing Matter uptime report after registration."""
-    entity_id = f"sensor.{device_id}_uptime"
+    """Simulate a board-owned Matter report counter after registration."""
+    entity_id = f"sensor.{device_id}_report_counter"
     hass.states.async_set(entity_id, "0", {})
     await hass.services.async_call("bapsim", "register_matter_board_signal", {
         "device_id": device_id, "entity_id": entity_id,
-        "kind": "observation", "signal": "uptime",
+        "kind": "observation", "signal": "snapshot",
     })
     previous = hass.states.get(entity_id)
-    hass.states.async_set(entity_id, "60", {})
+    hass.states.async_set(entity_id, "1", {})
     hass.bus.async_fire("state_changed", {
         "entity_id": entity_id, "old_state": previous,
         "new_state": hass.states.get(entity_id),
@@ -199,8 +199,13 @@ class HAServiceIntegrationTests(TestCase):
                 spec.loader.exec_module(module)
                 hass = FakeHass()
                 hass.states.async_set("binary_sensor.cooker_lid", "off", {})
-                hass.states.async_set("sensor.cooker_uptime", "0", {})
+                hass.states.async_set("sensor.cooker_report_counter", "0", {})
+                hass.states.async_set("sensor.cooker_uptime", "2026-10-04T05:00:00+00:00", {})
                 self.assertTrue(await module.async_setup(hass, {}))
+                await hass.services.async_call("bapsim", "register_matter_board_signal", {
+                    "device_id": "cooker_matter", "entity_id": "sensor.cooker_report_counter",
+                    "kind": "observation", "signal": "snapshot",
+                })
                 await hass.services.async_call("bapsim", "register_matter_board_signal", {
                     "device_id": "cooker_matter", "entity_id": "sensor.cooker_uptime",
                     "kind": "observation", "signal": "uptime",
@@ -221,10 +226,35 @@ class HAServiceIntegrationTests(TestCase):
                                                  if name == module.COOKER_EVENT])
 
                 old_uptime = hass.states.get("sensor.cooker_uptime")
-                hass.states.async_set("sensor.cooker_uptime", "60", {})
+                hass.states.async_set("sensor.cooker_uptime", "2026-10-04T05:00:01+00:00", {})
                 hass.bus.async_fire("state_changed", {
                     "entity_id": "sensor.cooker_uptime", "old_state": old_uptime,
                     "new_state": hass.states.get("sensor.cooker_uptime"),
+                })
+                self.assertEqual(hass.states.values["sensor.bapsim_matter_input"].state,
+                                 "connection_unverified")
+
+                old_counter = hass.states.get("sensor.cooker_report_counter")
+                hass.states.async_set("sensor.cooker_report_counter", "2026-10-04T05:00:02+00:00", {})
+                hass.bus.async_fire("state_changed", {
+                    "entity_id": "sensor.cooker_report_counter", "old_state": old_counter,
+                    "new_state": hass.states.get("sensor.cooker_report_counter"),
+                })
+                self.assertEqual(hass.states.values["sensor.bapsim_matter_input"].state,
+                                 "connection_unverified")
+                old_counter = hass.states.get("sensor.cooker_report_counter")
+                hass.states.async_set("sensor.cooker_report_counter", "0", {})
+                hass.bus.async_fire("state_changed", {
+                    "entity_id": "sensor.cooker_report_counter", "old_state": old_counter,
+                    "new_state": hass.states.get("sensor.cooker_report_counter"),
+                })
+                self.assertEqual(hass.states.values["sensor.bapsim_matter_input"].state,
+                                 "connection_unverified")
+                old_counter = hass.states.get("sensor.cooker_report_counter")
+                hass.states.async_set("sensor.cooker_report_counter", "1", {})
+                hass.bus.async_fire("state_changed", {
+                    "entity_id": "sensor.cooker_report_counter", "old_state": old_counter,
+                    "new_state": hass.states.get("sensor.cooker_report_counter"),
                 })
                 self.assertEqual(hass.states.values["sensor.bapsim_matter_input"].state,
                                  "lid_only_ready")
@@ -234,7 +264,7 @@ class HAServiceIntegrationTests(TestCase):
                 self.assertNotIn("lid_opened", canonical)
 
                 import service.ha_matter_inputs as matter_inputs
-                with patch.object(matter_inputs, "CONNECTION_REPORT_MAX_AGE", timedelta(0)):
+                with patch.object(matter_inputs, "CONNECTION_REPORT_MAX_AGE", timedelta(milliseconds=100)):
                     hass.hourly_callback(datetime.now(timezone.utc) + timedelta(seconds=1))
                 canonical = [data["event_type"] for name, data in hass.bus.events
                              if name == module.COOKER_EVENT]
@@ -246,22 +276,22 @@ class HAServiceIntegrationTests(TestCase):
                 coverage = hass.data["bapsim"]["usage_model"].dump_state()["devices"][0]["coverage"]
                 self.assertEqual(coverage[-1][1], offline["observed_at"])
 
-                old_uptime = hass.states.get("sensor.cooker_uptime")
-                hass.states.async_set("sensor.cooker_uptime", "120", {})
+                old_counter = hass.states.get("sensor.cooker_report_counter")
+                hass.states.async_set("sensor.cooker_report_counter", "2", {})
                 hass.bus.async_fire("state_changed", {
-                    "entity_id": "sensor.cooker_uptime", "old_state": old_uptime,
-                    "new_state": hass.states.get("sensor.cooker_uptime"),
+                    "entity_id": "sensor.cooker_report_counter", "old_state": old_counter,
+                    "new_state": hass.states.get("sensor.cooker_report_counter"),
                 })
                 canonical = [data["event_type"] for name, data in hass.bus.events
                              if name == module.COOKER_EVENT]
                 self.assertEqual(canonical.count("device_online"), 2)
                 self.assertNotIn("lid_opened", canonical)
 
-                old_uptime = hass.states.get("sensor.cooker_uptime")
-                hass.states.async_set("sensor.cooker_uptime", "0", {})
+                old_counter = hass.states.get("sensor.cooker_report_counter")
+                hass.states.async_set("sensor.cooker_report_counter", "0", {})
                 hass.bus.async_fire("state_changed", {
-                    "entity_id": "sensor.cooker_uptime", "old_state": old_uptime,
-                    "new_state": hass.states.get("sensor.cooker_uptime"),
+                    "entity_id": "sensor.cooker_report_counter", "old_state": old_counter,
+                    "new_state": hass.states.get("sensor.cooker_report_counter"),
                 })
                 canonical = [data["event_type"] for name, data in hass.bus.events
                              if name == module.COOKER_EVENT]
@@ -269,7 +299,7 @@ class HAServiceIntegrationTests(TestCase):
                 self.assertEqual(canonical.count("device_online"), 3)
                 self.assertNotIn("lid_opened", canonical)
                 await hass.services.async_call("bapsim", "unregister_matter_board_signal", {
-                    "entity_id": "sensor.cooker_uptime",
+                    "entity_id": "sensor.cooker_report_counter",
                 })
                 canonical = [data["event_type"] for name, data in hass.bus.events
                              if name == module.COOKER_EVENT]
