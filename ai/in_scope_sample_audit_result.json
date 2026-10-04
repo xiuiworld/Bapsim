@@ -1,0 +1,282 @@
+{
+  "scope": "Synthetic age-65-plus daily cooker-use opportunities",
+  "setting": {
+    "alert_probability": 0.72,
+    "late_grace_hours": 0.0,
+    "interval_quantile": 0.95
+  },
+  "seeds": [
+    9101,
+    9118,
+    9135,
+    9152,
+    9169,
+    9186,
+    9203,
+    9220,
+    9237,
+    9254,
+    9271,
+    9288,
+    9305,
+    9322,
+    9339,
+    9356
+  ],
+  "rhythms": [
+    "older_morning",
+    "older_twice"
+  ],
+  "target_conditions": [
+    "stable",
+    "gradual_drift"
+  ],
+  "stress_conditions": [
+    "skip_and_late"
+  ],
+  "variations": {
+    "stable": {
+      "name": "expanded_target",
+      "jitter_minutes": 60,
+      "missed_open_probability": 0.05
+    },
+    "gradual_drift": {
+      "name": "expanded_target",
+      "jitter_minutes": 60,
+      "missed_open_probability": 0.05
+    },
+    "skip_and_late": {
+      "name": "expanded_high_skip",
+      "jitter_minutes": 60,
+      "skip_delta": 0.08,
+      "missed_open_probability": 0.05
+    }
+  },
+  "tick_minutes": 1,
+  "target": {
+    "households": 64,
+    "episodes": {
+      "episodes": 128,
+      "caught": 117,
+      "missed": 11,
+      "early_request_only": 7,
+      "recall": 0.9141,
+      "median_delay_hours": 1.88,
+      "p90_delay_hours": 2.31,
+      "missed_examples": [
+        {
+          "household": "older_twice_stable_9220_expanded_target",
+          "episode_id": 1
+        },
+        {
+          "household": "older_morning_gradual_drift_9118_expanded_target",
+          "episode_id": 2
+        },
+        {
+          "household": "older_twice_gradual_drift_9135_expanded_target",
+          "episode_id": 1
+        },
+        {
+          "household": "older_morning_gradual_drift_9152_expanded_target",
+          "episode_id": 1
+        },
+        {
+          "household": "older_morning_gradual_drift_9152_expanded_target",
+          "episode_id": 2
+        }
+      ]
+    },
+    "nuisance_normal_days": {
+      "normal_days": 576,
+      "days_with_unrelated_request": 40
+    },
+    "household_bootstrap_95pct": {
+      "recall": [
+        0.8672,
+        0.9609
+      ],
+      "nuisance_day_rate": [
+        0.0486,
+        0.0903
+      ]
+    }
+  },
+  "stress": {
+    "households": 32,
+    "episodes": {
+      "episodes": 64,
+      "caught": 18,
+      "missed": 46,
+      "early_request_only": 2,
+      "recall": 0.2812,
+      "median_delay_hours": 2.0,
+      "p90_delay_hours": 15.56,
+      "missed_examples": [
+        {
+          "household": "older_morning_skip_and_late_9101_expanded_high_skip",
+          "episode_id": 1
+        },
+        {
+          "household": "older_morning_skip_and_late_9101_expanded_high_skip",
+          "episode_id": 2
+        },
+        {
+          "household": "older_twice_skip_and_late_9101_expanded_high_skip",
+          "episode_id": 1
+        },
+        {
+          "household": "older_twice_skip_and_late_9101_expanded_high_skip",
+          "episode_id": 2
+        },
+        {
+          "household": "older_morning_skip_and_late_9118_expanded_high_skip",
+          "episode_id": 1
+        }
+      ]
+    },
+    "nuisance_normal_days": {
+      "normal_days": 288,
+      "days_with_unrelated_request": 28
+    },
+    "household_bootstrap_95pct": {
+      "recall": [
+        0.1719,
+        0.3906
+      ],
+      "nuisance_day_rate": [
+        0.0625,
+        0.1354
+      ]
+    }
+  },
+  "by_condition": {
+    "stable": {
+      "households": 32,
+      "episodes": {
+        "episodes": 64,
+        "caught": 63,
+        "missed": 1,
+        "early_request_only": 0,
+        "recall": 0.9844,
+        "median_delay_hours": 1.99,
+        "p90_delay_hours": 2.31,
+        "missed_examples": [
+          {
+            "household": "older_twice_stable_9220_expanded_target",
+            "episode_id": 1
+          }
+        ]
+      },
+      "nuisance_normal_days": {
+        "normal_days": 288,
+        "days_with_unrelated_request": 10
+      },
+      "household_bootstrap_95pct": {
+        "recall": [
+          0.9531,
+          1.0
+        ],
+        "nuisance_day_rate": [
+          0.0174,
+          0.0521
+        ]
+      }
+    },
+    "gradual_drift": {
+      "households": 32,
+      "episodes": {
+        "episodes": 64,
+        "caught": 54,
+        "missed": 10,
+        "early_request_only": 7,
+        "recall": 0.8438,
+        "median_delay_hours": 0.73,
+        "p90_delay_hours": 1.43,
+        "missed_examples": [
+          {
+            "household": "older_morning_gradual_drift_9118_expanded_target",
+            "episode_id": 2
+          },
+          {
+            "household": "older_twice_gradual_drift_9135_expanded_target",
+            "episode_id": 1
+          },
+          {
+            "household": "older_morning_gradual_drift_9152_expanded_target",
+            "episode_id": 1
+          },
+          {
+            "household": "older_morning_gradual_drift_9152_expanded_target",
+            "episode_id": 2
+          },
+          {
+            "household": "older_morning_gradual_drift_9186_expanded_target",
+            "episode_id": 2
+          }
+        ]
+      },
+      "nuisance_normal_days": {
+        "normal_days": 288,
+        "days_with_unrelated_request": 30
+      },
+      "household_bootstrap_95pct": {
+        "recall": [
+          0.75,
+          0.9219
+        ],
+        "nuisance_day_rate": [
+          0.066,
+          0.1424
+        ]
+      }
+    },
+    "skip_and_late": {
+      "households": 32,
+      "episodes": {
+        "episodes": 64,
+        "caught": 18,
+        "missed": 46,
+        "early_request_only": 2,
+        "recall": 0.2812,
+        "median_delay_hours": 2.0,
+        "p90_delay_hours": 15.56,
+        "missed_examples": [
+          {
+            "household": "older_morning_skip_and_late_9101_expanded_high_skip",
+            "episode_id": 1
+          },
+          {
+            "household": "older_morning_skip_and_late_9101_expanded_high_skip",
+            "episode_id": 2
+          },
+          {
+            "household": "older_twice_skip_and_late_9101_expanded_high_skip",
+            "episode_id": 1
+          },
+          {
+            "household": "older_twice_skip_and_late_9101_expanded_high_skip",
+            "episode_id": 2
+          },
+          {
+            "household": "older_morning_skip_and_late_9118_expanded_high_skip",
+            "episode_id": 1
+          }
+        ]
+      },
+      "nuisance_normal_days": {
+        "normal_days": 288,
+        "days_with_unrelated_request": 28
+      },
+      "household_bootstrap_95pct": {
+        "recall": [
+          0.1719,
+          0.3906
+        ],
+        "nuisance_day_rate": [
+          0.0625,
+          0.1354
+        ]
+      }
+    }
+  }
+}
