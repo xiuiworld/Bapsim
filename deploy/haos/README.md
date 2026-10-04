@@ -63,13 +63,27 @@ In HA OS, add/configure the MQTT integration using the **Windows LAN IPv4**,
 port `1883`, and the credentials just created. Do not use `localhost` or
 `mosquitto` as the host in HA OS. Check the integration reports connected.
 
-Generate B's integration on the pinned source checkout:
+The ZIP is generated locally and is not tracked by Git. On A's Windows
+notebook, install **Git** and **Python 3.12** (the tested version is 3.12.10).
+The build uses only Python's standard library, so no `pip install`, SDK,
+Docker image or HA token is needed. Fetch the deployment branch and record
+its exact revision:
+
+```powershell
+git fetch origin deploy/a06-existing-haos
+git switch --track origin/deploy/a06-existing-haos
+git rev-parse HEAD
+```
+
+From the root of that same checkout, generate the ZIP:
 
 ```powershell
 python -m tools.build_ha_bundle
 ```
 
-Back up HA OS first. Transfer `dist/bapsim_ha_bundle.zip` into the HA OS
+The output is `dist/bapsim_ha_bundle.zip`. Keep the recorded commit hash with
+the ZIP so the source used for installation is reproducible. Back up HA OS
+first. Transfer the ZIP into the HA OS
 configuration directory and extract only `custom_components/bapsim/`. Add
 the following to the **existing** HA `configuration.yaml`, merging with any
 existing `bapsim:` block:
