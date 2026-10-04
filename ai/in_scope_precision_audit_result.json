@@ -1,0 +1,273 @@
+{
+  "scope": "Synthetic age-65-plus daily cooker-use opportunities",
+  "setting": "current",
+  "seeds_used": [
+    12001,
+    12020,
+    12039,
+    12058,
+    12077,
+    12096,
+    12115,
+    12134,
+    12153,
+    12172,
+    12191,
+    12210,
+    12229,
+    12248,
+    12267,
+    12286,
+    12305,
+    12324,
+    12343,
+    12362,
+    12381,
+    12400,
+    12419,
+    12438,
+    12457,
+    12476,
+    12495,
+    12514,
+    12533,
+    12552,
+    12571,
+    12590,
+    12609,
+    12628,
+    12647,
+    12666,
+    12685,
+    12704,
+    12723,
+    12742,
+    12761,
+    12780,
+    12799,
+    12818,
+    12837,
+    12856,
+    12875,
+    12894
+  ],
+  "rhythms": [
+    "older_morning",
+    "older_twice"
+  ],
+  "conditions": [
+    "stable",
+    "gradual_drift"
+  ],
+  "variations": {
+    "stable": {
+      "name": "expanded_target",
+      "jitter_minutes": 60,
+      "missed_open_probability": 0.05
+    },
+    "gradual_drift": {
+      "name": "expanded_target",
+      "jitter_minutes": 60,
+      "missed_open_probability": 0.05
+    }
+  },
+  "tick_minutes": 1,
+  "batch_seeds": 16,
+  "stopping_criteria": {
+    "min_households": 128,
+    "target_recall_95pct_width": 0.06,
+    "condition_recall_95pct_width": 0.1,
+    "target_nuisance_95pct_width": 0.04
+  },
+  "history": [
+    {
+      "households": 64,
+      "episodes": 128,
+      "caught": 118,
+      "recall_interval": [
+        0.875,
+        0.9688
+      ],
+      "nuisance_interval": [
+        0.0399,
+        0.0729
+      ],
+      "precision_met": false
+    },
+    {
+      "households": 128,
+      "episodes": 256,
+      "caught": 236,
+      "recall_interval": [
+        0.8867,
+        0.9531
+      ],
+      "nuisance_interval": [
+        0.0425,
+        0.0668
+      ],
+      "precision_met": false
+    },
+    {
+      "households": 192,
+      "episodes": 384,
+      "caught": 355,
+      "recall_interval": [
+        0.8984,
+        0.9505
+      ],
+      "nuisance_interval": [
+        0.0446,
+        0.0637
+      ],
+      "precision_met": true
+    }
+  ],
+  "target": {
+    "households": 192,
+    "episodes": {
+      "episodes": 384,
+      "caught": 355,
+      "missed": 29,
+      "early_request_only": 11,
+      "recall": 0.9245,
+      "median_delay_hours": 1.77,
+      "p90_delay_hours": 2.26,
+      "missed_examples": [
+        {
+          "household": "older_morning_stable_12001_expanded_target",
+          "episode_id": 1
+        },
+        {
+          "household": "older_twice_stable_12115_expanded_target",
+          "episode_id": 1
+        },
+        {
+          "household": "older_twice_stable_12115_expanded_target",
+          "episode_id": 2
+        },
+        {
+          "household": "older_twice_stable_12210_expanded_target",
+          "episode_id": 1
+        },
+        {
+          "household": "older_morning_gradual_drift_12001_expanded_target",
+          "episode_id": 2
+        }
+      ]
+    },
+    "nuisance_normal_days": {
+      "normal_days": 1728,
+      "days_with_unrelated_request": 93
+    },
+    "household_bootstrap_95pct": {
+      "recall": [
+        0.8984,
+        0.9505
+      ],
+      "nuisance_day_rate": [
+        0.0446,
+        0.0637
+      ]
+    }
+  },
+  "by_condition": {
+    "stable": {
+      "households": 96,
+      "episodes": {
+        "episodes": 192,
+        "caught": 181,
+        "missed": 11,
+        "early_request_only": 0,
+        "recall": 0.9427,
+        "median_delay_hours": 1.99,
+        "p90_delay_hours": 2.29,
+        "missed_examples": [
+          {
+            "household": "older_morning_stable_12001_expanded_target",
+            "episode_id": 1
+          },
+          {
+            "household": "older_twice_stable_12115_expanded_target",
+            "episode_id": 1
+          },
+          {
+            "household": "older_twice_stable_12115_expanded_target",
+            "episode_id": 2
+          },
+          {
+            "household": "older_twice_stable_12210_expanded_target",
+            "episode_id": 1
+          },
+          {
+            "household": "older_twice_stable_12438_expanded_target",
+            "episode_id": 2
+          }
+        ]
+      },
+      "nuisance_normal_days": {
+        "normal_days": 864,
+        "days_with_unrelated_request": 21
+      },
+      "household_bootstrap_95pct": {
+        "recall": [
+          0.9062,
+          0.974
+        ],
+        "nuisance_day_rate": [
+          0.0139,
+          0.0359
+        ]
+      }
+    },
+    "gradual_drift": {
+      "households": 96,
+      "episodes": {
+        "episodes": 192,
+        "caught": 174,
+        "missed": 18,
+        "early_request_only": 11,
+        "recall": 0.9062,
+        "median_delay_hours": 0.74,
+        "p90_delay_hours": 1.37,
+        "missed_examples": [
+          {
+            "household": "older_morning_gradual_drift_12001_expanded_target",
+            "episode_id": 2
+          },
+          {
+            "household": "older_morning_gradual_drift_12020_expanded_target",
+            "episode_id": 2
+          },
+          {
+            "household": "older_twice_gradual_drift_12153_expanded_target",
+            "episode_id": 1
+          },
+          {
+            "household": "older_morning_gradual_drift_12210_expanded_target",
+            "episode_id": 1
+          },
+          {
+            "household": "older_morning_gradual_drift_12229_expanded_target",
+            "episode_id": 2
+          }
+        ]
+      },
+      "nuisance_normal_days": {
+        "normal_days": 864,
+        "days_with_unrelated_request": 72
+      },
+      "household_bootstrap_95pct": {
+        "recall": [
+          0.8698,
+          0.9427
+        ],
+        "nuisance_day_rate": [
+          0.0683,
+          0.0995
+        ]
+      }
+    }
+  },
+  "precision_met": true
+}
