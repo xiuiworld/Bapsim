@@ -32,6 +32,38 @@ register_matter_contact:
       required: true
       selector:
         boolean:
+register_a05_snapshot:
+  name: Register A05 atomic snapshot
+  description: Bind the A05 ReportCounter sensor to a cooker after checking its Matter entry and node. Test-origin reports are ignored.
+  fields:
+    device_id:
+      required: true
+      selector:
+        text:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: sensor
+    matter_entry_id:
+      required: true
+      selector:
+        text:
+    node_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+unregister_a05_snapshot:
+  name: Remove A05 atomic snapshot
+  description: Remove an A05 snapshot binding and mark its cooker input unavailable.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: sensor
 register_matter_cooking_state:
   name: Register Matter cooker cooking state
   description: Map two confirmed cooking values from an HA Matter entity to raw started/finished states. Use the same device_id as the lid contact.
