@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from .analysis_policy import route_personal_decision
+
 
 @dataclass
 class AnalysisMode:
@@ -66,11 +68,15 @@ def bind_analysis(
                                 publish_workflow(resolved)
             hass.bus.async_fire(detection_event, decision)
             show("detection_status", decision["routine_status"], decision)
-            if auxiliary.defer(decision):
+            deferred = auxiliary.defer(decision)
+            _, updates = route_personal_decision(
+                "window", cooker_only(decision), workflow, trend_workflow,
+                deferred=deferred)
+            if deferred:
                 show("auxiliary_deferral", "deferred", {"device_id": device_id,
                                                        "until": auxiliary.pending[-1]["due_at"]})
                 continue
-            for update in workflow.ingest(cooker_only(decision)):
+            for update in updates:
                 dispatch_workflow(update)
         interval = assessments.interval
         if interval is not None:
@@ -78,16 +84,19 @@ def bind_analysis(
             if interval["routine_status"] in {"watch", "check_required", "normal"}:
                 hass.bus.async_fire(detection_event, interval)
                 show("interval_detection", interval["routine_status"], interval)
-            if interval["routine_status"] in {"normal", "check_required"}:
-                for update in workflow.ingest(cooker_only(interval)):
-                    dispatch_workflow(update)
+            _, updates = route_personal_decision(
+                "interval", cooker_only(interval), workflow, trend_workflow)
+            for update in updates:
+                dispatch_workflow(update)
         trend = assessments.trend
         if trend is not None:
             archive_service_record("assessment", trend, trend["as_of"])
             hass.bus.async_fire(detection_event, trend)
             show("decline_detection", trend["routine_status"], trend)
-            for update in trend_workflow.ingest(cooker_only(trend)):
-                dispatch_workflow(update, trend_workflow)
+            manager, updates = route_personal_decision(
+                "trend", cooker_only(trend), workflow, trend_workflow)
+            for update in updates:
+                dispatch_workflow(update, manager)
         gap_state = workflow.current_state(source, device_id)
         decline_state = trend_workflow.current_state(source, device_id)
         state = output.build(as_of, profile, "available" if online else "unavailable",

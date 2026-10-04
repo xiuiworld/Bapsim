@@ -46,10 +46,7 @@ def bind_cooker_events(
         except ValueError as exc:
             _LOGGER.warning("Ignored invalid usage-model event: %s", exc)
         if event.data.get("event_type") == "lid_opened":
-            for update in workflow.ingest({
-                "source": source, "device_id": device_id, "as_of": observed_at,
-                "routine_status": "normal", "reason_codes": ["USAGE_RESUMED"],
-            }):
+            for update in workflow.ingest_lid_opening(source, device_id, observed_at):
                 dispatch_workflow(update)
             for opening in set(usage_model.grouped_open_times(*key)) - prior_groups:
                 archive_service_record("usage_group", {

@@ -1,4 +1,4 @@
-"""Train and challenge cooker-use settings on distinct synthetic conditions.
+"""Exploratory stress test, including profiles outside the product target.
 
 These labels describe scripted cooker-use interruptions, never meals or safety.
 The condition parameters are engineering assumptions, not population estimates.
@@ -78,9 +78,8 @@ def household(seed: int, rhythm: str, condition: str,
     episodes = {planned[index + offset]: number
                 for number, index in enumerate((len(planned) // 3, 2 * len(planned) // 3), 1)
                 for offset in (0, 1)}
-    # Two separate, consecutive planned-use interruptions let the real
-    # two-candidate notification policy be evaluated rather than just the
-    # model's first internal warning.
+    # Two consecutive planned-use *days* are interrupted. A twice-daily
+    # household therefore loses four openings, not just two.
     interruptions = {planned[index + offset]
                      for index in (len(planned) // 3, 2 * len(planned) // 3)
                      for offset in (0, 1)}
@@ -216,7 +215,7 @@ def experiment() -> dict[str, object]:
     candidate_rows = (current_rows if selected == "current" else
                       cohort(HOLDOUT_SEEDS, HOLDOUT_CONDITIONS, SETTINGS[selected]))
     return {
-        "scope": "Synthetic cooker-use scenarios only; no meal, health, or safety ground truth",
+        "scope": "Exploratory synthetic stress test includes age 50-64 and batch cooking outside product target; no meal, health, or safety ground truth",
         "history_days": HISTORY_DAYS, "future_days": FUTURE_DAYS,
         "rhythms": list(RHYTHMS), "train_conditions": list(TRAIN_CONDITIONS),
         "holdout_conditions": list(HOLDOUT_CONDITIONS),

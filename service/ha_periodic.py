@@ -15,7 +15,9 @@ class PeriodicState:
 
 def bind_periodic(
         callback, hass, state, show_initial_routines, delivery, external_service,
-        forwarded_devices, matter_inputs_available, output, quiet_hours, pending_quiet,
+        forwarded_devices, matter_inputs_available, connection_deadline, matter_contact_registered,
+        publish_matter_offline, show_matter_readiness,
+        output, quiet_hours, pending_quiet,
         workflow, trend_workflow, controls, observation_issues, availability_by_device,
         away_getter, create_notification, release_quiet, save_later, auxiliary,
         usage_model, show, cooker_only, dispatch_workflow, observations,
@@ -30,10 +32,19 @@ def bind_periodic(
             show_initial_routines(now)
             state.last_routine_review_day = review_day
         delivery.prune(as_of)
+        for (source, device_id), availability in tuple(availability_by_device.items()):
+            if (source == "matter" and availability == "online" and
+                    matter_contact_registered(device_id) and not matter_inputs_available(device_id, now)):
+                availability_by_device[(source, device_id)] = "offline"
+                expiry = connection_deadline(device_id)
+                closed_at = min(now, expiry) if expiry is not None else now
+                usage_model.availability(source, device_id, False, closed_at.isoformat())
+                publish_matter_offline(device_id, closed_at)
+                show_matter_readiness(now)
         if external_service:
             if hass.services.has_service("mqtt", "publish"):
                 for source, device_id in tuple(forwarded_devices):
-                    online = (matter_inputs_available(device_id) if source == "matter" else
+                    online = (matter_inputs_available(device_id, now) if source == "matter" else
                               (hass.states.get("input_select.bapsim_availability") is not None and
                                hass.states.get("input_select.bapsim_availability").state == "online"))
                     heartbeat = {"source": source, "device_id": device_id,
@@ -75,7 +86,7 @@ def bind_periodic(
                 availability = ("online" if availability_state is not None and
                                 availability_state.state == "online" else "offline")
             elif source == "matter":
-                availability = "online" if matter_inputs_available(device_id) else "offline"
+                availability = "online" if matter_inputs_available(device_id, now) else "offline"
             else:
                 availability = "offline"
             payload = features.extract(source, device_id, as_of, availability).as_dict()

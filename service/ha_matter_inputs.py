@@ -5,10 +5,24 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Callable, NamedTuple
 
+CONNECTION_REPORT_MAX_AGE = timedelta(minutes=3)
+# HA exposes GeneralDiagnostics.UpTime as a calculated boot timestamp. A change
+# to that timestamp cannot prove a new report from the board. Only a board-owned
+# incrementing Matter counter is accepted as connection evidence.
+CONNECTION_SIGNALS = frozenset({"snapshot"})
+
+
+def snapshot_counter(value: str | None) -> int | None:
+    """Accept only a nonnegative, board-reported decimal sequence number."""
+    if value is None or not value.isascii() or not value.isdecimal():
+        return None
+    return int(value)
+
 
 class MatterInputHandlers(NamedTuple):
     is_matter_entity: Callable[..., bool]
     matter_inputs_available: Callable[..., bool]
+    connection_deadline: Callable[..., datetime | None]
     show_matter_readiness: Callable[..., None]
     show_context_readiness: Callable[..., None]
     show_board_readiness: Callable[..., None]
@@ -28,6 +42,8 @@ def bind_matter_inputs(
         matter_report_at, availability_by_device, usage_model, pending_mobile,
         retry_mobile_notifications, show, MatterContactAdapter, MatterCookingStateAdapter
 ) -> MatterInputHandlers:
+    connection_reports: dict[tuple[str, str], datetime] = {}
+
     @callback
     def matter_bindings(device_id: str) -> list[tuple[str, MatterContactAdapter | MatterCookingStateAdapter]]:
         return [
@@ -42,15 +58,34 @@ def bind_matter_inputs(
         return entry is not None and entry.platform == "matter"
 
     @callback
-    def matter_inputs_available(device_id: str) -> bool:
+    def connection_deadline(device_id: str) -> datetime | None:
+        deadlines = [
+            reported + CONNECTION_REPORT_MAX_AGE
+            for (entity_id, report_device), reported in connection_reports.items()
+            if report_device == device_id
+            and (adapter := matter_board_signals.get(entity_id)) is not None
+            and adapter.device_id == device_id and adapter.kind == "observation"
+            and adapter.signal in CONNECTION_SIGNALS and is_matter_entity(entity_id)
+            and (state := hass.states.get(entity_id)) is not None
+            and state.state not in {"unknown", "unavailable"}
+        ]
+        return max(deadlines, default=None)
+
+    @callback
+    def matter_inputs_available(device_id: str, as_of: datetime | None = None) -> bool:
         bindings = matter_bindings(device_id)
-        return any(
+        contact_ready = any(
             isinstance(adapter, MatterContactAdapter)
             and is_matter_entity(entity_id)
             and (state := hass.states.get(entity_id)) is not None
             and state.state in {"on", "off"}
             for entity_id, adapter in bindings
         )
+        if not contact_ready:
+            return False
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        deadline = connection_deadline(device_id)
+        return deadline is not None and deadline - CONNECTION_REPORT_MAX_AGE <= now <= deadline
 
     @callback
     def matter_cooking_available(device_id: str) -> bool:
@@ -63,7 +98,7 @@ def bind_matter_inputs(
         )
 
     @callback
-    def show_matter_readiness() -> None:
+    def show_matter_readiness(as_of: datetime | None = None) -> None:
         device_ids = sorted({
             adapter.device_id for adapter in (*matter_contacts.values(), *matter_cooking_states.values())
         })
@@ -91,7 +126,7 @@ def bind_matter_inputs(
                         "unknown", "unavailable",
                     }
                 ),
-                "inputs_available": matter_inputs_available(device_id),
+                "inputs_available": matter_inputs_available(device_id, as_of),
                 "cooking_available": matter_cooking_available(device_id),
                 "source_verified": all(is_matter_entity(entity_id) for entity_id, _ in matter_bindings(device_id)),
             })
@@ -104,7 +139,7 @@ def bind_matter_inputs(
         elif any(item["lid_state_unmapped"] for item in devices):
             status = "state_unmapped"
         elif any(not item["inputs_available"] for item in devices):
-            status = "entity_unavailable"
+            status = "connection_unverified"
         elif any(not item["cooking_entity"] for item in devices):
             status = "lid_only_ready"
         elif any(not item["source_verified"] for item in devices):
@@ -118,8 +153,8 @@ def bind_matter_inputs(
         show("matter_input", status, {"devices": devices})
 
     @callback
-    def next_matter_time(device_id: str) -> str:
-        observed = datetime.now(timezone.utc)
+    def next_matter_time(device_id: str, as_of: datetime | None = None) -> str:
+        observed = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
         previous = matter_report_at.get(device_id)
         if previous is not None and observed <= previous:
             observed = previous + timedelta(microseconds=1)
@@ -127,8 +162,8 @@ def bind_matter_inputs(
         return observed.isoformat()
 
     @callback
-    def publish_matter_offline(device_id: str) -> None:
-        received_at = next_matter_time(device_id)
+    def publish_matter_offline(device_id: str, as_of: datetime | None = None) -> None:
+        received_at = next_matter_time(device_id, as_of)
         hass.bus.async_fire(raw_event, {
             "device_id": device_id, "event_type": "availability", "value": "offline",
             "observed_at": received_at, "received_at": received_at, "source": "matter",
@@ -246,14 +281,44 @@ def bind_matter_inputs(
         show("matter_board", status, {"signals": signals})
 
     @callback
-    def forward_board_state(entity_id: str, state) -> None:
+    def forward_board_state(entity_id: str, state, *, fresh_report: bool = False,
+                            previous_value: str | None = None) -> None:
         adapter = matter_board_signals.get(entity_id)
         if adapter is None:
             return
-        received_at = datetime.now(timezone.utc).isoformat()
+        received = datetime.now(timezone.utc)
+        is_connection = adapter.kind == "observation" and adapter.signal in CONNECTION_SIGNALS
+        valid_report = (fresh_report and is_connection and is_matter_entity(entity_id) and
+                        state is not None and state.state not in {"unknown", "unavailable"})
+        rebooted = False
+        if valid_report:
+            current_counter = snapshot_counter(state.state)
+            previous_counter = snapshot_counter(previous_value)
+            valid_report = (current_counter is not None and previous_counter is not None
+                            and current_counter != previous_counter)
+            rebooted = valid_report and current_counter < previous_counter
+        if is_connection and not valid_report:
+            if connection_reports.pop((entity_id, adapter.device_id), None) is not None and \
+                    availability_by_device.get(("matter", adapter.device_id)) == "online":
+                publish_matter_offline(adapter.device_id)
+        if valid_report:
+            key = entity_id, adapter.device_id
+            previous_report = connection_reports.get(key)
+            if rebooted or (previous_report is not None and
+                            received - previous_report > CONNECTION_REPORT_MAX_AGE):
+                publish_matter_offline(adapter.device_id)
+            connection_reports[key] = received
+        received_at = received.isoformat()
         value = state.state if is_matter_entity(entity_id) and state is not None else "unavailable"
         hass.bus.async_fire(raw_event, adapter.translate(value, received_at, received_at))
+        if valid_report and matter_inputs_available(adapter.device_id):
+            lids = [bound for bound, bound_adapter in matter_contacts.items()
+                    if bound_adapter.device_id == adapter.device_id]
+            if lids and availability_by_device.get(("matter", adapter.device_id)) != "online":
+                forward_matter_state(lids[0], hass.states.get(lids[0]), snapshot=True)
         show_board_readiness()
+        if is_connection:
+            show_matter_readiness()
 
     @callback
     def on_matter_state(event: Event) -> None:
@@ -263,7 +328,9 @@ def bind_matter_inputs(
         if entity_id in matter_board_signals and (
             state is None or previous is None or previous.state != state.state
         ):
-            forward_board_state(entity_id, state)
+            forward_board_state(entity_id, state, fresh_report=previous is not None and
+                                state is not None and previous.state != state.state,
+                                previous_value=previous.state if previous is not None else None)
         if entity_id in matter_contexts:
             if state is None or previous is None or previous.state != state.state:
                 forward_context_state(entity_id, state)
@@ -321,7 +388,7 @@ def bind_matter_inputs(
     hass.bus.async_listen_once(started_event, on_started)
 
     return MatterInputHandlers(
-        is_matter_entity, matter_inputs_available, show_matter_readiness,
+        is_matter_entity, matter_inputs_available, connection_deadline, show_matter_readiness,
         show_context_readiness, show_board_readiness, forward_matter_state,
         forward_context_state, forward_board_state, publish_matter_offline,
         publish_cooking_input_offline, unsubscribe_matter, unsubscribe_registry, on_started,
@@ -455,6 +522,9 @@ def register_matter_services(
         if adapter is not None:
             received_at = datetime.now(timezone.utc).isoformat()
             hass.bus.async_fire(raw_event, adapter.translate("unavailable", received_at, received_at))
+            if adapter.kind == "observation" and adapter.signal in CONNECTION_SIGNALS:
+                publish_matter_offline(adapter.device_id)
+                show_matter_readiness()
         show_board_readiness()
         save_later()
 
