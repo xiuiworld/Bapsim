@@ -54,9 +54,19 @@ class PersonalUsageModel:
                  late_grace_hours: float = 0.0, interval_quantile: float = 0.95,
                  interval_strategy: str = "empirical",
                  cadence_window_support: bool = False,
-                 interval_with_clock_windows: bool = False) -> None:
+                 interval_with_clock_windows: bool = False,
+                 window_history_days: int | None = None,
+                 historical_slot_lock: bool = False,
+                 drift_gate_minutes: float | None = None) -> None:
         if min_covered_days < 1 or history_days < min_covered_days:
             raise ValueError("invalid learning window")
+        if window_history_days is not None and not (
+                min_covered_days <= window_history_days <= history_days):
+            raise ValueError("window history must fit within the covered history")
+        if drift_gate_minutes is not None and (
+                drift_gate_minutes <= 0 or window_history_days is None or
+                not historical_slot_lock):
+            raise ValueError("drift gate requires a recent locked window")
         if (not 0 < window_hours <= 3 or not 0 < alert_probability <= 1 or
                 not 0 <= late_grace_hours <= 2 or not 0.5 <= interval_quantile <= 0.95):
             raise ValueError("invalid model window or alert probability")
@@ -71,6 +81,9 @@ class PersonalUsageModel:
         self.interval_strategy = interval_strategy
         self.cadence_window_support = cadence_window_support
         self.interval_with_clock_windows = interval_with_clock_windows
+        self.window_history_days = window_history_days or history_days
+        self.historical_slot_lock = historical_slot_lock
+        self.drift_gate_minutes = drift_gate_minutes
         self._devices: dict[tuple[str, str], dict[str, object]] = {}
         self._away_intervals: list[tuple[datetime, datetime]] = []
         self._away_since: datetime | None = None
@@ -85,7 +98,7 @@ class PersonalUsageModel:
             "last_seen": None, "last_open_at": None,
             "evaluations": {}, "trend_evaluations": {},
             "decline_streak": 0, "recovery_streak": 0, "trend_active": False,
-            "initial_windows": [],
+            "initial_windows": [], "centers_cache": {}, "clock_cache": {},
         })
 
     @staticmethod
@@ -121,7 +134,10 @@ class PersonalUsageModel:
         if source not in {"matter", "simulator"} or not isinstance(device_id, str) or not device_id:
             raise ValueError("initial routine needs source and device_id")
         parsed = self.parse_initial_windows(windows)
-        self._device(source, device_id)["initial_windows"] = parsed
+        state = self._device(source, device_id)
+        state["initial_windows"] = parsed
+        state["centers_cache"].clear()
+        state["clock_cache"].clear()
 
     def initial_routine(self, source: str, device_id: str) -> list[dict[str, object]]:
         return [{"time": item["time"], "weekdays": list(item["weekdays"])}
@@ -193,10 +209,16 @@ class PersonalUsageModel:
         moment = _time(at)
         if away and self._away_since is None:
             self._away_since = moment
+            for state in self._devices.values():
+                state["centers_cache"].clear()
+                state["clock_cache"].clear()
         elif not away and self._away_since is not None:
             if moment > self._away_since:
                 self._away_intervals.append((self._away_since, moment))
             self._away_since = None
+            for state in self._devices.values():
+                state["centers_cache"].clear()
+                state["clock_cache"].clear()
 
     def availability(self, source: str, device_id: str, online: bool, at: str) -> None:
         moment = _time(at)
@@ -209,10 +231,12 @@ class PersonalUsageModel:
         if online:
             if start is None:
                 state["online_since"] = moment
+                state["clock_cache"].clear()
         elif start is not None:
             if moment > start:
                 state["coverage"].append((start, moment))
             state["online_since"] = None
+            state["clock_cache"].clear()
         self._prune(state, moment)
 
     def observe(self, event: Mapping[str, object]) -> None:
@@ -239,6 +263,8 @@ class PersonalUsageModel:
         state["last_open_at"] = moment
         raw_opens.append(moment)
         state["opens"] = self._group_opens(raw_opens)
+        state["centers_cache"].clear()
+        state["clock_cache"].clear()
         self._prune(state, moment)
 
     @staticmethod
@@ -264,10 +290,11 @@ class PersonalUsageModel:
         }
         self._away_intervals = [(start, end) for start, end in self._away_intervals if end >= cutoff]
 
-    def _centers(self, state: dict[str, object], before: date) -> list[float]:
-        cutoff = before - timedelta(days=self.history_days)
+    def _centers_for(self, state: dict[str, object], before: date,
+                     history_days: int, slot_lock: bool) -> tuple[list[float], list[int]]:
+        cutoff = before - timedelta(days=history_days)
         samples = [
-            _minutes(at) for at in state["opens"]
+            at for at in state["opens"]
             if cutoff <= at.astimezone(KST).date() < before
             and not self._away_at(at)
         ]
@@ -275,10 +302,28 @@ class PersonalUsageModel:
                       for item in state["initial_windows"]}
         centers = [configured.get(index, float(prior))
                    for index, (_, prior, _) in enumerate(PRIORS)]
+        eligible = list(range(len(centers)))
+        if slot_lock and history_days < self.history_days:
+            anchor_start = before - timedelta(days=self.history_days)
+            anchor_end = before - timedelta(days=history_days)
+            counts = [0] * len(centers)
+            for at in state["opens"]:
+                if not (anchor_start <= at.astimezone(KST).date() < anchor_end) or self._away_at(at):
+                    continue
+                minute = _minutes(at)
+                closest = min(range(len(centers)),
+                              key=lambda index: _distance(minute, centers[index]))
+                if _distance(minute, centers[closest]) <= 6 * 60:
+                    counts[closest] += 1
+            active = [index for index, count in enumerate(counts)
+                      if count >= 3 or index in configured]
+            if active:
+                eligible = active
         for _ in range(4):
             groups = [[] for _ in PRIORS]
-            for item in samples:
-                closest = min(range(len(centers)), key=lambda index: _distance(item, centers[index]))
+            for at in samples:
+                item = _minutes(at)
+                closest = min(eligible, key=lambda index: _distance(item, centers[index]))
                 if _distance(item, centers[closest]) <= 6 * 60:
                     groups[closest].append(item)
             centers = [
@@ -286,7 +331,28 @@ class PersonalUsageModel:
                 if group else configured.get(index, float(PRIORS[index][1]))
                 for index, group in enumerate(groups)
             ]
-        return centers
+        return centers, eligible
+
+    def _centers(self, state: dict[str, object], before: date) -> tuple[list[float], int]:
+        if before in state["centers_cache"]:
+            return state["centers_cache"][before]
+        recent, eligible = self._centers_for(
+            state, before, self.window_history_days, self.historical_slot_lock)
+        if self.drift_gate_minutes is None:
+            result = (recent, self.window_history_days)
+        else:
+            baseline, _ = self._centers_for(state, before, self.history_days, False)
+            if any(_distance(recent[index], baseline[index]) >= self.drift_gate_minutes
+                   for index in eligible):
+                result = (recent, self.window_history_days)
+            else:
+                result = (baseline, self.history_days)
+        # Only prior days affect a center; a new opening or away change clears this cache.
+        state["centers_cache"][before] = result
+        if len(state["centers_cache"]) > 4:
+            oldest = min(state["centers_cache"])
+            del state["centers_cache"][oldest]
+        return result
 
     def _away_at(self, moment: datetime) -> bool:
         return any(start <= moment < end for start, end in self._away_intervals) or (
@@ -351,11 +417,11 @@ class PersonalUsageModel:
         return decision_at - last > limit + timedelta(hours=1)
 
     def _profile(self, state: dict[str, object], day: date, slot: int, center: float,
-                 now: datetime) -> dict[str, object]:
+                 now: datetime, history_days: int) -> dict[str, object]:
         count = positive = group_count = group_positive = weekday_count = weekday_positive = 0.0
         positive_days = 0
         covered_days = 0
-        for offset in range(1, self.history_days + 1):
+        for offset in range(1, history_days + 1):
             previous = day - timedelta(days=offset)
             start, end = self._window(previous, center)
             if not self._covered(state, start, end, now) or self._away_window(start, end):
@@ -400,7 +466,7 @@ class PersonalUsageModel:
         local_day = now.astimezone(KST).date()
         decisions = []
         for day in (local_day - timedelta(days=2), local_day - timedelta(days=1), local_day):
-            centers = self._centers(state, day)
+            centers, history_days = self._centers(state, day)
             for index, center in enumerate(centers):
                 start, end = self._window(day, center)
                 decision_at = end + self.late_grace
@@ -409,7 +475,7 @@ class PersonalUsageModel:
                 evaluation_key = f"{day.isoformat()}|{index}"
                 if evaluation_key in state["evaluations"]:
                     continue
-                profile = self._profile(state, day, index, center, now)
+                profile = self._profile(state, day, index, center, now, history_days)
                 cadence_supported = False
                 if away or self._away_window(start, decision_at):
                     status, reason, score = "away", "AWAY_DECLARED", None
@@ -435,6 +501,7 @@ class PersonalUsageModel:
                     status, reason, score = "normal", None, round(1 - profile["probability"], 4)
                     cadence_supported = False
                 state["evaluations"][evaluation_key] = status
+                state["clock_cache"].clear()
                 # Only an unresolved missed-use decision needs a late workflow
                 # update. Connection loss and lid opening have their own live
                 # events, and old learning/normal states would be misleading.
@@ -462,8 +529,9 @@ class PersonalUsageModel:
         now = _time(as_of)
         state = self._device(source, device_id)
         day = now.astimezone(KST).date()
-        centers = self._centers(state, day)
-        windows = [self._profile(state, day, index, center, now) for index, center in enumerate(centers)]
+        centers, history_days = self._centers(state, day)
+        windows = [self._profile(state, day, index, center, now, history_days)
+                   for index, center in enumerate(centers)]
         recent_opens = [at for at in state["opens"] if now - timedelta(hours=24) < at <= now]
         previous_opens = [at for at in state["opens"] if at <= now]
         return {
@@ -483,11 +551,17 @@ class PersonalUsageModel:
         state = self._device(source, device_id)
         if not online or away or not state["opens"]:
             return None
-        profile = self.profile(source, device_id, as_of)
-        clock_available = any(not window["schedule_excluded"] and
-                              window["probability"] >= (0.65 if window["initial_ready"] else self.alert_probability) and
-                              (window["covered_days"] >= self.min_covered_days or window["initial_ready"])
-                              for window in profile["windows"])
+        local_day = now.astimezone(KST).date()
+        if local_day not in state["clock_cache"]:
+            profile = self.profile(source, device_id, as_of)
+            state["clock_cache"][local_day] = any(
+                not window["schedule_excluded"] and
+                window["probability"] >= (0.65 if window["initial_ready"] else self.alert_probability) and
+                (window["covered_days"] >= self.min_covered_days or window["initial_ready"])
+                for window in profile["windows"])
+            if len(state["clock_cache"]) > 3:
+                del state["clock_cache"][min(state["clock_cache"])]
+        clock_available = state["clock_cache"][local_day]
         if clock_available and not self.interval_with_clock_windows:
             return None
         opens = [at for at in state["opens"] if at <= now and not self._away_at(at)]

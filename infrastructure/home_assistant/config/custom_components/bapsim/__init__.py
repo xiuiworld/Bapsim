@@ -20,7 +20,7 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.domain.detection import RuleDetector
     from .runtime.domain.features import CookerFeatureExtractor
     from .runtime.domain.sessions import CookingSessionBuilder
-    from .runtime.domain.personal_model import PersonalUsageModel
+    from .runtime.domain.personal_model import operating_usage_model
     from .runtime.workflow import DeliveryLedger, DetectionStateManager, NotificationControls, ObservationIssueTracker, WorkflowUpdate
     from .runtime.workflow.quiet_hours import QuietHours
     from .runtime.workflow.evidence_boundary import cooker_only
@@ -49,7 +49,7 @@ else:
     from domain.detection import RuleDetector
     from domain.features import CookerFeatureExtractor
     from domain.sessions import CookingSessionBuilder
-    from domain.personal_model import PersonalUsageModel
+    from domain.personal_model import operating_usage_model
     from workflow import DeliveryLedger, DetectionStateManager, NotificationControls, ObservationIssueTracker, WorkflowUpdate
     from workflow.quiet_hours import QuietHours
     from workflow.evidence_boundary import cooker_only
@@ -96,7 +96,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     features = CookerFeatureExtractor()
     baseline = PersonalBaselineEngine()
     detector = RuleDetector()
-    usage_model = PersonalUsageModel()
+    usage_model = operating_usage_model()
     workflow = DetectionStateManager(candidate_window=timedelta(hours=36))
     trend_workflow = DetectionStateManager(min_consecutive=1, candidate_window=timedelta(days=1),
                                            reminder_cadence=timedelta(days=7), resumption_alerts=False)

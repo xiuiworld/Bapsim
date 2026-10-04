@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest import TestCase
 
-from domain.personal_model import PersonalUsageModel
+from domain.personal_model import PersonalUsageModel, operating_usage_model
 from workflow import DetectionStateManager
 
 
@@ -21,6 +21,12 @@ def event(day: int, hour: int, minute: int = 0, kind: str = "lid_opened") -> dic
 
 
 class PersonalUsageModelTests(TestCase):
+    def test_operating_model_uses_validated_drift_gate(self):
+        model = operating_usage_model()
+        self.assertEqual(model.window_history_days, 10)
+        self.assertTrue(model.historical_slot_lock)
+        self.assertEqual(model.drift_gate_minutes, 75)
+
     def _trained(self) -> PersonalUsageModel:
         model = PersonalUsageModel()
         model.observe(event(0, 0, kind="device_online"))
@@ -43,6 +49,54 @@ class PersonalUsageModelTests(TestCase):
         self.assertEqual(missing[0]["routine_status"], "check_required")
         self.assertEqual(missing[0]["reason_codes"], ["EXPECTED_USE_MISSING"])
         self.assertEqual(model.evaluate("matter", "cooker_01", at(7, 18, 30), online=True), [])
+
+    def test_recent_window_follows_a_changed_use_time(self):
+        current = PersonalUsageModel()
+        recent = PersonalUsageModel(window_history_days=10)
+        for model in (current, recent):
+            model.observe(event(0, 0, kind="device_online"))
+            for day in range(31):
+                model.observe(event(day, 8 if day < 21 else 10))
+        old_window = current.profile("matter", "cooker_01", at(31, 0))["windows"][0]
+        new_window = recent.profile("matter", "cooker_01", at(31, 0))["windows"][0]
+        old_time = datetime.fromisoformat(old_window["expected_time"])
+        new_time = datetime.fromisoformat(new_window["expected_time"])
+        self.assertGreater(new_time - old_time, timedelta(hours=1))
+        self.assertEqual(new_window["covered_days"], 10)
+        self.assertGreaterEqual(new_window["probability"], recent.alert_probability)
+
+    def test_inactive_slot_does_not_capture_a_later_morning_routine(self):
+        unlocked = PersonalUsageModel(window_history_days=10)
+        locked = PersonalUsageModel(window_history_days=10, historical_slot_lock=True)
+        for model in (unlocked, locked):
+            model.observe(event(0, 0, kind="device_online"))
+            for day in range(31):
+                model.observe(event(day, 8 if day < 21 else 11))
+        unlocked_windows = unlocked.profile("matter", "cooker_01", at(31, 0))["windows"]
+        locked_windows = locked.profile("matter", "cooker_01", at(31, 0))["windows"]
+        self.assertLess(datetime.fromisoformat(unlocked_windows[0]["expected_time"]).hour, 10)
+        self.assertGreaterEqual(datetime.fromisoformat(locked_windows[0]["expected_time"]).hour, 10)
+        self.assertGreaterEqual(locked_windows[0]["probability"], locked.alert_probability)
+
+    def test_drift_gate_uses_full_history_until_the_routine_moves(self):
+        current = PersonalUsageModel()
+        gated = PersonalUsageModel(window_history_days=10, historical_slot_lock=True,
+                                   drift_gate_minutes=75)
+        for model in (current, gated):
+            model.observe(event(0, 0, kind="device_online"))
+            for day in range(21):
+                model.observe(event(day, 8))
+        stable_current = current.profile("matter", "cooker_01", at(21, 0))["windows"][0]
+        stable_gated = gated.profile("matter", "cooker_01", at(21, 0))["windows"][0]
+        self.assertEqual(stable_gated, stable_current)
+        for model in (current, gated):
+            for day in range(21, 31):
+                model.observe(event(day, 11))
+        moved = gated.profile("matter", "cooker_01", at(31, 0))["windows"][0]
+        old = current.profile("matter", "cooker_01", at(31, 0))["windows"][0]
+        self.assertGreater(datetime.fromisoformat(moved["expected_time"]) -
+                           datetime.fromisoformat(old["expected_time"]), timedelta(hours=2))
+        self.assertEqual(moved["covered_days"], 10)
 
     def test_late_tick_recovers_covered_window_without_replaying_resumed_alert(self):
         model = self._trained()
