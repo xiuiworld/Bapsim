@@ -211,31 +211,33 @@ class PersonalUsageModel:
             state["online_since"] = None
         self._prune(state, moment)
 
-    def observe(self, event: Mapping[str, object]) -> None:
+    def observe(self, event: Mapping[str, object]) -> bool:
+        """Return whether a lid opening was accepted as usable evidence."""
         kind = event.get("event_type")
         if kind not in {"device_online", "device_offline", "lid_opened"}:
-            return
+            return False
         source, device_id, at = event.get("source"), event.get("device_id"), event.get("observed_at")
         if not all(isinstance(item, str) and item for item in (source, device_id, at)):
             raise ValueError("canonical event needs source, device_id and observed_at")
         moment = _time(at)
         if kind in {"device_online", "device_offline"}:
             self.availability(source, device_id, kind == "device_online", at)
-            return
+            return False
         if event.get("availability") != "online":
-            return
+            return False
         state = self._device(source, device_id)
         last_open = state["last_open_at"]
         if last_open is not None and moment <= last_open:
-            return
+            return False
         last_seen = state["last_seen"]
         if last_seen is not None and moment < last_seen - MAX_REPLAY_DELAY:
-            return
+            return False
         raw_opens = state["raw_opens"]
         state["last_open_at"] = moment
         raw_opens.append(moment)
         state["opens"] = self._group_opens(raw_opens)
         self._prune(state, moment)
+        return True
 
     @staticmethod
     def _group_opens(raw_opens: list[datetime]) -> list[datetime]:

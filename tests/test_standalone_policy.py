@@ -46,6 +46,25 @@ class PolicyTests(TestCase):
             self.assertEqual([item.action for item in sent],
                              ["notify_requested", "usage_resumed_requested"])
 
+    def test_offline_lid_opening_cannot_resolve_current_incident(self):
+        with TemporaryDirectory() as directory:
+            service = AnalysisService("home", Path(directory) / "state.json",
+                                      lambda *args: None, lambda update: True)
+            service.availability[("matter", "cooker_01")] = True
+            for hour in (8, 13):
+                service.gap.ingest({"source": "matter", "device_id": "cooker_01",
+                                    "as_of": at(10, hour), "routine_status": "check_required",
+                                    "reason_codes": ["EXPECTED_USE_MISSING"]})
+            with patch.object(service.model, "evaluate", return_value=[]), \
+                 patch.object(service.model, "evaluate_interval", return_value=None), \
+                 patch.object(service.model, "evaluate_trend", return_value=None):
+                service.process_event({**event(10, 14, "lid_opened"),
+                                       "availability": "offline"}, at(10, 14))
+            self.assertEqual(service.gap.current_state("matter", "cooker_01")["status"],
+                             "check_required")
+            self.assertEqual(service.model.profile("matter", "cooker_01", at(10, 14))
+                             ["last_lid_open_at"], None)
+
     def test_worker_defers_simulated_activity_and_restores_pending_decision(self):
         with TemporaryDirectory() as directory:
             state_file = Path(directory) / "state.json"
