@@ -183,8 +183,8 @@ class AnalysisService:
             self.availability[key] = False
         if kind in {"device_online", "device_offline"}:
             self.last_heartbeat[key] = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
-        self.model.observe(event)
-        if kind == "lid_opened":
+        accepted_open = self.model.observe(event)
+        if kind == "lid_opened" and accepted_open:
             self._handle(self.gap.ingest_lid_opening(source, device_id, str(event["observed_at"])),
                          self.gap, received_at)
         self.evaluate(source, device_id, received_at)
