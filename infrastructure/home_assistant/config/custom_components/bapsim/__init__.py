@@ -36,6 +36,7 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.service.ha_mqtt_output import HAMQTTOutput
     from .runtime.service.ha_matter_inputs import bind_matter_inputs, register_matter_services
     from .runtime.service.a05_snapshot_input import A05SnapshotInput, verified_report
+    from .runtime.service.a05_contract_records import A05ContractRecords
     from .runtime.service.ha_journal import HAJournal
     from .runtime.service.ha_analysis_flow import AnalysisMode, bind_analysis
     from .runtime.service.ha_cooker_events import bind_cooker_events
@@ -65,6 +66,7 @@ else:
     from service.ha_mqtt_output import HAMQTTOutput
     from service.ha_matter_inputs import bind_matter_inputs, register_matter_services
     from service.a05_snapshot_input import A05SnapshotInput, verified_report
+    from service.a05_contract_records import A05ContractRecords
     from service.ha_journal import HAJournal
     from service.ha_analysis_flow import AnalysisMode, bind_analysis
     from service.ha_cooker_events import bind_cooker_events
@@ -114,6 +116,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     matter_contexts: dict[str, MatterContextAdapter] = {}
     matter_board_signals: dict[str, MatterBoardSignalAdapter] = {}
     a05_inputs: dict[str, A05SnapshotInput] = {}
+    a05_records: dict[str, A05ContractRecords] = {}
     matter_report_at: dict[str, datetime] = {}
     availability_by_device: dict[tuple[str, str], str] = {}
     forwarded_devices: set[tuple[str, str]] = set()
@@ -129,6 +132,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     journal = RawEventJournal(Path(hass.config.path("bapsim_events"))) if hasattr(hass, "config") else None
     observations = ObservationJournal(Path(hass.config.path("bapsim_observations"))) if hasattr(hass, "config") else None
     service_records = ObservationJournal(Path(hass.config.path("bapsim_records")), 180, "records") if hasattr(hass, "config") else None
+    contract_records = ObservationJournal(Path(hass.config.path("bapsim_contract_observations")),
+                                          prefix="contract") if hasattr(hass, "config") else None
     last_baseline_record_day: dict[tuple[str, str], str] = {}
     stored = await store.async_load()
     routine_updated_at: dict[str, str] = dict(stored.get("routine_updated_at", {})) if isinstance(stored, dict) else {}
@@ -414,7 +419,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if deadline is not None:
             cancel_timer = async_track_point_in_utc_time(hass, on_deadline, deadline)
 
-    journal_io = HAJournal(hass, journal, observations, service_records, _LOGGER)
+    journal_io = HAJournal(hass, journal, observations, service_records, _LOGGER, contract_records)
     archive_raw = journal_io.archive_raw
     write_observation = journal_io.write_observation
     archive_service_record = journal_io.archive_service_record
@@ -499,7 +504,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 return adapter.last_report + timedelta(microseconds=1)
         return connection_deadline(device_id)
 
-    on_hourly_tick = bind_periodic(
+    periodic_callback = bind_periodic(
         callback, hass, periodic_state, show_initial_routines, delivery, external_service,
         forwarded_devices, matter_inputs_available, matter_coverage_end,
         lambda device_id: any(adapter.device_id == device_id for adapter in
@@ -511,6 +516,14 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         usage_model, show, cooker_only, dispatch_workflow, observations,
         prune_observations, latest_features, features, FEATURE_EVENT, evaluate_model,
         pending_mobile, retry_mobile_notifications)
+
+    @callback
+    def on_hourly_tick(now) -> None:
+        for entity_id, adapter in a05_inputs.items():
+            recorder = a05_records.get(entity_id)
+            if recorder is not None and not adapter.available(now):
+                journal_io.archive_contract(recorder.offline(now))
+        periodic_callback(now)
 
     unsubscribe_tick = async_track_time_interval(hass, on_hourly_tick, timedelta(seconds=60))
 
@@ -538,7 +551,14 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if raw is not None and previous is not None and previous.state == state.state:
             return
         now = datetime.now(timezone.utc)
-        for item in adapter.accept(raw, now):
+        recorder = a05_records.setdefault(entity_id, A05ContractRecords(
+            output.household_id, adapter.device_id, entity_id))
+        if raw is None:
+            journal_io.archive_contract(recorder.offline(now))
+        else:
+            journal_io.archive_contract(recorder.accept(raw, now, getattr(state, "last_updated", None)))
+        lid_raw = raw if raw is not None and raw["SignalQuality"]["LidOpen"] == 1 else None
+        for item in adapter.accept(lid_raw, now):
             hass.bus.async_fire(RAW_EVENT, item)
         show_matter_readiness(now)
 
@@ -548,7 +568,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     def on_a05_registry_change(event: Event) -> None:
         adapter = a05_inputs.get(event.data.get("entity_id"))
         if adapter is not None:
-            for item in adapter.offline(datetime.now(timezone.utc)):
+            now = datetime.now(timezone.utc)
+            if event.data.get("entity_id") in a05_records:
+                journal_io.archive_contract(a05_records[event.data["entity_id"]].offline(now))
+            for item in adapter.offline(now):
                 hass.bus.async_fire(RAW_EVENT, item)
             show_matter_readiness()
 
@@ -570,6 +593,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                for key, bound in a05_inputs.items()):
             raise ValueError("One A05 snapshot per logical cooker")
         if entity_id in a05_inputs:
+            if entity_id in a05_records:
+                journal_io.archive_contract(a05_records.pop(entity_id).offline(datetime.now(timezone.utc)))
             for item in a05_inputs[entity_id].offline(datetime.now(timezone.utc)):
                 hass.bus.async_fire(RAW_EVENT, item)
         a05_inputs[entity_id] = adapter
@@ -581,6 +606,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async def unregister_a05_snapshot(call) -> None:
         adapter = a05_inputs.pop(call.data["entity_id"], None)
         if adapter is not None:
+            recorder = a05_records.pop(call.data["entity_id"], None)
+            if recorder is not None:
+                journal_io.archive_contract(recorder.offline(datetime.now(timezone.utc)))
             for item in adapter.offline(datetime.now(timezone.utc)):
                 hass.bus.async_fire(RAW_EVENT, item)
         show_matter_readiness()
