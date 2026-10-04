@@ -73,8 +73,7 @@ def household(seed: int, rhythm: str, condition: str,
     if variation_name != "base":
         device += f"_{variation_name}"
     model = PersonalUsageModel(**{key: setting[key] for key in
-                                  ("alert_probability", "late_grace_hours", "interval_quantile")},
-                               interval_strategy=str(setting.get("interval_strategy", "empirical")))
+                                  ("alert_probability", "late_grace_hours", "interval_quantile")})
     planned = _planned_days(rhythm, condition)
     episodes = {planned[index + offset]: number
                 for number, index in enumerate((len(planned) // 3, 2 * len(planned) // 3), 1)

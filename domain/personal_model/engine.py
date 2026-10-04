@@ -52,14 +52,13 @@ class PersonalUsageModel:
     def __init__(self, *, min_covered_days: int = 7, history_days: int = 28,
                  window_hours: float = 2.0, alert_probability: float = 0.72,
                  late_grace_hours: float = 0.0, interval_quantile: float = 0.95,
-                 interval_strategy: str = "sparse_guarded_predictive") -> None:
+                 interval_strategy: str = "empirical") -> None:
         if min_covered_days < 1 or history_days < min_covered_days:
             raise ValueError("invalid learning window")
         if (not 0 < window_hours <= 3 or not 0 < alert_probability <= 1 or
                 not 0 <= late_grace_hours <= 2 or not 0.5 <= interval_quantile <= 0.95):
             raise ValueError("invalid model window or alert probability")
-        if interval_strategy not in {"empirical", "robust_predictive", "guarded_predictive",
-                                     "sparse_guarded_predictive"}:
+        if interval_strategy not in {"empirical", "robust_predictive", "guarded_predictive"}:
             raise ValueError("invalid interval strategy")
         self.min_covered_days = min_covered_days
         self.history_days = history_days
@@ -469,9 +468,7 @@ class PersonalUsageModel:
             return None
         intervals.sort()
         p95 = intervals[ceil(0.95 * len(intervals)) - 1]
-        sparse = (self.interval_strategy == "sparse_guarded_predictive" and
-                  median(intervals) >= timedelta(hours=36))
-        if self.interval_strategy in {"robust_predictive", "guarded_predictive"} or sparse:
+        if self.interval_strategy in {"robust_predictive", "guarded_predictive"}:
             # Estimate a future gap on the log scale. Median/MAD keep one
             # unusually long normal skip from becoming the entire threshold.
             # A dispersion floor and sample-size factor widen sparse-history
@@ -480,11 +477,10 @@ class PersonalUsageModel:
             center = median(log_hours)
             spread = median(abs(item - center) for item in log_hours)
             scale = max(1.4826 * spread, 0.25)
-            predictive_quantile = min(self.interval_quantile, 0.90) if sparse else self.interval_quantile
-            z_score = NormalDist().inv_cdf(predictive_quantile)
+            z_score = NormalDist().inv_cdf(self.interval_quantile)
             hours = exp(center + z_score * scale * sqrt(1 + 4 / len(intervals)))
             predictive_limit = timedelta(hours=hours)
-            limit = (min(p95, predictive_limit) if self.interval_strategy == "guarded_predictive" or sparse
+            limit = (min(p95, predictive_limit) if self.interval_strategy == "guarded_predictive"
                      else predictive_limit)
         else:
             limit = intervals[ceil(self.interval_quantile * len(intervals)) - 1]
@@ -504,8 +500,6 @@ class PersonalUsageModel:
                          "threshold_hours": round(limit.total_seconds() / 3600, 2),
                          "interval_quantile": self.interval_quantile,
                          "interval_strategy": self.interval_strategy,
-                         "sparse_guard_active": sparse,
-                         "effective_quantile": min(self.interval_quantile, 0.90) if sparse else self.interval_quantile,
                          "elapsed_hours": round(elapsed.total_seconds() / 3600, 2)},
         }
 
