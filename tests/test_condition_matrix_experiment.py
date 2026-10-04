@@ -4,9 +4,29 @@ from ai.condition_matrix_experiment import (
     FUTURE_DAYS, HOLDOUT_CONDITIONS, HOLDOUT_SEEDS, SETTINGS,
     TRAIN_CONDITIONS, TRAIN_SEEDS, household, score,
 )
+from ai.episode_evaluation import episode_score
+from ai.in_scope_hybrid_experiment import BASE, CHALLENGE
 
 
 class ConditionMatrixTests(TestCase):
+    def test_opportunity_replay_records_followup_caregiver_request(self):
+        rows = household(7121, "older_morning", "gradual_drift", BASE,
+                         variation=CHALLENGE["variation"], opportunity_interruptions=True,
+                         runtime_ticks=True, tick_minutes=60, future_days=14)
+        self.assertEqual(episode_score(rows)["caught"], 2)
+        self.assertTrue(any(row["day"] == 32 and row["notification_request_times"]
+                            for row in rows))
+
+    def test_target_episodes_each_remove_two_planned_openings(self):
+        for rhythm in ("older_morning", "older_twice"):
+            rows = household(3101, rhythm, "stable", SETTINGS["current"],
+                             opportunity_interruptions=True, future_days=14)
+            for episode in (1, 2):
+                self.assertEqual(sum(row["missed_opportunities"] for row in rows
+                                     if row["episode_id"] == episode), 2)
+                self.assertEqual(sum(len(row["missed_opportunity_times"]) for row in rows
+                                     if row["episode_id"] == episode), 2)
+
     def test_training_and_holdout_have_distinct_conditions_and_homes(self):
         self.assertFalse(set(TRAIN_CONDITIONS) & set(HOLDOUT_CONDITIONS))
         self.assertFalse(set(TRAIN_SEEDS) & set(HOLDOUT_SEEDS))
