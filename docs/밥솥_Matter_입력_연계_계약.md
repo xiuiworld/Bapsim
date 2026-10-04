@@ -21,7 +21,7 @@ Nordic 담당은 센서 입력과 Matter 기기 노출, Thread 연결과 commiss
 | 관측값 | HA에서 필요한 형태 | 현재 준비 상태 |
 | --- | --- | --- |
 | 뚜껑 열림/닫힘 | `binary_sensor`의 `on/off`와 실제 열림 방향 확인 | `bapsim.register_matter_contact`와 어댑터 구현 |
-| 접점·취사 입력 연결 상태 | `unknown/unavailable` 및 복구 시점 | 접점이 불가하면 밥솥 분석을 원시 `offline`으로 변환. 취사만 불가하면 `cooking_input_availability=offline`을 남기고 접점 학습은 유지 |
+| 접점·취사 입력 연결 상태 | 접점의 `unknown/unavailable`, 보드가 매 보고마다 증가시키는 Matter 정수 카운터, 복구 시점 | 접점 또는 신선한 카운터 보고가 없으면 밥솥 분석을 원시 `offline`으로 변환. 취사만 불가하면 `cooking_input_availability=offline`을 남기고 접점 학습은 유지 |
 | 취사 시작/완료 | 실제 HA 엔티티와 시작·완료를 뜻하는 정확한 두 상태값 | `bapsim.register_matter_cooking_state`와 값 매핑 어댑터 구현. 실제 값은 미확인 |
 | LED 3개·온도 | Matter endpoint/attribute와 HA entity, 원시값·단위·가용성 | 노출 방식과 동작 의미가 미확정. 현재 HA 등록 서비스 없음 |
 
@@ -33,7 +33,7 @@ Nordic 담당은 센서 입력과 Matter 기기 노출, Thread 연결과 commiss
 
 모든 입력은 [원시 이벤트 계약](../inputs/base/contracts.py)의 8필드(`device_id`, `event_type`, `value`, `observed_at`, `received_at`, `source`, `availability`, `quality`)를 따른다. 시간은 타임존을 포함한다. HA 엔티티는 센서 자체의 관측 시각을 보장하지 않으므로 현재 Matter 입력의 `observed_at`과 `received_at`에는 HA가 상태를 전달받아 변환한 시각을 함께 기록한다. `source=matter`로 전달된 뚜껑 접점은 `lid_state=open/closed`, 취사 상태는 `cooking_state=started/finished`, 연결 변화는 `availability=online/offline`으로 전달된다. 정규화기 이후의 코드는 입력원별로 나누지 않는다. 등록 서비스는 HA entity registry의 platform이 `matter`인지 검사한다. 복원된 매핑의 출처가 사라지거나 바뀌면 `source_unverified`로 표시하고 행동 입력을 중단한다. 이 검사는 Matter 출처만 확인하며 실제 물리 센서의 정확도나 동작 시험을 대신하지 않는다.
 
-접점만 등록된 상태에서도 유효한 `on/off`를 `lid_state=open/closed`, `availability=online` 원시 이벤트로 남긴다. 첫 상태는 기준으로 저장하고 이후 열린 전이를 정규화된 `lid_opened`로 승격한다. 접점만으로 개인화 사용 패턴을 학습하며, 취사 기반 세션 지표는 취사 입력이 검증될 때만 계산한다.
+접점과 같은 `device_id`로 보드 자체가 증가시키는 정수 카운터를 `board_observation_snapshot`으로 등록하고, 실제 Matter 엔티티의 새 값 변경을 수신해야 연결이 확인된다. HA 시작 때 읽은 캐시값, 변하지 않는 값, 날짜/시각 문자열은 연결 증거가 아니다. HA Core 2026.9.4의 기본 Matter `GeneralDiagnostics.UpTime` 센서는 원시 초가 아니라 계산된 부팅 시각을 표시하므로 `board_observation_uptime`을 연결 근거로 사용하지 않는다. 마지막 유효 카운터 보고부터 3분을 넘기면 접점값이 남아 있어도 분석 입력을 보류한다. 카운터가 감소하면 관측 구간을 끊고 복구한 접점 상태를 새 개방으로 세지 않는다. 연결이 확인되면 취사 입력 없이도 유효한 접점 `on/off`를 `lid_state=open/closed`, `availability=online` 원시 이벤트로 남긴다. 첫 상태는 기준으로 저장하고 이후 열린 전이를 정규화된 `lid_opened`로 승격한다. 접점만으로 개인화 사용 패턴을 학습하며, 취사 기반 세션 지표는 취사 입력이 검증될 때만 계산한다.
 
 접점 엔티티가 `unknown`/`unavailable`이 되거나 제거되면 원시 `availability=offline`, `quality=unknown`을 남긴다. 취사 엔티티만 불가하면 신호별 `cooking_input_availability`를 남긴다. 값을 실제 관측한 `quality=observed`와 구분하며, 단절을 뚜껑 닫힘이나 취사 완료로 바꾸지 않는다.
 

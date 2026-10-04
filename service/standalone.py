@@ -15,7 +15,7 @@ from workflow.quiet_hours import QuietHours
 from workflow.notification_policy import (ALERT_ACTIONS, current_request, queue_quiet,
                                           release_quiet, suppressed)
 from service.output import StatusOutput
-from service.analysis_policy import assess_personal_use
+from service.analysis_policy import assess_personal_use, route_personal_decision
 from service.auxiliary import AuxiliaryDeferral
 
 
@@ -185,9 +185,7 @@ class AnalysisService:
             self.last_heartbeat[key] = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
         self.model.observe(event)
         if kind == "lid_opened":
-            self._handle(self.gap.ingest({"source": source, "device_id": device_id,
-                                          "as_of": str(event["observed_at"]),
-                                          "routine_status": "normal", "reason_codes": []}),
+            self._handle(self.gap.ingest_lid_opening(source, device_id, str(event["observed_at"])),
                          self.gap, received_at)
         self.evaluate(source, device_id, received_at)
 
@@ -286,15 +284,18 @@ class AnalysisService:
         assessments = assess_personal_use(self.model, source, device_id, now,
                                           online=online, away=paused)
         for decision in assessments.windows:
-            if self.auxiliary.defer(decision):
-                continue
-            self._handle(self.gap.ingest(decision), self.gap, now)
+            manager, updates = route_personal_decision(
+                "window", decision, self.gap, self.decline,
+                deferred=self.auxiliary.defer(decision))
+            self._handle(updates, manager, now)
         interval = assessments.interval
-        if interval and interval["routine_status"] in {"normal", "check_required"}:
-            self._handle(self.gap.ingest(interval), self.gap, now)
+        if interval:
+            manager, updates = route_personal_decision("interval", interval, self.gap, self.decline)
+            self._handle(updates, manager, now)
         trend = assessments.trend
         if trend:
-            self._handle(self.decline.ingest(trend), self.decline, now)
+            manager, updates = route_personal_decision("trend", trend, self.gap, self.decline)
+            self._handle(updates, manager, now)
         profile = self.model.profile(source, device_id, now)
         gap = self.gap.current_state(source, device_id)
         decline = self.decline.current_state(source, device_id)

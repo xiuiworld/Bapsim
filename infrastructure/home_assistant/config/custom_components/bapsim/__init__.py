@@ -473,7 +473,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         matter_contacts, matter_cooking_states, matter_contexts, matter_board_signals,
         matter_report_at, availability_by_device, usage_model, pending_mobile,
         retry_mobile_notifications, show, MatterContactAdapter, MatterCookingStateAdapter)
-    (is_matter_entity, matter_inputs_available, show_matter_readiness,
+    (is_matter_entity, matter_inputs_available, connection_deadline, show_matter_readiness,
      show_context_readiness, show_board_readiness, forward_matter_state,
      forward_context_state, forward_board_state, publish_matter_offline,
      publish_cooking_input_offline, unsubscribe_matter, unsubscribe_registry,
@@ -482,7 +482,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     periodic_state = PeriodicState()
     on_hourly_tick = bind_periodic(
         callback, hass, periodic_state, show_initial_routines, delivery, external_service,
-        forwarded_devices, matter_inputs_available, output, quiet_hours, pending_quiet,
+        forwarded_devices, matter_inputs_available, connection_deadline,
+        lambda device_id: any(adapter.device_id == device_id for adapter in matter_contacts.values()),
+        publish_matter_offline, show_matter_readiness,
+        output, quiet_hours, pending_quiet,
         workflow, trend_workflow, controls, observation_issues, availability_by_device,
         lambda: away, create_notification, release_quiet, save_later, auxiliary,
         usage_model, show, cooker_only, dispatch_workflow, observations,

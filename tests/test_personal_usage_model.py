@@ -247,6 +247,58 @@ class PersonalUsageModelTests(TestCase):
         restored.load_state(model.dump_state())
         self.assertEqual(restored.dump_state()["devices"][0]["opens"], stored["opens"])
 
+    def test_old_or_out_of_order_opening_never_retrains_current_model(self):
+        model = PersonalUsageModel()
+        model.observe(event(0, 0, kind="device_online"))
+        model.observe(event(0, 13))
+        model.observe(event(1, 13))
+        before = model.grouped_open_times("matter", "cooker_01")
+        model.observe(event(0, 19))
+        self.assertEqual(model.grouped_open_times("matter", "cooker_01"), before)
+
+        restored = PersonalUsageModel()
+        restored.load_state(model.dump_state())
+        restored.observe(event(0, 20))
+        self.assertEqual(restored.grouped_open_times("matter", "cooker_01"), before)
+
+        restored.availability("matter", "cooker_01", True, at(40, 0))
+        after_prune = restored.grouped_open_times("matter", "cooker_01")
+        restored.observe(event(2, 13))
+        self.assertEqual(restored.grouped_open_times("matter", "cooker_01"), after_prune)
+        restored.observe(event(39, 13))
+        self.assertEqual(restored.grouped_open_times("matter", "cooker_01"),
+                         (datetime.fromisoformat(at(39, 13)).astimezone(timezone.utc).isoformat(),))
+
+    def test_opening_after_midnight_counts_for_that_day_even_inside_previous_group(self):
+        model = PersonalUsageModel()
+        model.observe(event(0, 23, 50))
+        model.observe(event(1, 0, 20))
+        state = model._device("matter", "cooker_01")
+        midnight = datetime.fromisoformat(at(1, 0)).astimezone(timezone.utc)
+        self.assertEqual(len(state["opens"]), 1)
+        self.assertTrue(model._used(state, midnight, midnight + timedelta(days=1)))
+        self.assertEqual(model._daily_group_count(state, midnight,
+                                                  midnight + timedelta(days=1)), 1)
+        model.observe(event(1, 13))
+        self.assertEqual(model._daily_group_count(state, midnight,
+                                                  midnight + timedelta(days=1)), 2)
+
+    def test_trend_retries_after_transient_outage_and_resets_nonconsecutive_streak(self):
+        model = PersonalUsageModel()
+        model.observe(event(0, 0, kind="device_online"))
+        for day in range(21):
+            model.observe(event(day, 8))
+            model.observe(event(day, 19))
+        model.availability("matter", "cooker_01", True, at(28, 0))
+        self.assertIsNone(model.evaluate_trend("matter", "cooker_01", at(24, 0, 1), online=False))
+        state = model._device("matter", "cooker_01")
+        self.assertNotIn((START + timedelta(days=23)).date().isoformat(), state["trend_evaluations"])
+        model.evaluate_trend("matter", "cooker_01", at(24, 0, 10), online=True)
+        model.evaluate_trend("matter", "cooker_01", at(25, 0, 10), online=True)
+        self.assertEqual(state["decline_streak"], 2)
+        model.evaluate_trend("matter", "cooker_01", at(27, 0, 10), online=True)
+        self.assertEqual(state["decline_streak"], 1)
+
     def test_decline_requires_long_reference_and_three_daily_evaluations(self):
         model = PersonalUsageModel()
         model.observe(event(0, 0, kind="device_online"))
