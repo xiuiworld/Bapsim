@@ -34,7 +34,7 @@ register_matter_contact:
         boolean:
 register_a05_snapshot:
   name: Register A05 atomic snapshot
-  description: Bind the A05 ReportCounter sensor to a cooker after checking its Matter entry and node. Test-origin reports are ignored.
+  description: Bind the A05 ReportCounter sensor to a cooker after checking its Matter entry and node. Test-origin reports remain excluded from live analysis; an explicit bounded development test can process them separately.
   fields:
     device_id:
       required: true
@@ -64,6 +64,26 @@ unregister_a05_snapshot:
       selector:
         entity:
           domain: sensor
+start_a05_connection_test:
+  name: Start one A05 board-to-phone development test
+  description: Explicitly arm a ten-minute test-origin run for one registered A05 probe and one chosen test phone. A fresh closed then open board report is required; at most one mobile service call is made. Live learning and alerts are unaffected.
+  fields:
+    device_id:
+      required: true
+      selector:
+        text:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: sensor
+    phone_service:
+      required: true
+      selector:
+        text:
+stop_a05_connection_test:
+  name: Stop A05 development test
+  description: Disarm the current test immediately. No test phone call is made after stop; a call already accepted by HA cannot be recalled.
 register_matter_cooking_state:
   name: Register Matter cooker cooking state
   description: Map two confirmed cooking values from an HA Matter entity to raw started/finished states. Use the same device_id as the lid contact.

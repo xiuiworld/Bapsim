@@ -7,12 +7,13 @@ from datetime import datetime
 
 
 class HAJournal:
-    def __init__(self, hass, raw, observations, records, logger, contract=None) -> None:
+    def __init__(self, hass, raw, observations, records, logger, contract=None, test=None) -> None:
         self.hass = hass
         self.raw = raw
         self.observations = observations
         self.records = records
         self.contract = contract
+        self.test = test
         self.logger = logger
         self.lock = asyncio.Lock()
 
@@ -46,6 +47,19 @@ class HAJournal:
         except (OSError, ValueError, TypeError) as exc:
             self.logger.warning("Could not archive A05 contract records: %s", exc)
 
+    async def write_test(self, payloads: list[dict]) -> bool:
+        """Persist one test batch before allowing its single mobile attempt."""
+        if self.test is None:
+            return False
+        try:
+            async with self.lock:
+                for payload in payloads:
+                    await self.hass.async_add_executor_job(self.test.append, payload)
+        except (OSError, ValueError, TypeError) as exc:
+            self.logger.warning("Could not archive A05 test run: %s", exc)
+            return False
+        return True
+
     def archive_service_record(self, category: str, payload: dict[str, object], at: str) -> None:
         if self.records is not None:
             self.hass.async_create_task(self._write_service_record({"category": category, "as_of": at, **payload}))
@@ -65,5 +79,7 @@ class HAJournal:
                     await self.hass.async_add_executor_job(self.records.prune, now)
                 if self.contract is not None:
                     await self.hass.async_add_executor_job(self.contract.prune, now)
+                if self.test is not None:
+                    await self.hass.async_add_executor_job(self.test.prune, now)
         except OSError as exc:
             self.logger.warning("Could not prune normalized observations: %s", exc)

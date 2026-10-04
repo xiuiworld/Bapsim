@@ -39,6 +39,7 @@ recorder:
       - sensor.bapsim_mqtt_output
       - sensor.bapsim_auxiliary_deferral
       - sensor.bapsim_matter_input
+      - sensor.bapsim_a05_connection_test
 
 lovelace:
   mode: storage
