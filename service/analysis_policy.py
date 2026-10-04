@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Mapping, Protocol
+
+
+class DecisionManager(Protocol):
+    def ingest(self, detection: Mapping[str, object]) -> list[object]: ...
 
 
 class PersonalModel(Protocol):
@@ -29,3 +33,18 @@ def assess_personal_use(model: PersonalModel, source: str, device_id: str,
     interval = model.evaluate_interval(source, device_id, as_of, online=online, away=away)
     trend = model.evaluate_trend(source, device_id, as_of, online=online, away=away)
     return PersonalAssessments(windows, interval, trend)
+
+
+def route_personal_decision(
+        kind: str, decision: Mapping[str, object], gap: DecisionManager,
+        decline: DecisionManager, *, deferred: bool = False,
+) -> tuple[DecisionManager, list[object]]:
+    """Apply one model decision identically in the HA host and MQTT worker."""
+    if kind == "window":
+        return gap, [] if deferred else gap.ingest(decision)
+    if kind == "interval":
+        return gap, (gap.ingest(decision) if decision["routine_status"] in
+                     {"normal", "check_required"} else [])
+    if kind == "trend":
+        return decline, decline.ingest(decision)
+    raise ValueError(f"unknown personal decision kind: {kind}")
