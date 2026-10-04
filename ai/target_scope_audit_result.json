@@ -1,0 +1,141 @@
+{
+  "scope": "Synthetic daily cooker access, age 65+; not meals or field accuracy",
+  "excluded_profiles": [
+    "middle_evening (age 50-64)",
+    "older_alternate (every-other-day batch cooking)"
+  ],
+  "seeds": [
+    1601,
+    1613
+  ],
+  "conditions": [
+    "gradual_drift",
+    "skip_and_late"
+  ],
+  "variation": {
+    "name": "combined_unseen",
+    "skip_delta": 0.12,
+    "jitter_minutes": 65,
+    "shift_hours": 0.5,
+    "missed_open_probability": 0.06
+  },
+  "notification_days": {
+    "households": 8,
+    "eligible_days": 152,
+    "tp": 9,
+    "fp": 7,
+    "fn": 23,
+    "tn": 113,
+    "recall": 0.2812,
+    "false_positive_rate": 0.0583,
+    "nuisance_per_home_21d": 0.875,
+    "excluded_days": 16,
+    "alerted_away_or_offline": 0
+  },
+  "episodes": {
+    "episodes": 16,
+    "caught": 9,
+    "missed": 7,
+    "recall": 0.5625,
+    "median_delay_hours": 24.97,
+    "p90_delay_hours": 34.31,
+    "missed_examples": [
+      {
+        "household": "older_twice_gradual_drift_1601_combined_unseen",
+        "episode_id": 1
+      },
+      {
+        "household": "older_twice_gradual_drift_1601_combined_unseen",
+        "episode_id": 2
+      },
+      {
+        "household": "older_morning_skip_and_late_1601_combined_unseen",
+        "episode_id": 1
+      },
+      {
+        "household": "older_twice_skip_and_late_1601_combined_unseen",
+        "episode_id": 1
+      },
+      {
+        "household": "older_twice_skip_and_late_1601_combined_unseen",
+        "episode_id": 2
+      }
+    ]
+  },
+  "by_rhythm": {
+    "older_morning": {
+      "notification_days": {
+        "households": 4,
+        "eligible_days": 76,
+        "tp": 7,
+        "fp": 3,
+        "fn": 9,
+        "tn": 57,
+        "recall": 0.4375,
+        "false_positive_rate": 0.05,
+        "nuisance_per_home_21d": 0.75,
+        "excluded_days": 8,
+        "alerted_away_or_offline": 0
+      },
+      "episodes": {
+        "episodes": 8,
+        "caught": 7,
+        "missed": 1,
+        "recall": 0.875,
+        "median_delay_hours": 24.82,
+        "p90_delay_hours": 25.87,
+        "missed_examples": [
+          {
+            "household": "older_morning_skip_and_late_1601_combined_unseen",
+            "episode_id": 1
+          }
+        ]
+      }
+    },
+    "older_twice": {
+      "notification_days": {
+        "households": 4,
+        "eligible_days": 76,
+        "tp": 2,
+        "fp": 4,
+        "fn": 14,
+        "tn": 56,
+        "recall": 0.125,
+        "false_positive_rate": 0.0667,
+        "nuisance_per_home_21d": 1.0,
+        "excluded_days": 8,
+        "alerted_away_or_offline": 0
+      },
+      "episodes": {
+        "episodes": 8,
+        "caught": 2,
+        "missed": 6,
+        "recall": 0.25,
+        "median_delay_hours": 29.64,
+        "p90_delay_hours": 34.31,
+        "missed_examples": [
+          {
+            "household": "older_twice_gradual_drift_1601_combined_unseen",
+            "episode_id": 1
+          },
+          {
+            "household": "older_twice_gradual_drift_1601_combined_unseen",
+            "episode_id": 2
+          },
+          {
+            "household": "older_twice_skip_and_late_1601_combined_unseen",
+            "episode_id": 1
+          },
+          {
+            "household": "older_twice_skip_and_late_1601_combined_unseen",
+            "episode_id": 2
+          },
+          {
+            "household": "older_twice_skip_and_late_1613_combined_unseen",
+            "episode_id": 1
+          }
+        ]
+      }
+    }
+  }
+}
