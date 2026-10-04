@@ -26,7 +26,7 @@
 | 논리적 `device_id` | 미기록 |
 | Matter endpoint/cluster/attribute | 미기록 |
 | 뚜껑 HA entity ID | 미기록 |
-| 연결 확인용 uptime/snapshot HA entity ID·단위·보고 주기 | 미기록. 새 HA 값 변경이 연결 증거인지 확인 필요 |
+| 연결 확인용 보드 정수 카운터 HA entity ID·Matter 속성·보고 주기 | 미기록. 기본 HA uptime 부팅 시각은 연결 증거로 사용하지 않음 |
 | 뚜껑·취사 HA entity registry platform | 미기록. 각각 `matter`인지 확인 |
 | 실제 닫힘/열림 때 HA 값 | 미기록 |
 | `on_is_open` 설정과 근거 | 미기록 |
@@ -40,10 +40,10 @@
 | Python 회귀 검증 | 149개 통과. 시작 캐시 배제, 새 uptime 보고 후 접점 복구, 3분 만료 시점의 관측 공백, uptime 감소, 연결 신호 등록 해제, 독립 작업자 heartbeat, 이전 개방 사건 방어 포함 |
 | 소프트웨어 시나리오 매트릭스 | `python -m tools.run_software_matrix --output local-data/software-matrix-20261004-pr2.json` 실행, 합성 시나리오 8개 그룹 통과. 결과 파일은 로컬 보관 |
 | HA 배포 ZIP | `python -m tools.build_ha_bundle` 생성 성공 |
-| 실제 Matter 매핑 | 미실행. 뚜껑과 uptime/snapshot 엔티티 ID, 보고 간격 미확인 |
+| 실제 Matter 매핑 | 미실행. 뚜껑과 보드 정수 보고 카운터 엔티티 ID, 보고 간격 미확인 |
 | 연결 끊김·재부팅·HA 재시작 | 가짜 HA 통합 시험만 통과. 실기 장시간 수신 및 복구는 미실행 |
 
-실기 때는 연결 신호와 접점을 같은 `device_id`로 등록한다. HA 시작 시 캐시된 뚜껑·보드 값을 읽은 직후 `connection_unverified`인지 확인하고, 새 보드 보고 뒤 `lid_only_ready` 또는 `ready`인지 기록한다. 이후 실제 보고를 3분 넘게 중단하고 `device_offline`·알림 보류를 확인한다. 보드 재부팅으로 uptime이 감소할 때 관측 공백이 생기는지, 복구한 뚜껑 snapshot이 새 `lid_opened`가 아닌지 확인한다. 마지막으로 HA를 재시작해 새 보고 이전 온라인 판정이 없는지 재확인한다. 각 단계의 실제 시각, HA 엔티티 상태, `bapsim_raw_event`, `bapsim_cooker_event`, 대시보드 상태를 기록한다.
+실기 때는 보드 정수 보고 카운터와 접점을 같은 `device_id`로 등록한다. HA 시작 시 캐시된 뚜껑·보드 값을 읽은 직후 `connection_unverified`인지 확인하고, 새 카운터 보고 뒤 `lid_only_ready` 또는 `ready`인지 기록한다. 이후 실제 보고를 3분 넘게 중단하고 `device_offline`·알림 보류를 확인한다. 보드 재부팅으로 카운터가 감소할 때 관측 공백이 생기는지, 복구한 뚜껑 snapshot이 새 `lid_opened`가 아닌지 확인한다. 마지막으로 HA를 재시작해 캐시 또는 uptime 표시값 변화만으로 온라인 판정이 없는지 재확인한다. 각 단계의 실제 시각, HA 엔티티 상태, `bapsim_raw_event`, `bapsim_cooker_event`, 대시보드 상태를 기록한다.
 
 ## 접점 한 신호 시험
 

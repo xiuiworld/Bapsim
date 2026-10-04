@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from math import isfinite
 from typing import Callable, NamedTuple
 
 CONNECTION_REPORT_MAX_AGE = timedelta(minutes=3)
-CONNECTION_SIGNALS = frozenset({"uptime", "snapshot"})
+# HA exposes GeneralDiagnostics.UpTime as a calculated boot timestamp. A change
+# to that timestamp cannot prove a new report from the board. Only a board-owned
+# incrementing Matter counter is accepted as connection evidence.
+CONNECTION_SIGNALS = frozenset({"snapshot"})
+
+
+def snapshot_counter(value: str | None) -> int | None:
+    """Accept only a nonnegative, board-reported decimal sequence number."""
+    if value is None or not value.isascii() or not value.isdecimal():
+        return None
+    return int(value)
 
 
 class MatterInputHandlers(NamedTuple):
@@ -282,19 +291,12 @@ def bind_matter_inputs(
         valid_report = (fresh_report and is_connection and is_matter_entity(entity_id) and
                         state is not None and state.state not in {"unknown", "unavailable"})
         rebooted = False
-        if valid_report and adapter.signal == "uptime":
-            try:
-                current_uptime = float(state.state)
-            except (TypeError, ValueError):
-                valid_report = False
-            else:
-                valid_report = isfinite(current_uptime) and current_uptime >= 0
-                try:
-                    previous_uptime = float(previous_value) if previous_value is not None else None
-                except (TypeError, ValueError):
-                    previous_uptime = None
-                rebooted = (previous_uptime is not None and isfinite(previous_uptime) and
-                            current_uptime < previous_uptime)
+        if valid_report:
+            current_counter = snapshot_counter(state.state)
+            previous_counter = snapshot_counter(previous_value)
+            valid_report = (current_counter is not None and previous_counter is not None
+                            and current_counter != previous_counter)
+            rebooted = valid_report and current_counter < previous_counter
         if is_connection and not valid_report:
             if connection_reports.pop((entity_id, adapter.device_id), None) is not None and \
                     availability_by_device.get(("matter", adapter.device_id)) == "online":
