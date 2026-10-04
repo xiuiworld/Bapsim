@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest import TestCase
 
+from domain.personal_model import PersonalUsageModel
 from service.a05_snapshot_input import A05SnapshotInput, PATH, verified_report
 
 
@@ -58,3 +59,20 @@ class A05SnapshotInputTests(TestCase):
                           ("lid_state", "open")])
         self.assertFalse(bridge.available(now + timedelta(minutes=4)))
         self.assertEqual(bridge.offline(now + timedelta(minutes=4))[0]["value"], "offline")
+
+    def test_gap_excludes_unobserved_interval_from_model_coverage(self):
+        bridge = A05SnapshotInput("cooker", "entry-1", 4)
+        model = PersonalUsageModel()
+        now = datetime(2026, 10, 4, tzinfo=timezone.utc)
+        later = now + timedelta(seconds=30)
+        bridge.accept(report()[1].attributes["raw_snapshot"], now)
+        model.availability("matter", "cooker", True, now.isoformat())
+        gap = bridge.accept(report(3, 3)[1].attributes["raw_snapshot"], later)
+        self.assertEqual(gap[0]["observed_at"],
+                         (now + timedelta(microseconds=1)).isoformat())
+        self.assertEqual(gap[0]["received_at"], later.isoformat())
+        model.availability("matter", "cooker", False, gap[0]["observed_at"])
+        model.availability("matter", "cooker", True, gap[1]["observed_at"])
+        self.assertFalse(model._covered(
+            model._device("matter", "cooker"), now + timedelta(seconds=10),
+            now + timedelta(seconds=20), later))
