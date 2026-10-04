@@ -41,9 +41,10 @@ reason_codes의 첫 목록은 `expected_window_missed`, `unusual_gap`, `declinin
 
 - 상태 topic: `bapsim/v1/{household_id}/state`, QoS 1, retain=true 제안.
 - 연결 topic: `bapsim/v1/{household_id}/availability`, online/offline. LWT offline, 정상 종료도 offline.
-- simulation/replay는 별도 시험 broker 또는 별도 topic prefix를 사용하고 실제 알림 대상과 분리한다.
+- simulation/replay는 별도 시험 broker 또는 별도 topic prefix를 사용하고 실제 알림 대상과 분리한다. 이번 HA 내부 개발 구성은 `bapsim/simulation/v1/{household_id}` prefix와 simulator 모델 키를 사용하며 시뮬레이터의 모바일 발송을 차단한다.
 - Discovery unique_id는 가정+항목으로 안정적으로 생성한다. B 재시작/HA 재시작 후 필요한 discovery와 현재 상태를 다시 게시한다.
 - HA는 LWT와 결과 만료를 함께 반영한다. 연결만 살아 있고 분석이 멈춘 경우도 오래된 상태로 표시한다. 만료 판정은 B가 아닌 HA 측 템플릿/자동화에서도 수행한다.
+- HA 내부 분석 모드의 실물·시뮬레이션 화면 엔티티는 각각 자기 `valid_until` 시각에 `expired`로 바뀐다. 두 출처의 MQTT discovery에도 각각 `expire_after: 180`을 둔다. HA 재시작 직후 새 평가 전에는 실물 `awaiting_matter`, 시뮬레이션 `waiting`, MQTT 게시 상태 `waiting`을 표시한다. `bapsim.test_pause_simulation_output`은 최대 600초 동안 시뮬레이션 결과 발행만 멈춰 이 만료를 시험하며, 실물 결과와 분석은 계속한다.
 - 같은 revision 재수신은 같은 결과다. QoS 1은 중복 가능하므로 수신이 정확히 한 번이라고 가정하지 않는다.
 - 발송 명령은 retain된 상태 topic에 넣지 않는다. HA 재접속으로 이전 알림이 다시 실행되지 않도록 한다.
 
@@ -78,6 +79,10 @@ B가 다음 내부 명령을 영속 저장한 뒤 HA의 `notify.mobile_app_<등�
 ## 6. 보존·책임 추천
 
 B의 로컬 저장소에는 정규화 관측 90일, 사용 묶음·개인 기준·판단·발송 이력 180일을 제안한다. A의 학습용 원시 센서 기록은 별도 관리한다. 보존 기간은 D12에서 채택했다. 로컬 파일/SQLite 등 구체 저장 구현은 B가 선택하되 재시작 후 상태 복원과 버전 추적을 보장한다.
+
+이번 HA 내부 개발 구성에서 요구하는 격리는 **출처별 모델 키·화면 엔티티·MQTT prefix·실제 모바일 발송 차단**이다. 시험과 실물의 물리적 저장소 분리는 공통 계약의 필수 조건으로 채택하지 않았다. `.storage/bapsim.pipeline`과 HA 아래 journal 루트는 공유된다. 따라서 HA 전체 백업에는 두 출처가 함께 들어가며, 파일 단위로 시험 기록만 독립 복원·삭제할 수 있다고 보장하지 않는다. 운영상 시험 데이터의 독립 삭제·접근 권한·백업이 필요해지면 B가 별도 저장소 설계와 마이그레이션을 제공한 뒤 사용한다.
+
+A05 `input_kind=test`는 현재 B의 live 수집 경로에서 거부된다. 시험 보드→B 분석→시험 폰의 전 구간 검증 경로는 아직 제공하지 않는다. 별도 검증 출처·저장·시험 폰 대상 경로를 B가 구현해 검증하거나, 지원되는 `input_kind=live` 생산자가 준비된 후 live 통합 시험을 수행한다. 수동 HA 폰 알림과 오프라인 시나리오는 이 전 구간의 성공 증거로 취급하지 않는다.
 
 A: 로컬 브로커, HA 연결, 폰 등록·외부 접근. B: 결과 형식·discovery·화면 설정·발송 코드·중복 방지·저장. 계정 비밀은 예시 파일이나 공유 로그에 넣지 않는다. 가족 식별자는 익명 ID로 공유한다.
 
