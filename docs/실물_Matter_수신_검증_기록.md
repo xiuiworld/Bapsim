@@ -38,6 +38,7 @@
 | 항목 | 결과 |
 | --- | --- |
 | Python 회귀 검증 | 149개 통과. 시작 캐시 배제, 새 uptime 보고 후 접점 복구, 3분 만료 시점의 관측 공백, uptime 감소, 연결 신호 등록 해제, 독립 작업자 heartbeat, 이전 개방 사건 방어 포함 |
+| 소프트웨어 시나리오 매트릭스 | `python -m tools.run_software_matrix --output local-data/software-matrix-20261004-pr2.json` 실행, 합성 시나리오 8개 그룹 통과. 결과 파일은 로컬 보관 |
 | HA 배포 ZIP | `python -m tools.build_ha_bundle` 생성 성공 |
 | 실제 Matter 매핑 | 미실행. 뚜껑과 uptime/snapshot 엔티티 ID, 보고 간격 미확인 |
 | 연결 끊김·재부팅·HA 재시작 | 가짜 HA 통합 시험만 통과. 실기 장시간 수신 및 복구는 미실행 |
