@@ -492,9 +492,16 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
      on_started) = matter_inputs
 
     periodic_state = PeriodicState()
+    @callback
+    def matter_coverage_end(device_id: str) -> datetime | None:
+        for adapter in a05_inputs.values():
+            if adapter.device_id == device_id and adapter.last_report is not None:
+                return adapter.last_report + timedelta(microseconds=1)
+        return connection_deadline(device_id)
+
     on_hourly_tick = bind_periodic(
         callback, hass, periodic_state, show_initial_routines, delivery, external_service,
-        forwarded_devices, matter_inputs_available, connection_deadline,
+        forwarded_devices, matter_inputs_available, matter_coverage_end,
         lambda device_id: any(adapter.device_id == device_id for adapter in
                               (*matter_contacts.values(), *a05_inputs.values())),
         publish_matter_offline, show_matter_readiness,

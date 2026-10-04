@@ -61,8 +61,13 @@ class A05SnapshotInput:
 
     def offline(self, now: datetime) -> list[dict]:
         was_online = self.last_report is not None
+        # A skipped report makes the interval after the last confirmed report
+        # unobserved. Closing it at the new report would count that interval as
+        # continuously covered by the personal usage model.
+        coverage_end = min(now, self.last_report + timedelta(microseconds=1)) if was_online else now
         self.previous = self.last_report = self.last_lid = None
-        return [self._event("availability", "offline", now, "offline", "unknown")] if was_online else []
+        return [self._event("availability", "offline", coverage_end,
+                            "offline", "unknown", received_at=now)] if was_online else []
 
     def accept(self, raw: dict | None, now: datetime) -> list[dict]:
         if raw is None:
@@ -89,8 +94,10 @@ class A05SnapshotInput:
         return events
 
     def _event(self, event_type: str, value: str, now: datetime,
-               availability: str, quality: str) -> dict:
+               availability: str, quality: str,
+               received_at: datetime | None = None) -> dict:
         at = now.astimezone(timezone.utc).isoformat()
+        received = (received_at or now).astimezone(timezone.utc).isoformat()
         return {"device_id": self.device_id, "event_type": event_type, "value": value,
-                "observed_at": at, "received_at": at, "source": "matter",
+                "observed_at": at, "received_at": received, "source": "matter",
                 "availability": availability, "quality": quality}

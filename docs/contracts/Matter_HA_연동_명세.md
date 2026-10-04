@@ -88,6 +88,8 @@ B의 현재 HA 수신 코드는 Matter 출처의 `snapshot` 관측 엔티티가 
 
 A05 SnapshotPacked v1의 전용 HA 시험 통합은 공식 `matter` 플랫폼으로 위장하지 않는다. B의 별도 수집 경로는 등록된 `bapsim_matter_probe` ReportCounter 엔티티의 고유 ID, Matter entry·node·속성 경로, schema 1, 원시 Snapshot과 카운터의 일치, `input_kind=live`, 뚜껑 품질을 모두 확인한 뒤에만 동일한 raw event 경계로 전달한다. 현재 A05 시험 이미지의 `input_kind=test`는 모델 학습과 알림에 전달하지 않는다. 첫 상태와 재시작 후 HA 캐시값은 새 개방으로 세지 않고 다음 신규 보고를 기다린다. 보고 카운터·관측 순번의 공백, BootId 변경, 수신 실패, 3분 초과 공백은 관측 단절로 기록하고 다음 값을 기준 상태로 다시 잡는다. 5초 읽기 사이에 누락된 개폐를 복원하거나 미사용으로 채우지 않는다. 이 수집 경로의 등록·해제와 출처 검사는 `service/a05_snapshot_input.py` 및 HA `register_a05_snapshot` 서비스에 둔다.
 
+A05 경로의 공백은 새 보고 시각부터가 아니라 **마지막으로 확인한 보고 직후부터** 시작한다. 그 사이를 연속 관측으로 학습하지 않는다.
+
 수집 재접속 때 기준 snapshot을 다시 잡는다. BootId 변화·순번 공백·단절은 B에 관측 공백으로 알린다. 중복 이벤트는 BootId+순번으로 제거하고, 알 수 없는 과거를 ‘활동 없음’으로 채우지 않는다. HA 엔티티가 boot/순번을 전달하지 못하면 그 경로에서는 누락 탐지 불가를 명시한다.
 
 ## 6. 실제 매핑 파일에 채울 항목
