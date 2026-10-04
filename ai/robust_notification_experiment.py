@@ -1,4 +1,4 @@
-"""Synthetic domain randomization and worst-group notification selection.
+"""Exploratory domain randomization with out-of-scope stress profiles.
 
 This adapts published validation ideas; it does not estimate field accuracy.
 Every household is replayed forward in time with independent scripted labels.
@@ -68,7 +68,7 @@ def experiment() -> dict[str, object]:
                      cohort(selected, HOLDOUT_SEEDS, HOLDOUT_CONDITIONS,
                             (HOLDOUT_VARIATION,)))
     return {
-        "scope": "Synthetic cooker-use interruption labels, not meals, health or field accuracy",
+        "scope": "Exploratory synthetic stress test includes age 50-64 and batch cooking outside product target; not meals, health or field accuracy",
         "method": "domain-randomized scenarios; forward-time replay; worst-group loss selection",
         "loss": "1 - scripted-interruption-day recall + 2 * normal-day notification-request rate",
         "train_seeds": TRAIN_SEEDS, "train_conditions": TRAIN_CONDITIONS,

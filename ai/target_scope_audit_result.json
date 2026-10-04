@@ -1,5 +1,5 @@
 {
-  "scope": "Synthetic daily cooker access, age 65+; not meals or field accuracy",
+  "scope": "Synthetic daily planned cooker access with natural skips, age 65+; not meals or field accuracy",
   "excluded_profiles": [
     "middle_evening (age 50-64)",
     "older_alternate (every-other-day batch cooking)"
