@@ -1,4 +1,4 @@
-"""Replay in-scope synthetic households without sparse batch-cooking profiles.
+"""Replay scoped synthetic households without sparse batch-cooking profiles.
 
 The scripted labels are not meal or real-world caregiver-check outcomes.
 """
@@ -15,7 +15,7 @@ from ai.robust_notification_experiment import (
 )
 
 
-# Synthetic 65+ households that open the cooker daily in their baseline.
+# Synthetic 65+ households with daily planned cooker access; natural skips remain.
 # Alternating/batch cooking and 50-64 profiles remain stress tests only.
 TARGET_RHYTHMS = ("older_morning", "older_twice")
 
@@ -26,7 +26,7 @@ def experiment() -> dict[str, object]:
             for row in household(seed, rhythm, condition, SETTINGS["current"],
                                  variation=HOLDOUT_VARIATION)]
     return {
-        "scope": "Synthetic daily cooker access, age 65+; not meals or field accuracy",
+        "scope": "Synthetic daily planned cooker access with natural skips, age 65+; not meals or field accuracy",
         "excluded_profiles": ["middle_evening (age 50-64)",
                               "older_alternate (every-other-day batch cooking)"],
         "seeds": HOLDOUT_SEEDS,
