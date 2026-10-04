@@ -22,28 +22,24 @@
   "notification_days": {
     "households": 8,
     "eligible_days": 152,
-    "tp": 9,
-    "fp": 7,
-    "fn": 23,
-    "tn": 113,
-    "recall": 0.2812,
-    "false_positive_rate": 0.0583,
-    "nuisance_per_home_21d": 0.875,
+    "tp": 11,
+    "fp": 6,
+    "fn": 21,
+    "tn": 114,
+    "recall": 0.3438,
+    "false_positive_rate": 0.05,
+    "nuisance_per_home_21d": 0.75,
     "excluded_days": 16,
     "alerted_away_or_offline": 0
   },
   "episodes": {
     "episodes": 16,
-    "caught": 9,
-    "missed": 7,
-    "recall": 0.5625,
-    "median_delay_hours": 24.97,
-    "p90_delay_hours": 34.31,
+    "caught": 11,
+    "missed": 5,
+    "recall": 0.6875,
+    "median_delay_hours": 25.21,
+    "p90_delay_hours": 38.48,
     "missed_examples": [
-      {
-        "household": "older_twice_gradual_drift_1601_combined_unseen",
-        "episode_id": 1
-      },
       {
         "household": "older_twice_gradual_drift_1601_combined_unseen",
         "episode_id": 2
@@ -58,6 +54,10 @@
       },
       {
         "household": "older_twice_skip_and_late_1601_combined_unseen",
+        "episode_id": 2
+      },
+      {
+        "household": "older_twice_skip_and_late_1613_combined_unseen",
         "episode_id": 2
       }
     ]
@@ -96,28 +96,24 @@
       "notification_days": {
         "households": 4,
         "eligible_days": 76,
-        "tp": 2,
-        "fp": 4,
-        "fn": 14,
-        "tn": 56,
-        "recall": 0.125,
-        "false_positive_rate": 0.0667,
-        "nuisance_per_home_21d": 1.0,
+        "tp": 4,
+        "fp": 3,
+        "fn": 12,
+        "tn": 57,
+        "recall": 0.25,
+        "false_positive_rate": 0.05,
+        "nuisance_per_home_21d": 0.75,
         "excluded_days": 8,
         "alerted_away_or_offline": 0
       },
       "episodes": {
         "episodes": 8,
-        "caught": 2,
-        "missed": 6,
-        "recall": 0.25,
-        "median_delay_hours": 29.64,
-        "p90_delay_hours": 34.31,
+        "caught": 4,
+        "missed": 4,
+        "recall": 0.5,
+        "median_delay_hours": 36.39,
+        "p90_delay_hours": 38.48,
         "missed_examples": [
-          {
-            "household": "older_twice_gradual_drift_1601_combined_unseen",
-            "episode_id": 1
-          },
           {
             "household": "older_twice_gradual_drift_1601_combined_unseen",
             "episode_id": 2
@@ -132,7 +128,7 @@
           },
           {
             "household": "older_twice_skip_and_late_1613_combined_unseen",
-            "episode_id": 1
+            "episode_id": 2
           }
         ]
       }
