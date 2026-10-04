@@ -1,6 +1,6 @@
 {
   "schema_version": "a05-handoff-1",
-  "status": "test_transport_verified_B_not_connected",
+  "status": "test_transport_verified_B_live_software_path_tested",
   "input_kind": "test",
   "matter_entry_id": "01M42JG6BJ84TBN5G7SCZZQRN0",
   "node_id": 4,
@@ -71,7 +71,7 @@
   },
   "B_compatibility": {
     "accepted_by_current_platform_guard": false,
-    "reason": "Current B code requires registry platform matter; these entities use bapsim_matter_probe",
+    "reason": "B verifies bapsim_matter_probe provenance but intentionally rejects this test-origin mapping for live records",
     "counter_candidate": "sensor.a05_reportcounter",
     "required_checks": [
       "registry integration provenance",
