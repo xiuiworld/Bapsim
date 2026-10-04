@@ -124,7 +124,12 @@ class DetectionStateManager:
                 state.candidate_count = 0
             state.candidate_count += 1
             state.candidate_at = as_of
-            if state.candidate_count < self.min_consecutive:
+            # An interval check is one continuously observed gap, not a new
+            # missed opportunity on every periodic tick. Its own threshold
+            # already includes the two-hour grace; notify on that first check.
+            required = (1 if "UNUSUAL_USE_GAP" in reasons and interval is not None
+                        else self.min_consecutive)
+            if state.candidate_count < required:
                 return []
             state.status = "check_required"
             state.incident_id = f"{source}:{device_id}:{as_of}"
