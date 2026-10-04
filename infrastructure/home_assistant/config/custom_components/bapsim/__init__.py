@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
+import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -20,10 +21,27 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.domain.features import CookerFeatureExtractor
     from .runtime.domain.sessions import CookingSessionBuilder
     from .runtime.domain.personal_model import PersonalUsageModel
-    from .runtime.workflow import DetectionStateManager
+    from .runtime.workflow import DeliveryLedger, DetectionStateManager, NotificationControls, ObservationIssueTracker, WorkflowUpdate
+    from .runtime.workflow.quiet_hours import QuietHours
     from .runtime.workflow.evidence_boundary import cooker_only
+    from .runtime.workflow.notification_policy import (ALERT_ACTIONS, current_request, queue_quiet,
+                                                       release_quiet, suppressed)
     from .runtime.inputs.matter import MatterBoardSignalAdapter, MatterContactAdapter, MatterContextAdapter, MatterCookingStateAdapter
     from .runtime.inputs.base.journal import RawEventJournal
+    from .runtime.service import ObservationJournal, StatusOutput, AuxiliaryDeferral
+    from .runtime.service.analysis_policy import assess_personal_use
+    from .runtime.service.ha_notification_transport import notification_copy, send_local, send_mobile
+    from .runtime.service.ha_notification_flow import make_notification_handlers
+    from .runtime.service.ha_dashboard import HADashboard
+    from .runtime.service.ha_mqtt_output import HAMQTTOutput
+    from .runtime.service.ha_matter_inputs import bind_matter_inputs, register_matter_services
+    from .runtime.service.ha_journal import HAJournal
+    from .runtime.service.ha_analysis_flow import AnalysisMode, bind_analysis
+    from .runtime.service.ha_cooker_events import bind_cooker_events
+    from .runtime.service.ha_periodic import PeriodicState, bind_periodic
+    from .runtime.service.ha_mqtt_subscriptions import bind_mqtt_subscriptions
+    from .runtime.service.ha_service_registry import HAServiceRegistry
+    from .runtime.service.ha_caregiver_commands import bind_caregiver_commands
 else:
     from domain.events.normalizer import CookerEventNormalizer, NormalizedCookerEvent
     from domain.baseline import PersonalBaselineEngine
@@ -31,10 +49,27 @@ else:
     from domain.features import CookerFeatureExtractor
     from domain.sessions import CookingSessionBuilder
     from domain.personal_model import PersonalUsageModel
-    from workflow import DetectionStateManager
+    from workflow import DeliveryLedger, DetectionStateManager, NotificationControls, ObservationIssueTracker, WorkflowUpdate
+    from workflow.quiet_hours import QuietHours
     from workflow.evidence_boundary import cooker_only
+    from workflow.notification_policy import (ALERT_ACTIONS, current_request, queue_quiet,
+                                              release_quiet, suppressed)
     from inputs.matter import MatterBoardSignalAdapter, MatterContactAdapter, MatterContextAdapter, MatterCookingStateAdapter
     from inputs.base.journal import RawEventJournal
+    from service import ObservationJournal, StatusOutput, AuxiliaryDeferral
+    from service.analysis_policy import assess_personal_use
+    from service.ha_notification_transport import notification_copy, send_local, send_mobile
+    from service.ha_notification_flow import make_notification_handlers
+    from service.ha_dashboard import HADashboard
+    from service.ha_mqtt_output import HAMQTTOutput
+    from service.ha_matter_inputs import bind_matter_inputs, register_matter_services
+    from service.ha_journal import HAJournal
+    from service.ha_analysis_flow import AnalysisMode, bind_analysis
+    from service.ha_cooker_events import bind_cooker_events
+    from service.ha_periodic import PeriodicState, bind_periodic
+    from service.ha_mqtt_subscriptions import bind_mqtt_subscriptions
+    from service.ha_service_registry import HAServiceRegistry
+    from service.ha_caregiver_commands import bind_caregiver_commands
 
 DOMAIN = "bapsim"
 RAW_EVENT = "bapsim_raw_event"
@@ -61,23 +96,41 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     detector = RuleDetector()
     usage_model = PersonalUsageModel()
     workflow = DetectionStateManager(candidate_window=timedelta(hours=36))
+    trend_workflow = DetectionStateManager(min_consecutive=1, candidate_window=timedelta(days=1),
+                                           reminder_cadence=timedelta(days=7), resumption_alerts=False)
+    controls = NotificationControls()
+    observation_issues = ObservationIssueTracker()
+    delivery = DeliveryLedger()
+    quiet_hours = QuietHours()
+    auxiliary = AuxiliaryDeferral()
+    settings = config.get(DOMAIN) or {}
+    if not isinstance(settings, dict):
+        settings = {}
+    external_service = bool(settings.get("external_service", False)) or os.environ.get("BAPSIM_EXTERNAL_SERVICE") == "1"
     matter_contacts: dict[str, MatterContactAdapter] = {}
     matter_cooking_states: dict[str, MatterCookingStateAdapter] = {}
     matter_contexts: dict[str, MatterContextAdapter] = {}
     matter_board_signals: dict[str, MatterBoardSignalAdapter] = {}
     matter_report_at: dict[str, datetime] = {}
     availability_by_device: dict[tuple[str, str], str] = {}
+    forwarded_devices: set[tuple[str, str]] = set()
     latest_features: dict[tuple[str, str], dict[str, object]] = {}
     board_history: list[dict[str, str]] = []
     pending_mobile: dict[str, dict[str, object]] = {}
+    pending_quiet: dict[str, dict[str, str]] = {}
     retrying_mobile: set[str] = set()
     away = False
     notification_target: str | None = None
     cancel_timer = None
     store = Store(hass, 1, "bapsim.pipeline", atomic_writes=True)
     journal = RawEventJournal(Path(hass.config.path("bapsim_events"))) if hasattr(hass, "config") else None
-    journal_lock = asyncio.Lock()
+    observations = ObservationJournal(Path(hass.config.path("bapsim_observations"))) if hasattr(hass, "config") else None
+    service_records = ObservationJournal(Path(hass.config.path("bapsim_records")), 180, "records") if hasattr(hass, "config") else None
+    last_baseline_record_day: dict[tuple[str, str], str] = {}
     stored = await store.async_load()
+    routine_updated_at: dict[str, str] = dict(stored.get("routine_updated_at", {})) if isinstance(stored, dict) else {}
+    output = StatusOutput(str(settings.get("household_id", "household_01")),
+                          int(stored.get("output_revision", 0)) if isinstance(stored, dict) else 0)
     if isinstance(stored, dict):
         try:
             normalizer.load_state(stored.get("normalizer", []))
@@ -86,6 +139,14 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             baseline.load_state(stored.get("baseline", []))
             usage_model.load_state(stored.get("usage_model", {}))
             workflow.load_state(stored.get("workflow", []))
+            trend_workflow.load_state(stored.get("trend_workflow", []))
+            controls.load_state(stored.get("notification_controls", {}))
+            observation_issues.load_state(stored.get("observation_issues", []))
+            delivery.load_state(stored.get("delivery", []))
+            quiet_hours.configure(*stored.get("quiet_hours", ["22:00", "08:00"]))
+            pending_quiet.update({item.get("notification_id", item["incident_id"]): item
+                                  for item in stored.get("pending_quiet", [])})
+            auxiliary.load_state(stored.get("auxiliary", {}))
             for item in stored.get("matter_contacts", []):
                 for entity_id, adapter in tuple(matter_contacts.items()):
                     if adapter.device_id == item["device_id"]:
@@ -109,6 +170,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             availability_by_device.update(
                 ((item["source"], item["device_id"]), item["availability"])
                 for item in stored.get("availability", [])
+            )
+            forwarded_devices.update(
+                (item["source"], item["device_id"])
+                for item in stored.get("forwarded_devices", [])
+                if isinstance(item, dict) and item.get("source") in {"matter", "simulator"}
+                and isinstance(item.get("device_id"), str) and item["device_id"]
             )
             latest_features.update(
                 ((item["source"], item["device_id"]), item)
@@ -136,9 +203,36 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 if (isinstance(item, dict) and all(isinstance(item.get(key), str) for key in (
                     "source", "device_id", "incident_id", "message",
                 )) and isinstance(item.get("reason_codes"), list)):
-                    pending_mobile[item["incident_id"]] = item
+                    item.setdefault("action", "legacy_mobile_retry")
+                    pending_mobile[item.get("notification_id", item["incident_id"])] = item
+                    notification_id = item.get("notification_id", item["incident_id"])
+                    if delivery.get(notification_id) is None:
+                        now = datetime.now(timezone.utc).isoformat()
+                        record = delivery.prepare(notification_id, item["incident_id"], item["source"],
+                                                  item["device_id"], item["action"],
+                                                  item["reason_codes"], now, destination="mobile_legacy",
+                                                  title=item.get("title", ""), message=item["message"])
+                        record.update(status="failed", attempts=1, next_retry_at=now,
+                                      expires_at=item.get("expires_at", record["expires_at"]))
         except (KeyError, TypeError, ValueError) as exc:
             _LOGGER.warning("Could not restore some Bapsim pipeline state: %s", exc)
+    model_away = away or controls.is_paused(datetime.now(timezone.utc).isoformat())
+    for record in delivery.records.values():
+        if record["status"] == "uncertain":
+            pending_mobile.pop(str(record["notification_id"]), None)
+            manager = trend_workflow if "DECLINING_USAGE" in record["reason_codes"] else workflow
+            manager.cancel_request(str(record["source"]), str(record["device_id"]),
+                                   str(record["updated_at"]))
+        elif record["status"] in {"ha_accepted", "cancelled"}:
+            pending_mobile.pop(str(record["notification_id"]), None)
+    if external_service:
+        now = datetime.now(timezone.utc).isoformat()
+        for notification_id in tuple(pending_mobile):
+            if delivery.get(notification_id) is not None:
+                delivery.cancel(notification_id, now, "external_worker_mode")
+            pending_mobile.pop(notification_id, None)
+    if model_away:
+        usage_model.set_away(True, datetime.now(timezone.utc).isoformat())
 
     @callback
     def state_snapshot() -> dict[str, object]:
@@ -148,7 +242,16 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             "features": features.dump_state(),
             "baseline": baseline.dump_state(),
             "usage_model": usage_model.dump_state(),
+            "routine_updated_at": dict(routine_updated_at),
             "workflow": workflow.dump_state(),
+            "trend_workflow": trend_workflow.dump_state(),
+            "notification_controls": controls.dump_state(),
+            "observation_issues": observation_issues.dump_state(),
+            "delivery": delivery.dump_state(),
+            "quiet_hours": [quiet_hours.start, quiet_hours.end],
+            "pending_quiet": list(pending_quiet.values()),
+            "auxiliary": auxiliary.dump_state(),
+            "output_revision": output.revision,
             "matter_contacts": [
                 {"entity_id": entity_id, "device_id": adapter.device_id, "on_is_open": adapter.on_is_open}
                 for entity_id, adapter in matter_contacts.items()
@@ -171,6 +274,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 {"source": source, "device_id": device_id, "availability": value}
                 for (source, device_id), value in availability_by_device.items()
             ],
+            "forwarded_devices": [
+                {"source": source, "device_id": device_id}
+                for source, device_id in sorted(forwarded_devices)
+            ],
             "latest_features": list(latest_features.values()),
             "board_history": board_history[-BOARD_HISTORY_LIMIT:],
             "away": away,
@@ -182,29 +289,48 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     def save_later() -> None:
         store.async_delay_save(state_snapshot, 1)
 
+    async def save_now() -> None:
+        await store.async_save(state_snapshot())
+
     @callback
-    def show(entity: str, value: object, attributes: dict[str, object] | None = None) -> None:
-        # HA reserves "unknown" and "unavailable" as entity health states.
-        display = {"unknown": "not_observed", "unavailable": "disconnected"}.get(str(value), str(value))
-        labels = {
-            "detection_status": "밥솥 단독 판정", "workflow_status": "보호자 확인 상태",
-            "baseline": "개인 기준", "features": "현재 특징",
-            "notification_delivery": "알림 전달 단계", "matter_input": "실물 밥솥 입력 준비",
-        }
-        hass.states.async_set(f"sensor.bapsim_{entity}", display, {"friendly_name": labels.get(entity, entity), **(attributes or {})})
+    def delivery_failure(exc: Exception) -> str:
+        # A timeout or unknown service error may have occurred after HA accepted the call.
+        return "failed" if isinstance(exc, ConnectionError) else "uncertain"
+
+    dashboard = HADashboard(hass, usage_model, routine_updated_at)
+    show = dashboard.show
+    show_initial_routines = dashboard.show_initial_routines
 
     # Restore dashboard cards without treating old detections as new evidence.
     show("workflow_status", "normal")
+    show("decline_status", "waiting")
+    show("decline_detection", "waiting")
+    show("interval_detection", "waiting")
     show("baseline", "waiting")
+    show_initial_routines()
     show("detection_status", "waiting")
     show("features", "waiting")
     show("notification_delivery", "not_sent")
+    show("observation_issue_status", "unknown")
+    show("mqtt_output", "waiting")
+    show("auxiliary_deferral", "waiting")
     show("matter_input", "not_configured")
     show("matter_board", "not_configured")
     show("board_history", len(board_history), {"latest": board_history[-3:]})
     show("away", "away" if away else "home")
+    show("notification_controls", controls.revision, controls.dump_state())
+    if external_service:
+        show("output_state", "awaiting_matter", {"mode": "external_service"})
+        show("simulation_output_state", "waiting", {"mode": "simulation"})
+
+    mqtt_output = HAMQTTOutput(hass, output, controls, show, _LOGGER)
+    send_mqtt = mqtt_output.send_state
+    send_controls = mqtt_output.send_controls
+
     for item in workflow.dump_state():
         show("workflow_status", item["status"], item)
+    for item in trend_workflow.dump_state():
+        show("decline_status", item["status"], item)
     for source, device_id in usage_model.device_keys:
         profile = usage_model.profile(source, device_id, datetime.now(timezone.utc).isoformat())
         show("baseline", "ready" if profile["ready"] else "learning", profile)
@@ -214,117 +340,46 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     @callback
     def publish_workflow(update) -> None:
         payload = update.as_dict()
-        if update.status == "resolved" and update.incident_id in pending_mobile:
-            pending_mobile.pop(update.incident_id, None)
+        archive_service_record("workflow", payload, update.as_of)
+        if update.status == "resolved":
+            for pending in (pending_mobile, pending_quiet):
+                for key, item in tuple(pending.items()):
+                    if item["incident_id"] == update.incident_id:
+                        pending.pop(key, None)
+            for notification_id, record in delivery.records.items():
+                if record["incident_id"] == update.incident_id and record["status"] in {"pending", "failed"}:
+                    delivery.cancel(notification_id, update.as_of, "incident_resolved")
         hass.bus.async_fire(WORKFLOW_EVENT, payload)
-        show("workflow_status", update.status, payload)
+        if update.action == "observation_issue_requested":
+            show("observation_issue_status", "alert_requested", payload)
+        elif "DECLINING_USAGE" in update.reason_codes or "DECLINE_RESOLVED" in update.reason_codes:
+            show("decline_status", update.status, payload)
+        else:
+            show("workflow_status", update.status, payload)
         save_later()
 
-    async def create_notification(update) -> None:
-        title = "밥심 — 안부 확인 필요"
-        message = "평소와 다른 밥솥 사용 패턴이 관측되었습니다. 밥심 실험실에서 확인 상태를 기록하세요.\n\n근거: " + ", ".join(update.reason_codes)
-        try:
-            await hass.services.async_call(
-                "persistent_notification", "create",
-                {
-                    "title": title,
-                    "message": message,
-                    "notification_id": "bapsim_" + str(update.incident_id),
-                },
-                blocking=True,
-            )
-        except Exception:
-            _LOGGER.exception("Bapsim local notification failed")
-            return
-        delivery = "ha_local_created"
-        if notification_target:
-            actions = [
-                {"action": f"BAPSIM|{response}|{update.source}|{update.device_id}|{update.incident_id}", "title": label}
-                for response, label in (("checking", "확인 중"), ("resolved", "안부 확인 완료"))
-            ]
-            try:
-                await hass.services.async_call("notify", notification_target, {
-                    "title": title, "message": message, "data": {"actions": actions},
-                }, blocking=True)
-                delivery = "mobile_service_called"
-            except Exception:
-                _LOGGER.exception("Bapsim mobile notification service failed")
-                pending_mobile[str(update.incident_id)] = {
-                    "source": update.source, "device_id": update.device_id,
-                    "incident_id": str(update.incident_id), "message": message,
-                    "reason_codes": list(update.reason_codes),
-                }
-                delivery = "mobile_retry_pending"
-                save_later()
-        show("notification_delivery", delivery, {"incident_id": update.incident_id, "as_of": datetime.now(timezone.utc).isoformat()})
-        sent = workflow.mark_notified(update.source, update.device_id, datetime.now(timezone.utc).isoformat())
-        if sent is not None:
-            publish_workflow(sent)
-
-    async def retry_mobile_notifications() -> None:
-        if not notification_target:
-            return
-        for incident_id, item in tuple(pending_mobile.items()):
-            if incident_id in retrying_mobile:
-                continue
-            current = next((state for state in workflow.dump_state()
-                            if state["source"] == item["source"] and state["device_id"] == item["device_id"]), None)
-            if current is None or current.get("incident_id") != incident_id or current.get("status") not in {"notified", "checking"}:
-                pending_mobile.pop(incident_id, None)
-                save_later()
-                continue
-            retrying_mobile.add(incident_id)
-            actions = [
-                {"action": f"BAPSIM|{response}|{item['source']}|{item['device_id']}|{incident_id}", "title": label}
-                for response, label in (("checking", "확인 중"), ("resolved", "안부 확인 완료"))
-            ]
-            try:
-                await hass.services.async_call("notify", notification_target, {
-                    "title": "밥심 — 안부 확인 필요", "message": item["message"],
-                    "data": {"actions": actions},
-                }, blocking=True)
-            except Exception:
-                _LOGGER.warning("Bapsim mobile notification retry failed for %s", incident_id)
-            else:
-                pending_mobile.pop(incident_id, None)
-                show("notification_delivery", "mobile_service_called", {
-                    "incident_id": incident_id, "as_of": datetime.now(timezone.utc).isoformat(),
-                })
-                save_later()
-            finally:
-                retrying_mobile.discard(incident_id)
+    create_notification, retry_mobile_notifications = make_notification_handlers(
+        hass, workflow, trend_workflow, controls, observation_issues, delivery, quiet_hours,
+        availability_by_device, pending_mobile, pending_quiet, retrying_mobile,
+        lambda: notification_target, show,
+        lambda category, payload, at: archive_service_record(category, payload, at),
+        save_now, save_later, publish_workflow, delivery_failure, _LOGGER, WorkflowUpdate,
+        current_request, queue_quiet, suppressed, notification_copy, send_local, send_mobile)
 
     @callback
-    def evaluate_model(source: str, device_id: str, as_of: str) -> None:
-        profile = usage_model.profile(source, device_id, as_of)
-        hass.bus.async_fire(BASELINE_EVENT, profile)
-        show("baseline", "ready" if profile["ready"] else "learning", profile)
-        online = availability_by_device.get((source, device_id)) == "online"
-        if not online or away:
-            status = "away" if away else "data_unavailable"
-            reason = "AWAY_DECLARED" if away else "COOKER_DATA_UNAVAILABLE"
-            provisional = {
-                "source": source, "device_id": device_id, "as_of": as_of,
-                "routine_status": status, "severity": "info", "reason_codes": [reason],
-                "score": None, "evidence": {"model": "personal_usage_v1"},
-            }
-            hass.bus.async_fire(DETECTION_EVENT, provisional)
-            show("detection_status", status, provisional)
-            for update in workflow.ingest(provisional):
-                publish_workflow(update)
-        decisions = usage_model.evaluate(
-            source, device_id, as_of,
-            online=online,
-            away=away,
-        )
-        for decision in decisions:
-            hass.bus.async_fire(DETECTION_EVENT, decision)
-            show("detection_status", decision["routine_status"], decision)
-            for update in workflow.ingest(cooker_only(decision)):
-                publish_workflow(update)
-                if update.action == "notify_requested":
-                    hass.async_create_task(create_notification(update))
-        save_later()
+    def dispatch_workflow(update, manager=workflow) -> None:
+        publish_workflow(update)
+        if update.action in ALERT_ACTIONS:
+            hass.async_create_task(create_notification(update, manager))
+
+    analysis_mode = AnalysisMode(model_away)
+    evaluate_model = bind_analysis(
+        callback, hass, usage_model, workflow, trend_workflow, controls, observation_issues,
+        auxiliary, output, availability_by_device, last_baseline_record_day, analysis_mode,
+        lambda: away, lambda category, payload, at: archive_service_record(category, payload, at),
+        dispatch_workflow, publish_workflow,
+        show, send_mqtt, save_later, assess_personal_use, cooker_only,
+        BASELINE_EVENT, DETECTION_EVENT)
 
     @callback
     def publish(events: list[NormalizedCookerEvent]) -> None:
@@ -348,17 +403,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if deadline is not None:
             cancel_timer = async_track_point_in_utc_time(hass, on_deadline, deadline)
 
-    @callback
-    def archive_raw(stream: str, payload: dict[str, object]) -> None:
-        if journal is not None:
-            hass.async_create_task(write_raw(stream, dict(payload)))
-
-    async def write_raw(stream: str, payload: dict[str, object]) -> None:
-        try:
-            async with journal_lock:
-                await hass.async_add_executor_job(journal.append, stream, payload)
-        except (OSError, ValueError) as exc:
-            _LOGGER.warning("Could not archive raw %s event: %s", stream, exc)
+    journal_io = HAJournal(hass, journal, observations, service_records, _LOGGER)
+    archive_raw = journal_io.archive_raw
+    write_observation = journal_io.write_observation
+    archive_service_record = journal_io.archive_service_record
+    prune_observations = journal_io.prune_observations
 
     @callback
     def on_raw(event: Event) -> None:
@@ -413,504 +462,44 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     unsubscribe_context = hass.bus.async_listen(CONTEXT_RAW_EVENT, archive_context)
 
-    @callback
-    def on_cooker(event: Event) -> None:
-        source = event.data.get("source")
-        device_id = event.data.get("device_id")
-        observed_at = event.data.get("observed_at")
-        if not all(isinstance(item, str) for item in (source, device_id, observed_at)):
-            _LOGGER.warning("Ignored canonical cooker event with missing identity or time")
-            return
-        key = (source, device_id)
-        if event.data.get("event_type") in {"device_online", "device_offline"}:
-            availability_by_device[key] = event.data["value"]
-        try:
-            usage_model.observe(event.data)
-        except ValueError as exc:
-            _LOGGER.warning("Ignored invalid usage-model event: %s", exc)
-        try:
-            updates = sessions.ingest(event.data)
-        except ValueError as exc:
-            _LOGGER.warning("Ignored invalid canonical cooker event: %s", exc)
-            return
-        for update in updates:
-            snapshot = update.as_dict()
-            features.ingest(snapshot)
-            hass.bus.async_fire(SESSION_EVENT, {**snapshot, "as_of": observed_at})
-        if updates or event.data.get("event_type") in {"device_online", "device_offline"}:
-            snapshot = features.extract(
-                source, device_id, observed_at, availability_by_device.get(key, "unknown")
-            )
-            payload = snapshot.as_dict()
-            latest_features[key] = payload
-            hass.bus.async_fire(FEATURE_EVENT, payload)
-            show("features", "available" if payload.get("availability") == "online" else "unavailable", payload)
-            save_later()
-        if event.data.get("event_type") in {"device_online", "device_offline", "lid_opened"}:
-            evaluate_model(source, device_id, observed_at)
+    unsubscribe_sessions = bind_cooker_events(
+        hass, callback, COOKER_EVENT, SESSION_EVENT, FEATURE_EVENT, observations,
+        write_observation, external_service, forwarded_devices, save_later, output, show,
+        usage_model, availability_by_device, workflow, dispatch_workflow,
+        archive_service_record, sessions, features, latest_features, evaluate_model, _LOGGER)
 
-    unsubscribe_sessions = hass.bus.async_listen(COOKER_EVENT, on_cooker)
+    matter_inputs = bind_matter_inputs(
+        hass, er, callback, EVENT_HOMEASSISTANT_STARTED, RAW_EVENT, CONTEXT_RAW_EVENT,
+        matter_contacts, matter_cooking_states, matter_contexts, matter_board_signals,
+        matter_report_at, availability_by_device, usage_model, pending_mobile,
+        retry_mobile_notifications, show, MatterContactAdapter, MatterCookingStateAdapter)
+    (is_matter_entity, matter_inputs_available, show_matter_readiness,
+     show_context_readiness, show_board_readiness, forward_matter_state,
+     forward_context_state, forward_board_state, publish_matter_offline,
+     publish_cooking_input_offline, unsubscribe_matter, unsubscribe_registry,
+     on_started) = matter_inputs
 
-    @callback
-    def matter_bindings(device_id: str) -> list[tuple[str, MatterContactAdapter | MatterCookingStateAdapter]]:
-        return [
-            (entity_id, adapter)
-            for entity_id, adapter in (*matter_contacts.items(), *matter_cooking_states.items())
-            if adapter.device_id == device_id
-        ]
+    periodic_state = PeriodicState()
+    on_hourly_tick = bind_periodic(
+        callback, hass, periodic_state, show_initial_routines, delivery, external_service,
+        forwarded_devices, matter_inputs_available, output, quiet_hours, pending_quiet,
+        workflow, trend_workflow, controls, observation_issues, availability_by_device,
+        lambda: away, create_notification, release_quiet, save_later, auxiliary,
+        usage_model, show, cooker_only, dispatch_workflow, observations,
+        prune_observations, latest_features, features, FEATURE_EVENT, evaluate_model,
+        pending_mobile, retry_mobile_notifications)
 
-    @callback
-    def is_matter_entity(entity_id: str) -> bool:
-        entry = er.async_get(hass).async_get(entity_id)
-        return entry is not None and entry.platform == "matter"
+    unsubscribe_tick = async_track_time_interval(hass, on_hourly_tick, timedelta(seconds=60))
 
-    @callback
-    def matter_inputs_available(device_id: str) -> bool:
-        bindings = matter_bindings(device_id)
-        return any(
-            isinstance(adapter, MatterContactAdapter)
-            and is_matter_entity(entity_id)
-            and (state := hass.states.get(entity_id)) is not None
-            and state.state in {"on", "off"}
-            for entity_id, adapter in bindings
-        )
+    service_registry = HAServiceRegistry(hass, DOMAIN)
+    register_matter_services(
+        hass, service_registry.register, RAW_EVENT, CONTEXT_RAW_EVENT, matter_contacts, matter_cooking_states,
+        matter_contexts, matter_board_signals, is_matter_entity, publish_matter_offline,
+        publish_cooking_input_offline, forward_matter_state, forward_context_state,
+        forward_board_state, show_matter_readiness, show_context_readiness,
+        show_board_readiness, save_later, MatterContactAdapter, MatterCookingStateAdapter,
+        MatterContextAdapter, MatterBoardSignalAdapter)
 
-    @callback
-    def matter_cooking_available(device_id: str) -> bool:
-        return any(
-            isinstance(adapter, MatterCookingStateAdapter)
-            and is_matter_entity(entity_id)
-            and (state := hass.states.get(entity_id)) is not None
-            and state.state in {adapter.started_state, adapter.finished_state}
-            for entity_id, adapter in matter_bindings(device_id)
-        )
-
-    @callback
-    def show_matter_readiness() -> None:
-        device_ids = sorted({
-            adapter.device_id for adapter in (*matter_contacts.values(), *matter_cooking_states.values())
-        })
-        devices = []
-        for device_id in device_ids:
-            lids = [entity_id for entity_id, adapter in matter_contacts.items() if adapter.device_id == device_id]
-            cooking = [entity_id for entity_id, adapter in matter_cooking_states.items() if adapter.device_id == device_id]
-            lid_state = hass.states.get(lids[0]) if lids else None
-            cooking_state = hass.states.get(cooking[0]) if cooking else None
-            cooking_adapter = matter_cooking_states[cooking[0]] if cooking else None
-            devices.append({
-                "device_id": device_id, "lid_entity": lids[0] if lids else None,
-                "cooking_entity": cooking[0] if cooking else None,
-                "lid_state": lid_state.state if lid_state is not None else None,
-                "cooking_state": cooking_state.state if cooking_state is not None else None,
-                "lid_state_unmapped": (
-                    lid_state is not None and lid_state.state not in {
-                        "on", "off", "unknown", "unavailable",
-                    }
-                ),
-                "cooking_state_unmapped": (
-                    cooking_state is not None and cooking_adapter is not None
-                    and cooking_state.state not in {
-                        cooking_adapter.started_state, cooking_adapter.finished_state,
-                        "unknown", "unavailable",
-                    }
-                ),
-                "inputs_available": matter_inputs_available(device_id),
-                "cooking_available": matter_cooking_available(device_id),
-                "source_verified": all(is_matter_entity(entity_id) for entity_id, _ in matter_bindings(device_id)),
-            })
-        if not devices:
-            status = "not_configured"
-        elif any(not item["lid_entity"] for item in devices):
-            status = "missing_input"
-        elif any(not is_matter_entity(item["lid_entity"]) for item in devices):
-            status = "source_unverified"
-        elif any(item["lid_state_unmapped"] for item in devices):
-            status = "state_unmapped"
-        elif any(not item["inputs_available"] for item in devices):
-            status = "entity_unavailable"
-        elif any(not item["cooking_entity"] for item in devices):
-            status = "lid_only_ready"
-        elif any(not item["source_verified"] for item in devices):
-            status = "partial_source_unverified"
-        elif any(item["cooking_state_unmapped"] for item in devices):
-            status = "partial_state_unmapped"
-        elif any(not item["cooking_available"] for item in devices):
-            status = "partial_unavailable"
-        else:
-            status = "ready"
-        show("matter_input", status, {"devices": devices})
-
-    @callback
-    def next_matter_time(device_id: str) -> str:
-        observed = datetime.now(timezone.utc)
-        previous = matter_report_at.get(device_id)
-        if previous is not None and observed <= previous:
-            observed = previous + timedelta(microseconds=1)
-        matter_report_at[device_id] = observed
-        return observed.isoformat()
-
-    @callback
-    def publish_matter_offline(device_id: str) -> None:
-        received_at = next_matter_time(device_id)
-        hass.bus.async_fire(RAW_EVENT, {
-            "device_id": device_id, "event_type": "availability", "value": "offline",
-            "observed_at": received_at, "received_at": received_at, "source": "matter",
-            "availability": "offline", "quality": "unknown",
-        })
-
-    @callback
-    def publish_cooking_input_offline(device_id: str) -> None:
-        received_at = next_matter_time(device_id)
-        hass.bus.async_fire(RAW_EVENT, {
-            "device_id": device_id, "event_type": "cooking_input_availability", "value": "offline",
-            "observed_at": received_at, "received_at": received_at, "source": "matter",
-            "availability": "offline", "quality": "unknown",
-        })
-
-    @callback
-    def forward_matter_state(entity_id: str, state, *, snapshot: bool = False) -> None:
-        adapter = matter_contacts.get(entity_id) or matter_cooking_states.get(entity_id)
-        if adapter is None:
-            return
-        if not matter_inputs_available(adapter.device_id):
-            publish_matter_offline(adapter.device_id)
-            show_matter_readiness()
-            return
-
-        def translate_bound(bound_entity, bound_adapter, current, received_at):
-            if isinstance(bound_adapter, MatterContactAdapter):
-                return bound_adapter.translate(current.state, received_at, received_at)
-            if not is_matter_entity(bound_entity) or current is None:
-                return bound_adapter.translate("unavailable", received_at, received_at)
-            try:
-                return bound_adapter.translate(current.state, received_at, received_at)
-            except ValueError:
-                # Keep an unrecognized cooking state raw without promoting it
-                # to a confirmed cooking transition or disconnecting the lid.
-                return {
-                    "device_id": bound_adapter.device_id,
-                    "event_type": "cooking_input_state", "value": current.state,
-                    "observed_at": received_at, "received_at": received_at,
-                    "source": "matter", "availability": "online", "quality": "observed",
-                }
-        received_at = next_matter_time(adapter.device_id)
-        if snapshot or availability_by_device.get(("matter", adapter.device_id)) != "online":
-            # A current-state read establishes both raw channels after registration/recovery.
-            for bound_entity, bound_adapter in matter_bindings(adapter.device_id):
-                current = hass.states.get(bound_entity)
-                raw = translate_bound(bound_entity, bound_adapter, current, received_at)
-                hass.bus.async_fire(RAW_EVENT, raw)
-            show_matter_readiness()
-            return
-        raw = translate_bound(entity_id, adapter, state, received_at)
-        hass.bus.async_fire(RAW_EVENT, raw)
-        show_matter_readiness()
-
-    @callback
-    def show_context_readiness() -> None:
-        devices = []
-        for entity_id, adapter in sorted(matter_contexts.items()):
-            current = hass.states.get(entity_id)
-            verified = is_matter_entity(entity_id)
-            devices.append({
-                "device_id": adapter.device_id, "entity_id": entity_id,
-                "signal": adapter.signal,
-                "state": current.state if current is not None else None,
-                "availability": (
-                    "online" if verified and current is not None
-                    and current.state not in {"unknown", "unavailable"} else "offline"
-                ),
-                "source_verified": verified,
-            })
-        if not devices:
-            status = "not_configured"
-        elif any(not item["source_verified"] for item in devices):
-            status = "source_unverified"
-        elif any(item["availability"] != "online" for item in devices):
-            status = "entity_unavailable"
-        else:
-            status = "ready"
-        show("matter_context", status, {"devices": devices})
-
-    @callback
-    def forward_context_state(entity_id: str, state) -> None:
-        adapter = matter_contexts.get(entity_id)
-        if adapter is None:
-            return
-        received_at = datetime.now(timezone.utc).isoformat()
-        value = state.state if is_matter_entity(entity_id) and state is not None else "unavailable"
-        hass.bus.async_fire(CONTEXT_RAW_EVENT, adapter.translate(value, received_at, received_at))
-        show_context_readiness()
-
-    @callback
-    def show_board_readiness() -> None:
-        signals = []
-        for entity_id, adapter in sorted(matter_board_signals.items()):
-            current = hass.states.get(entity_id)
-            verified = is_matter_entity(entity_id)
-            signals.append({
-                "device_id": adapter.device_id, "entity_id": entity_id,
-                "kind": adapter.kind, "signal": adapter.signal,
-                "state": current.state if current is not None else None,
-                "source_verified": verified,
-                "availability": (
-                    "online" if verified and current is not None
-                    and current.state not in {"unknown", "unavailable"} else "offline"
-                ),
-            })
-        if not signals:
-            status = "not_configured"
-        elif any(not item["source_verified"] for item in signals):
-            status = "source_unverified"
-        elif any(item["availability"] != "online" for item in signals):
-            status = "partially_unavailable"
-        else:
-            status = "ready"
-        show("matter_board", status, {"signals": signals})
-
-    @callback
-    def forward_board_state(entity_id: str, state) -> None:
-        adapter = matter_board_signals.get(entity_id)
-        if adapter is None:
-            return
-        received_at = datetime.now(timezone.utc).isoformat()
-        value = state.state if is_matter_entity(entity_id) and state is not None else "unavailable"
-        hass.bus.async_fire(RAW_EVENT, adapter.translate(value, received_at, received_at))
-        show_board_readiness()
-
-    @callback
-    def on_matter_state(event: Event) -> None:
-        entity_id = event.data.get("entity_id")
-        state = event.data.get("new_state")
-        previous = event.data.get("old_state")
-        if entity_id in matter_board_signals and (
-            state is None or previous is None or previous.state != state.state
-        ):
-            forward_board_state(entity_id, state)
-        if entity_id in matter_contexts:
-            if state is None or previous is None or previous.state != state.state:
-                forward_context_state(entity_id, state)
-            return
-        if state is None:
-            forward_matter_state(entity_id, None)
-            return
-        if previous is not None and previous.state == state.state:
-            return
-        forward_matter_state(entity_id, state)
-
-    unsubscribe_matter = hass.bus.async_listen("state_changed", on_matter_state)
-
-    @callback
-    def on_matter_registry_change(event: Event) -> None:
-        entity_id = event.data.get("entity_id")
-        if entity_id in matter_board_signals:
-            forward_board_state(entity_id, hass.states.get(entity_id))
-        if entity_id in matter_contexts:
-            forward_context_state(entity_id, hass.states.get(entity_id))
-            return
-        adapter = matter_contacts.get(entity_id) or matter_cooking_states.get(entity_id)
-        if adapter is None:
-            return
-        if matter_inputs_available(adapter.device_id):
-            forward_matter_state(entity_id, hass.states.get(entity_id), snapshot=True)
-        else:
-            publish_matter_offline(adapter.device_id)
-            show_matter_readiness()
-
-    unsubscribe_registry = hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, on_matter_registry_change)
-
-    @callback
-    def on_started(event: Event) -> None:
-        for device_id in {adapter.device_id for adapter in (*matter_contacts.values(), *matter_cooking_states.values())}:
-            entity_id = matter_bindings(device_id)[0][0]
-            forward_matter_state(entity_id, hass.states.get(entity_id), snapshot=True)
-        for entity_id in matter_contexts:
-            forward_context_state(entity_id, hass.states.get(entity_id))
-        for entity_id in matter_board_signals:
-            forward_board_state(entity_id, hass.states.get(entity_id))
-        for source, device_id in usage_model.device_keys:
-            if source == "matter":
-                online = matter_inputs_available(device_id)
-            elif source == "simulator":
-                current = hass.states.get("input_select.bapsim_availability")
-                online = current is not None and current.state == "online"
-            else:
-                online = False
-            availability_by_device[(source, device_id)] = "online" if online else "offline"
-            usage_model.availability(source, device_id, online, datetime.now(timezone.utc).isoformat())
-        if pending_mobile and notification_target:
-            hass.async_create_task(retry_mobile_notifications())
-
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, on_started)
-
-    @callback
-    def on_hourly_tick(now) -> None:
-        as_of = now.isoformat()
-        for source, device_id in tuple(latest_features):
-            if source == "simulator":
-                state = hass.states.get("input_select.bapsim_availability")
-                availability = "online" if state is not None and state.state == "online" else "offline"
-            elif source == "matter":
-                availability = "online" if matter_inputs_available(device_id) else "offline"
-            else:
-                availability = "offline"
-            payload = features.extract(source, device_id, as_of, availability).as_dict()
-            latest_features[(source, device_id)] = payload
-            show("features", "available" if availability == "online" else "unavailable", payload)
-            hass.bus.async_fire(FEATURE_EVENT, payload)
-            evaluate_model(source, device_id, as_of)
-        for source, device_id in usage_model.device_keys:
-            if (source, device_id) not in latest_features:
-                evaluate_model(source, device_id, as_of)
-        if pending_mobile and notification_target:
-            hass.async_create_task(retry_mobile_notifications())
-
-    unsubscribe_tick = async_track_time_interval(hass, on_hourly_tick, timedelta(hours=1))
-
-    async def register_matter_contact(call) -> None:
-        device_id = call.data["device_id"]
-        entity_id = call.data["entity_id"]
-        if not is_matter_entity(entity_id):
-            raise ValueError("Contact entity must belong to the Matter integration")
-        if entity_id in matter_cooking_states or entity_id in matter_contexts:
-            raise ValueError("One HA entity cannot have multiple Bapsim input roles")
-        if entity_id in matter_contacts and matter_contacts[entity_id].device_id != device_id:
-            raise ValueError("HA entity already belongs to another logical cooker")
-        replacement = MatterContactAdapter(device_id, on_is_open=call.data["on_is_open"])
-        existing = [(key, adapter) for key, adapter in matter_contacts.items() if adapter.device_id == device_id]
-        if existing and (len(existing) != 1 or existing[0][0] != entity_id or
-                         existing[0][1].on_is_open != replacement.on_is_open):
-            publish_matter_offline(device_id)
-        for key, _ in existing:
-            matter_contacts.pop(key)
-        matter_contacts[entity_id] = replacement
-        forward_matter_state(entity_id, hass.states.get(entity_id), snapshot=True)
-        save_later()
-
-    hass.services.async_register(DOMAIN, "register_matter_contact", register_matter_contact)
-
-    async def register_matter_cooking_state(call) -> None:
-        device_id = call.data["device_id"]
-        entity_id = call.data["entity_id"]
-        if not is_matter_entity(entity_id):
-            raise ValueError("Cooking entity must belong to the Matter integration")
-        if entity_id in matter_contacts or entity_id in matter_contexts:
-            raise ValueError("One HA entity cannot have multiple Bapsim input roles")
-        if entity_id in matter_cooking_states and matter_cooking_states[entity_id].device_id != device_id:
-            raise ValueError("HA entity already belongs to another logical cooker")
-        replacement = MatterCookingStateAdapter(
-            device_id, started_state=call.data["started_state"],
-            finished_state=call.data["finished_state"]
-        )
-        existing = [(key, adapter) for key, adapter in matter_cooking_states.items() if adapter.device_id == device_id]
-        if existing and (len(existing) != 1 or existing[0][0] != entity_id or
-                         existing[0][1].started_state != replacement.started_state or
-                         existing[0][1].finished_state != replacement.finished_state):
-            publish_cooking_input_offline(device_id)
-        for key, _ in existing:
-            matter_cooking_states.pop(key)
-        matter_cooking_states[entity_id] = replacement
-        forward_matter_state(entity_id, hass.states.get(entity_id), snapshot=True)
-        save_later()
-
-    hass.services.async_register(DOMAIN, "register_matter_cooking_state", register_matter_cooking_state)
-
-    async def unregister_matter_input(call) -> None:
-        device_id = call.data["device_id"]
-        input_type = call.data["input_type"]
-        if input_type not in {"lid", "cooking", "all"}:
-            raise ValueError("input_type must be lid, cooking, or all")
-        registries = (
-            (matter_contacts,) if input_type == "lid" else
-            (matter_cooking_states,) if input_type == "cooking" else
-            (matter_contacts, matter_cooking_states)
-        )
-        if any(adapter.device_id == device_id for registry in registries for adapter in registry.values()):
-            if input_type == "cooking":
-                publish_cooking_input_offline(device_id)
-            else:
-                publish_matter_offline(device_id)
-        for registry in registries:
-            for entity_id, adapter in tuple(registry.items()):
-                if adapter.device_id == device_id:
-                    registry.pop(entity_id)
-        show_matter_readiness()
-        save_later()
-
-    hass.services.async_register(DOMAIN, "unregister_matter_input", unregister_matter_input)
-
-    async def register_matter_context(call) -> None:
-        entity_id = call.data["entity_id"]
-        if not is_matter_entity(entity_id):
-            raise ValueError("Context entity must belong to the Matter integration")
-        if entity_id in matter_contacts or entity_id in matter_cooking_states or entity_id in matter_board_signals:
-            raise ValueError("One HA entity cannot have multiple Bapsim input roles")
-        adapter = MatterContextAdapter(call.data["device_id"], signal=call.data["signal"])
-        matter_contexts[entity_id] = adapter
-        forward_context_state(entity_id, hass.states.get(entity_id))
-        save_later()
-
-    hass.services.async_register(DOMAIN, "register_matter_context", register_matter_context)
-
-    async def unregister_matter_context(call) -> None:
-        entity_id = call.data["entity_id"]
-        adapter = matter_contexts.pop(entity_id, None)
-        if adapter is not None:
-            received_at = datetime.now(timezone.utc).isoformat()
-            hass.bus.async_fire(
-                CONTEXT_RAW_EVENT, adapter.translate("unavailable", received_at, received_at)
-            )
-        show_context_readiness()
-        save_later()
-
-    hass.services.async_register(DOMAIN, "unregister_matter_context", unregister_matter_context)
-
-    async def register_matter_board_signal(call) -> None:
-        entity_id = call.data["entity_id"]
-        if not is_matter_entity(entity_id):
-            raise ValueError("Board signal entity must belong to the Matter integration")
-        if entity_id in matter_contexts:
-            raise ValueError("A household context entity cannot also be a board signal")
-        adapter = MatterBoardSignalAdapter(
-            call.data["device_id"], kind=call.data["kind"], signal=call.data["signal"]
-        )
-        matter_board_signals[entity_id] = adapter
-        forward_board_state(entity_id, hass.states.get(entity_id))
-        save_later()
-
-    hass.services.async_register(DOMAIN, "register_matter_board_signal", register_matter_board_signal)
-
-    async def unregister_matter_board_signal(call) -> None:
-        entity_id = call.data["entity_id"]
-        adapter = matter_board_signals.pop(entity_id, None)
-        if adapter is not None:
-            received_at = datetime.now(timezone.utc).isoformat()
-            hass.bus.async_fire(RAW_EVENT, adapter.translate("unavailable", received_at, received_at))
-        show_board_readiness()
-        save_later()
-
-    hass.services.async_register(DOMAIN, "unregister_matter_board_signal", unregister_matter_board_signal)
-
-    async def respond(call) -> None:
-        response = call.data["response"]
-        source = call.data.get("source")
-        device_id = call.data.get("device_id")
-        if source is None and device_id is None:
-            active = [
-                item for item in workflow.dump_state()
-                if item["status"] in {"check_required", "notified", "checking"}
-            ]
-            if len(active) != 1:
-                _LOGGER.warning("Caregiver response needs exactly one active incident or an explicit source and device_id")
-                return
-            source, device_id = active[0]["source"], active[0]["device_id"]
-        elif not isinstance(source, str) or not isinstance(device_id, str):
-            raise ValueError("source and device_id must be supplied together")
-        update = workflow.caregiver_response(source, device_id, response, datetime.now(timezone.utc).isoformat())
-        if update is not None:
-            publish_workflow(update)
-
-    hass.services.async_register(DOMAIN, "respond", respond)
 
     async def set_notification_target(call) -> None:
         nonlocal notification_target
@@ -922,15 +511,28 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if notification_target and pending_mobile:
             hass.async_create_task(retry_mobile_notifications())
 
-    hass.services.async_register(DOMAIN, "set_notification_target", set_notification_target)
+    service_registry.register("set_notification_target", set_notification_target)
 
     async def set_away(call) -> None:
         nonlocal away
         value = call.data.get("away")
         if not isinstance(value, bool):
             raise ValueError("away must be true or false")
+        if external_service:
+            if not hass.services.has_service("mqtt", "publish"):
+                raise ValueError("MQTT broker is required for external analysis service")
+            await hass.services.async_call("mqtt", "publish", {
+                "topic": output.topic("matter", "observations"),
+                "payload": json.dumps({"event_type": "away_state", "away": value,
+                                       "observed_at": datetime.now(timezone.utc).isoformat(),
+                                       "source": "matter"}),
+                "qos": 1, "retain": False,
+            }, blocking=True)
+            show("away", "away" if value else "home")
+            return
         away = value
-        usage_model.set_away(away, datetime.now(timezone.utc).isoformat())
+        analysis_mode.model_away = away or controls.is_paused(datetime.now(timezone.utc).isoformat())
+        usage_model.set_away(analysis_mode.model_away, datetime.now(timezone.utc).isoformat())
         show("away", "away" if away else "home")
         show("detection_status", "away" if away else "monitoring", {
             "model": "personal_usage_v1", "as_of": datetime.now(timezone.utc).isoformat(),
@@ -945,22 +547,80 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                     publish_workflow(update)
         save_later()
 
-    hass.services.async_register(DOMAIN, "set_away", set_away)
+    service_registry.register("set_away", set_away)
 
-    @callback
-    def on_mobile_action(event: Event) -> None:
-        action = event.data.get("action", "")
-        if not isinstance(action, str):
-            return
-        parts = action.split("|", 4)
-        if len(parts) != 5 or parts[0] != "BAPSIM" or parts[1] not in {"checking", "resolved"}:
-            return
-        _, response, source, device_id, incident_id = parts
-        update = workflow.caregiver_response(source, device_id, response, datetime.now(timezone.utc).isoformat(), incident_id)
-        if update is not None:
-            publish_workflow(update)
+    async def set_initial_routine(call) -> None:
+        device_id = call.data.get("device_id")
+        windows = call.data.get("windows")
+        if external_service and not hass.services.has_service("mqtt", "publish"):
+            raise ValueError("MQTT broker is required for external analysis service")
+        previous = usage_model.initial_routine("matter", device_id) if isinstance(device_id, str) else []
+        usage_model.configure_initial_routine("matter", device_id, windows)
+        if external_service:
+            routines = [{"source": "matter", "device_id": current_device,
+                         "windows": usage_model.initial_routine("matter", current_device)}
+                        for source, current_device in usage_model.device_keys
+                        if source == "matter" and usage_model.initial_routine(source, current_device)]
+            try:
+                await hass.services.async_call("mqtt", "publish", {
+                    "topic": f"bapsim/v1/{output.household_id}/routine_config",
+                    "payload": json.dumps({"schema_version": "0.1.0",
+                                           "household_id": output.household_id,
+                                           "routines": routines}, ensure_ascii=False),
+                    "qos": 1, "retain": True,
+                }, blocking=True)
+            except Exception:
+                usage_model.configure_initial_routine("matter", device_id, previous)
+                raise
+        if windows:
+            routine_updated_at[device_id] = datetime.now(timezone.utc).isoformat()
+        else:
+            routine_updated_at.pop(device_id, None)
+        show_initial_routines()
+        save_later()
 
-    unsubscribe_mobile_action = hass.bus.async_listen("mobile_app_notification_action", on_mobile_action)
+    service_registry.register("set_initial_routine", set_initial_routine)
+
+    caregiver = bind_caregiver_commands(
+        callback, hass, workflow, trend_workflow, controls, usage_model, analysis_mode,
+        output, external_service, show, send_controls, publish_workflow, save_later, _LOGGER)
+    service_registry.register("respond", caregiver.respond)
+    service_registry.register("set_notification_control", caregiver.set_notification_control)
+    service_registry.register("dashboard_control", caregiver.dashboard_control)
+    set_notification_control = caregiver.set_notification_control
+    unsubscribe_mobile_action = hass.bus.async_listen(
+        "mobile_app_notification_action", caregiver.on_mobile_action)
+
+
+
+    stop_mqtt_subscriptions = bind_mqtt_subscriptions(
+        hass, output, set_notification_control, show, _LOGGER, external_service)
+
+    async def record_simulated_activity(call) -> None:
+        device_id = call.data.get("device_id")
+        signal = call.data.get("signal")
+        if not isinstance(device_id, str) or not device_id or not isinstance(signal, str):
+            raise ValueError("device_id and signal are required")
+        at = call.data.get("at") or datetime.now(timezone.utc).isoformat()
+        if not isinstance(at, str):
+            raise ValueError("at must be a timezone-aware timestamp")
+        if external_service and not hass.services.has_service("mqtt", "publish"):
+            raise ValueError("MQTT broker is required for external simulated activity")
+        auxiliary.record(device_id, at, signal)
+        if external_service:
+            await hass.services.async_call("mqtt", "publish", {
+                "topic": output.topic("simulator", "auxiliary_activity"),
+                "payload": json.dumps({"schema_version": "0.1.0",
+                                       "household_id": output.household_id,
+                                       "source": "simulator", "device_id": device_id,
+                                       "at": at, "signal": signal}),
+                "qos": 1, "retain": False,
+            }, blocking=True)
+        show("auxiliary_activity", signal, {"device_id": device_id, "as_of": at, "mode": "simulation"})
+        save_later()
+
+    service_registry.register("record_simulated_activity", record_simulated_activity)
+
 
     @callback
     def on_stop(event: Event) -> None:
@@ -972,16 +632,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         unsubscribe_registry()
         unsubscribe_tick()
         unsubscribe_mobile_action()
-        hass.services.async_remove(DOMAIN, "respond")
-        hass.services.async_remove(DOMAIN, "register_matter_contact")
-        hass.services.async_remove(DOMAIN, "register_matter_cooking_state")
-        hass.services.async_remove(DOMAIN, "unregister_matter_input")
-        hass.services.async_remove(DOMAIN, "register_matter_context")
-        hass.services.async_remove(DOMAIN, "unregister_matter_context")
-        hass.services.async_remove(DOMAIN, "register_matter_board_signal")
-        hass.services.async_remove(DOMAIN, "unregister_matter_board_signal")
-        hass.services.async_remove(DOMAIN, "set_notification_target")
-        hass.services.async_remove(DOMAIN, "set_away")
+        stop_mqtt_subscriptions()
+        service_registry.close()
         if cancel_timer is not None:
             cancel_timer()
             cancel_timer = None
@@ -995,6 +647,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         "detector": detector,
         "usage_model": usage_model,
         "workflow": workflow,
+        "trend_workflow": trend_workflow,
+        "notification_controls": controls,
+        "delivery": delivery,
+        "auxiliary": auxiliary,
         "matter_contacts": matter_contacts,
         "matter_cooking_states": matter_cooking_states,
         "matter_contexts": matter_contexts,
@@ -1004,6 +660,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         "store": store,
     }
     on_started(None)
+    if external_service:
+        for entity in ("workflow_status", "decline_status", "decline_detection",
+                       "interval_detection", "baseline", "detection_status", "features",
+                       "notification_delivery", "observation_issue_status"):
+            show(entity, "external_worker", {"mode": "external_service"})
     show_matter_readiness()
     show_context_readiness()
     show_board_readiness()

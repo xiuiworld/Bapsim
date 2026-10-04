@@ -1,4 +1,10 @@
 # Raw simulator input only. No normalization, feature extraction, or detection here.
+input_datetime:
+  bapsim_control_until:
+    name: 알림 조작 종료 시각
+    has_date: true
+    has_time: true
+
 input_select:
   bapsim_lid_state:
     name: 밥솥 뚜껑 원시 상태
@@ -149,5 +155,3 @@ script:
           event_type: away_state
           value: home
           availability: online
-
-
