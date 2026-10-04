@@ -37,6 +37,7 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.service.ha_matter_inputs import bind_matter_inputs, register_matter_services
     from .runtime.service.a05_snapshot_input import A05SnapshotInput, verified_report
     from .runtime.service.a05_contract_records import A05ContractRecords
+    from .runtime.service.ha_a05_connection_test import A05TestController
     from .runtime.service.ha_journal import HAJournal
     from .runtime.service.ha_analysis_flow import AnalysisMode, bind_analysis
     from .runtime.service.ha_cooker_events import bind_cooker_events
@@ -67,6 +68,7 @@ else:
     from service.ha_matter_inputs import bind_matter_inputs, register_matter_services
     from service.a05_snapshot_input import A05SnapshotInput, verified_report
     from service.a05_contract_records import A05ContractRecords
+    from service.ha_a05_connection_test import A05TestController
     from service.ha_journal import HAJournal
     from service.ha_analysis_flow import AnalysisMode, bind_analysis
     from service.ha_cooker_events import bind_cooker_events
@@ -135,6 +137,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     service_records = ObservationJournal(Path(hass.config.path("bapsim_records")), 180, "records") if hasattr(hass, "config") else None
     contract_records = ObservationJournal(Path(hass.config.path("bapsim_contract_observations")),
                                           prefix="contract") if hasattr(hass, "config") else None
+    test_records = ObservationJournal(Path(hass.config.path("bapsim_test_runs")),
+                                      7, "test") if hasattr(hass, "config") else None
     last_baseline_record_day: dict[tuple[str, str], str] = {}
     stored = await store.async_load()
     routine_updated_at: dict[str, str] = dict(stored.get("routine_updated_at", {})) if isinstance(stored, dict) else {}
@@ -429,7 +433,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if deadline is not None:
             cancel_timer = async_track_point_in_utc_time(hass, on_deadline, deadline)
 
-    journal_io = HAJournal(hass, journal, observations, service_records, _LOGGER, contract_records)
+    journal_io = HAJournal(hass, journal, observations, service_records, _LOGGER,
+                           contract_records, test_records)
     archive_raw = journal_io.archive_raw
     write_observation = journal_io.write_observation
     archive_service_record = journal_io.archive_service_record
@@ -538,6 +543,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     unsubscribe_tick = async_track_time_interval(hass, on_hourly_tick, timedelta(seconds=60))
 
     service_registry = HAServiceRegistry(hass, DOMAIN)
+    a05_test = A05TestController(
+        hass, output.household_id, a05_inputs,
+        er.async_get(hass).async_get, journal_io, show,
+        async_track_point_in_utc_time, _LOGGER, external_service)
+    service_registry.register("start_a05_connection_test", a05_test.start)
+    service_registry.register("stop_a05_connection_test", a05_test.stop)
     register_matter_services(
         hass, service_registry.register, RAW_EVENT, CONTEXT_RAW_EVENT, matter_contacts, matter_cooking_states,
         matter_contexts, matter_board_signals, a05_inputs, is_matter_entity, publish_matter_offline,
@@ -555,12 +566,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         state = event.data.get("new_state")
         previous = event.data.get("old_state")
         entry = er.async_get(hass).async_get(entity_id)
+        now = datetime.now(timezone.utc)
+        a05_test.on_state(entity_id, entry, state, previous, now)
         raw = verified_report(entry, state, adapter.matter_entry_id, adapter.node_id)
         if raw is not None and previous is None:
             return  # HA's initial cached state is not a fresh board report.
         if raw is not None and previous is not None and previous.state == state.state:
             return
-        now = datetime.now(timezone.utc)
         recorder = a05_records.setdefault(entity_id, A05ContractRecords(
             output.household_id, adapter.device_id, entity_id))
         if raw is None:
@@ -577,6 +589,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     @callback
     def on_a05_registry_change(event: Event) -> None:
         adapter = a05_inputs.get(event.data.get("entity_id"))
+        a05_test.on_unregistered(event.data.get("entity_id"))
         if adapter is not None:
             now = datetime.now(timezone.utc)
             if event.data.get("entity_id") in a05_records:
@@ -614,6 +627,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     service_registry.register("register_a05_snapshot", register_a05_snapshot)
 
     async def unregister_a05_snapshot(call) -> None:
+        a05_test.on_unregistered(call.data["entity_id"])
         adapter = a05_inputs.pop(call.data["entity_id"], None)
         if adapter is not None:
             recorder = a05_records.pop(call.data["entity_id"], None)
@@ -767,6 +781,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     @callback
     def on_stop(event: Event) -> None:
         nonlocal cancel_timer
+        a05_test.close()
         dashboard.close()
         unsubscribe()
         unsubscribe_context()
@@ -801,6 +816,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         "matter_contexts": matter_contexts,
         "matter_board_signals": matter_board_signals,
         "board_history": board_history,
+        "a05_test_controller": a05_test,
         "journal": journal,
         "store": store,
     }

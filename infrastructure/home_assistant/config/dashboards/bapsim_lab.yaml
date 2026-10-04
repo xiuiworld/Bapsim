@@ -1,5 +1,30 @@
 title: 밥심 실험실
 views:
+  - title: A05 연결 시험
+    path: a05-test
+    icon: mdi:test-tube
+    cards:
+      - type: markdown
+        content: |
+          ## 개발용 연결 시험
+          실제 A05 보드의 닫힘→열림을 확인하는 1회 시험입니다. 개인 학습·AI 판정 결과가 아닙니다.
+          실행 ID와 계약 기록 ID를 아래 카드에서 확인하세요. 휴대폰 수신 여부는 별도로 확인해야 합니다.
+      - type: entities
+        title: 현재 시험 실행
+        entities:
+          - entity: sensor.bapsim_a05_connection_test
+            name: A05 보드→B→시험 폰
+      - type: markdown
+        content: |
+          {% set a = states.sensor.bapsim_a05_connection_test.attributes if states.sensor.bapsim_a05_connection_test is defined else {} %}
+          - 단계: **{{ states('sensor.bapsim_a05_connection_test') }}**
+          - 실행 ID: `{{ a.get('test_run_id', '없음') }}`
+          - 보드: `{{ a.get('device_id', '없음') }}` / 입력: `{{ a.get('source_ref', '없음') }}`
+          - 닫힘 계약 기록: `{{ a.get('closed_record_id', '대기') }}`
+          {% set r = a.get('result') or {} %}
+          - 열림 계약 기록: `{{ r.get('opened_record_id', '대기') }}`
+          - 알림 호출 시도: **{{ a.get('mobile_attempted', false) }}**
+          - HA 알림 서비스가 요청을 받았다는 상태는 실제 폰 수신 증거가 아닙니다.
   - title: Simulator
     path: simulator
     icon: mdi:rice
