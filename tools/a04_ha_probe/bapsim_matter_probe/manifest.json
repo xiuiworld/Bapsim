@@ -1,0 +1,9 @@
+{
+  "domain": "bapsim_matter_probe",
+  "name": "Bapsim A04 Matter Probe",
+  "version": "0.1.0",
+  "documentation": "https://github.com/xiuiworld/Bapsim",
+  "dependencies": ["matter"],
+  "codeowners": [],
+  "iot_class": "local_polling"
+}

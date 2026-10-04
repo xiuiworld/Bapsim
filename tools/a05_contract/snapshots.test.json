@@ -1,0 +1,122 @@
+{
+  "input_kind": "test",
+  "description": "Offline named snapshot candidates; not Matter wire captures or AI outputs",
+  "cases": [
+    {
+      "name": "cooking-test",
+      "snapshot": {
+        "SchemaVersion": 1,
+        "BootId": 1,
+        "ObservationSequence": 1,
+        "UptimeMs": 1000,
+        "ReportCounter": 1,
+        "LidOpen": false,
+        "TemperatureCentiC": 2150,
+        "LockLed": 2,
+        "WarmLed": 1,
+        "WhiteRiceLed": 2,
+        "TimerFirstLed": 1,
+        "CookerPhase": 2,
+        "SignalQuality": {
+          "LidOpen": 1,
+          "TemperatureCentiC": 1,
+          "LockLed": 1,
+          "WarmLed": 1,
+          "WhiteRiceLed": 1,
+          "TimerFirstLed": 1,
+          "CookerPhase": 1
+        },
+        "InferenceMethod": 2,
+        "ModelVersion": "test-fixture-only",
+        "InferenceScore": null
+      }
+    },
+    {
+      "name": "warming-test",
+      "snapshot": {
+        "SchemaVersion": 1,
+        "BootId": 1,
+        "ObservationSequence": 2,
+        "UptimeMs": 61000,
+        "ReportCounter": 2,
+        "LidOpen": false,
+        "TemperatureCentiC": 2150,
+        "LockLed": 2,
+        "WarmLed": 2,
+        "WhiteRiceLed": 2,
+        "TimerFirstLed": 1,
+        "CookerPhase": 3,
+        "SignalQuality": {
+          "LidOpen": 1,
+          "TemperatureCentiC": 1,
+          "LockLed": 1,
+          "WarmLed": 1,
+          "WhiteRiceLed": 1,
+          "TimerFirstLed": 1,
+          "CookerPhase": 1
+        },
+        "InferenceMethod": 2,
+        "ModelVersion": "test-fixture-only",
+        "InferenceScore": null
+      }
+    },
+    {
+      "name": "sensor-error-and-unknown-phase",
+      "snapshot": {
+        "SchemaVersion": 1,
+        "BootId": 1,
+        "ObservationSequence": 3,
+        "UptimeMs": 121000,
+        "ReportCounter": 3,
+        "LidOpen": false,
+        "TemperatureCentiC": null,
+        "LockLed": 2,
+        "WarmLed": 2,
+        "WhiteRiceLed": 2,
+        "TimerFirstLed": 1,
+        "CookerPhase": 0,
+        "SignalQuality": {
+          "LidOpen": 1,
+          "TemperatureCentiC": 2,
+          "LockLed": 1,
+          "WarmLed": 1,
+          "WhiteRiceLed": 1,
+          "TimerFirstLed": 1,
+          "CookerPhase": 0
+        },
+        "InferenceMethod": 2,
+        "ModelVersion": "test-fixture-only",
+        "InferenceScore": null
+      }
+    },
+    {
+      "name": "restart-and-unsupported-inference",
+      "snapshot": {
+        "SchemaVersion": 1,
+        "BootId": 2,
+        "ObservationSequence": 0,
+        "UptimeMs": 0,
+        "ReportCounter": 0,
+        "LidOpen": false,
+        "TemperatureCentiC": null,
+        "LockLed": 2,
+        "WarmLed": 2,
+        "WhiteRiceLed": 2,
+        "TimerFirstLed": 0,
+        "CookerPhase": 0,
+        "SignalQuality": {
+          "LidOpen": 1,
+          "TemperatureCentiC": 2,
+          "LockLed": 1,
+          "WarmLed": 1,
+          "WhiteRiceLed": 1,
+          "TimerFirstLed": 3,
+          "CookerPhase": 3
+        },
+        "InferenceMethod": 0,
+        "ModelVersion": "",
+        "InferenceScore": null
+      }
+    }
+  ]
+}
