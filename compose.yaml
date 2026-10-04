@@ -12,5 +12,5 @@ services:
       - ./infrastructure/home_assistant/config:/config
       - ./domain:/bapsim/domain:ro
       - ./workflow:/bapsim/workflow:ro
+      - ./service:/bapsim/service:ro
       - ./inputs:/bapsim/inputs:ro
-

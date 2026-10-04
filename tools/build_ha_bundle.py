@@ -32,7 +32,7 @@ def bundle_members() -> list[tuple[str, bytes]]:
     members = [(f"{ROOT}/{name}", (COMPONENT / name).read_bytes())
                for name in ("__init__.py", "manifest.json", "services.yaml")]
     members.append((f"{ROOT}/runtime/__init__.py", b""))
-    for package in ("domain", "inputs", "workflow"):
+    for package in ("domain", "inputs", "workflow", "service"):
         for path in sorted((PROJECT / package).rglob("*.py")):
             members.append((f"{ROOT}/runtime/{path.relative_to(PROJECT).as_posix()}", path.read_bytes()))
     members.append(("BAPSIM_INSTALL.md", INSTALL_NOTES.encode("utf-8")))

@@ -142,3 +142,81 @@ set_away:
       required: true
       selector:
         boolean:
+set_initial_routine:
+  name: Set initial home cooker-use routine
+  description: Set up to four KST home-use times for one cooker. Each window has time HH:MM and weekdays 0=Monday through 6=Sunday; omit weekdays for every day. To exclude routine weekday lunches away from home, omit those weekdays from that lunch window. An empty list clears the setting. Early alerts still require observed use and connection coverage.
+  fields:
+    device_id:
+      required: true
+      selector:
+        text:
+    windows:
+      required: true
+      example: '[{"time":"08:00","weekdays":[0,1,2,3,4,5,6]},{"time":"13:00","weekdays":[5,6]}]'
+      selector:
+        object:
+set_notification_control:
+  name: Set bounded notification control
+  description: Acknowledge one active incident until an end time, pause lifestyle alerts for a period, or cancel a pause. Use a unique command_id for each action.
+  fields:
+    command_id:
+      required: true
+      selector:
+        text:
+    action:
+      required: true
+      selector:
+        select:
+          options:
+            - acknowledge
+            - pause_lifestyle
+            - cancel_pause
+    incident_id:
+      selector:
+        text:
+    assessment_id:
+      selector:
+        text:
+    pause_id:
+      selector:
+        text:
+    starts_at:
+      selector:
+        text:
+    ends_at:
+      selector:
+        text:
+dashboard_control:
+  name: Apply caregiver dashboard control
+  description: Use the dashboard end-time picker to acknowledge the sole active assessment or pause lifestyle alerts.
+  fields:
+    action:
+      required: true
+      selector:
+        select:
+          options:
+            - acknowledge
+            - pause_lifestyle
+            - cancel_pause
+    pause_id:
+      selector:
+        text:
+record_simulated_activity:
+  name: Record simulated auxiliary activity
+  description: Add a virtual activity event for the simulator only. It never modifies the live Matter assessment or sends a real phone notification.
+  fields:
+    device_id:
+      required: true
+      selector:
+        text:
+    signal:
+      required: true
+      selector:
+        select:
+          options:
+            - door_opened
+            - motion_detected
+            - appliance_used
+    at:
+      selector:
+        text:

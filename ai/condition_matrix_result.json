@@ -1,0 +1,576 @@
+{
+  "scope": "Synthetic cooker-use scenarios only; no meal, health, or safety ground truth",
+  "history_days": 21,
+  "future_days": 21,
+  "rhythms": [
+    "older_morning",
+    "middle_evening",
+    "older_twice",
+    "older_alternate"
+  ],
+  "train_conditions": [
+    "stable",
+    "late_shift",
+    "natural_skips",
+    "batch_three_day"
+  ],
+  "holdout_conditions": [
+    "gradual_drift",
+    "weekend_shift",
+    "skip_and_late"
+  ],
+  "train_seeds": [
+    113,
+    127
+  ],
+  "holdout_seeds": [
+    809,
+    821
+  ],
+  "candidate_settings": {
+    "current": {
+      "alert_probability": 0.72,
+      "late_grace_hours": 0.0,
+      "interval_quantile": 0.95
+    },
+    "higher_threshold": {
+      "alert_probability": 0.84,
+      "late_grace_hours": 0.0,
+      "interval_quantile": 0.95
+    },
+    "late_grace": {
+      "alert_probability": 0.72,
+      "late_grace_hours": 1.0,
+      "interval_quantile": 0.95
+    },
+    "grace_and_cadence": {
+      "alert_probability": 0.72,
+      "late_grace_hours": 1.0,
+      "interval_quantile": 0.75
+    },
+    "longer_confirmation": {
+      "alert_probability": 0.72,
+      "late_grace_hours": 0.0,
+      "interval_quantile": 0.95,
+      "candidate_window_hours": 72
+    },
+    "longer_grace_cadence": {
+      "alert_probability": 0.72,
+      "late_grace_hours": 1.0,
+      "interval_quantile": 0.75,
+      "candidate_window_hours": 72
+    },
+    "single_high_confidence": {
+      "alert_probability": 0.84,
+      "late_grace_hours": 1.0,
+      "interval_quantile": 0.95,
+      "min_consecutive": 1
+    },
+    "single_cadence": {
+      "alert_probability": 0.84,
+      "late_grace_hours": 1.0,
+      "interval_quantile": 0.75,
+      "min_consecutive": 1
+    }
+  },
+  "training": {
+    "current": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 27,
+      "fp": 15,
+      "fn": 101,
+      "tn": 465,
+      "recall": 0.2109,
+      "false_positive_rate": 0.0312,
+      "nuisance_per_home_21d": 0.469,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    "higher_threshold": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 24,
+      "fp": 13,
+      "fn": 104,
+      "tn": 467,
+      "recall": 0.1875,
+      "false_positive_rate": 0.0271,
+      "nuisance_per_home_21d": 0.406,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    "late_grace": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 25,
+      "fp": 17,
+      "fn": 103,
+      "tn": 463,
+      "recall": 0.1953,
+      "false_positive_rate": 0.0354,
+      "nuisance_per_home_21d": 0.531,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    "grace_and_cadence": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 25,
+      "fp": 19,
+      "fn": 103,
+      "tn": 461,
+      "recall": 0.1953,
+      "false_positive_rate": 0.0396,
+      "nuisance_per_home_21d": 0.594,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    "longer_confirmation": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 27,
+      "fp": 16,
+      "fn": 101,
+      "tn": 464,
+      "recall": 0.2109,
+      "false_positive_rate": 0.0333,
+      "nuisance_per_home_21d": 0.5,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    "longer_grace_cadence": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 26,
+      "fp": 20,
+      "fn": 102,
+      "tn": 460,
+      "recall": 0.2031,
+      "false_positive_rate": 0.0417,
+      "nuisance_per_home_21d": 0.625,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    "single_high_confidence": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 31,
+      "fp": 22,
+      "fn": 97,
+      "tn": 458,
+      "recall": 0.2422,
+      "false_positive_rate": 0.0458,
+      "nuisance_per_home_21d": 0.688,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    },
+    "single_cadence": {
+      "households": 32,
+      "eligible_days": 608,
+      "tp": 33,
+      "fp": 26,
+      "fn": 95,
+      "tn": 454,
+      "recall": 0.2578,
+      "false_positive_rate": 0.0542,
+      "nuisance_per_home_21d": 0.812,
+      "excluded_days": 64,
+      "alerted_away_or_offline": 0
+    }
+  },
+  "selected": "single_high_confidence",
+  "selected_settings": {
+    "alert_probability": 0.84,
+    "late_grace_hours": 1.0,
+    "interval_quantile": 0.95,
+    "min_consecutive": 1
+  },
+  "holdout_current": {
+    "households": 24,
+    "eligible_days": 456,
+    "tp": 29,
+    "fp": 11,
+    "fn": 67,
+    "tn": 349,
+    "recall": 0.3021,
+    "false_positive_rate": 0.0306,
+    "nuisance_per_home_21d": 0.458,
+    "excluded_days": 48,
+    "alerted_away_or_offline": 0
+  },
+  "holdout_selected": {
+    "households": 24,
+    "eligible_days": 456,
+    "tp": 32,
+    "fp": 19,
+    "fn": 64,
+    "tn": 341,
+    "recall": 0.3333,
+    "false_positive_rate": 0.0528,
+    "nuisance_per_home_21d": 0.792,
+    "excluded_days": 48,
+    "alerted_away_or_offline": 0
+  },
+  "holdout_model_candidates_current": {
+    "households": 24,
+    "eligible_days": 456,
+    "tp": 65,
+    "fp": 48,
+    "fn": 31,
+    "tn": 312,
+    "recall": 0.6771,
+    "false_positive_rate": 0.1333,
+    "nuisance_per_home_21d": 2.0,
+    "excluded_days": 48,
+    "alerted_away_or_offline": 0
+  },
+  "holdout_model_candidates_selected": {
+    "households": 24,
+    "eligible_days": 456,
+    "tp": 55,
+    "fp": 26,
+    "fn": 41,
+    "tn": 334,
+    "recall": 0.5729,
+    "false_positive_rate": 0.0722,
+    "nuisance_per_home_21d": 1.083,
+    "excluded_days": 48,
+    "alerted_away_or_offline": 0
+  },
+  "holdout_fixed_24h": {
+    "households": 24,
+    "eligible_days": 456,
+    "tp": 96,
+    "fp": 96,
+    "fn": 0,
+    "tn": 264,
+    "recall": 1.0,
+    "false_positive_rate": 0.2667,
+    "nuisance_per_home_21d": 4.0,
+    "excluded_days": 48,
+    "alerted_away_or_offline": 0
+  },
+  "by_condition_current": {
+    "gradual_drift": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 10,
+      "fp": 3,
+      "fn": 22,
+      "tn": 117,
+      "recall": 0.3125,
+      "false_positive_rate": 0.025,
+      "nuisance_per_home_21d": 0.375,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    },
+    "weekend_shift": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 10,
+      "fp": 2,
+      "fn": 22,
+      "tn": 118,
+      "recall": 0.3125,
+      "false_positive_rate": 0.0167,
+      "nuisance_per_home_21d": 0.25,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    },
+    "skip_and_late": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 9,
+      "fp": 6,
+      "fn": 23,
+      "tn": 114,
+      "recall": 0.2812,
+      "false_positive_rate": 0.05,
+      "nuisance_per_home_21d": 0.75,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    }
+  },
+  "by_condition_selected": {
+    "gradual_drift": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 14,
+      "fp": 2,
+      "fn": 18,
+      "tn": 118,
+      "recall": 0.4375,
+      "false_positive_rate": 0.0167,
+      "nuisance_per_home_21d": 0.25,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    },
+    "weekend_shift": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 10,
+      "fp": 7,
+      "fn": 22,
+      "tn": 113,
+      "recall": 0.3125,
+      "false_positive_rate": 0.0583,
+      "nuisance_per_home_21d": 0.875,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    },
+    "skip_and_late": {
+      "households": 8,
+      "eligible_days": 152,
+      "tp": 8,
+      "fp": 10,
+      "fn": 24,
+      "tn": 110,
+      "recall": 0.25,
+      "false_positive_rate": 0.0833,
+      "nuisance_per_home_21d": 1.25,
+      "excluded_days": 16,
+      "alerted_away_or_offline": 0
+    }
+  },
+  "by_rhythm_current": {
+    "older_morning": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 12,
+      "fp": 1,
+      "fn": 12,
+      "tn": 89,
+      "recall": 0.5,
+      "false_positive_rate": 0.0111,
+      "nuisance_per_home_21d": 0.167,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "middle_evening": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 6,
+      "fp": 1,
+      "fn": 18,
+      "tn": 89,
+      "recall": 0.25,
+      "false_positive_rate": 0.0111,
+      "nuisance_per_home_21d": 0.167,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "older_twice": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 11,
+      "fp": 6,
+      "fn": 13,
+      "tn": 84,
+      "recall": 0.4583,
+      "false_positive_rate": 0.0667,
+      "nuisance_per_home_21d": 1.0,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "older_alternate": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 0,
+      "fp": 3,
+      "fn": 24,
+      "tn": 87,
+      "recall": 0.0,
+      "false_positive_rate": 0.0333,
+      "nuisance_per_home_21d": 0.5,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    }
+  },
+  "by_rhythm_selected": {
+    "older_morning": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 12,
+      "fp": 9,
+      "fn": 12,
+      "tn": 81,
+      "recall": 0.5,
+      "false_positive_rate": 0.1,
+      "nuisance_per_home_21d": 1.5,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "middle_evening": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 8,
+      "fp": 5,
+      "fn": 16,
+      "tn": 85,
+      "recall": 0.3333,
+      "false_positive_rate": 0.0556,
+      "nuisance_per_home_21d": 0.833,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "older_twice": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 9,
+      "fp": 3,
+      "fn": 15,
+      "tn": 87,
+      "recall": 0.375,
+      "false_positive_rate": 0.0333,
+      "nuisance_per_home_21d": 0.5,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    },
+    "older_alternate": {
+      "households": 6,
+      "eligible_days": 114,
+      "tp": 3,
+      "fp": 2,
+      "fn": 21,
+      "tn": 88,
+      "recall": 0.125,
+      "false_positive_rate": 0.0222,
+      "nuisance_per_home_21d": 0.333,
+      "excluded_days": 12,
+      "alerted_away_or_offline": 0
+    }
+  },
+  "example_rows": [
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "variation": "base",
+      "condition": "gradual_drift",
+      "day": 21,
+      "label": 0,
+      "candidate": 0,
+      "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "variation": "base",
+      "condition": "gradual_drift",
+      "day": 22,
+      "label": 0,
+      "candidate": 0,
+      "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "variation": "base",
+      "condition": "gradual_drift",
+      "day": 23,
+      "label": 0,
+      "candidate": 0,
+      "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "variation": "base",
+      "condition": "gradual_drift",
+      "day": 24,
+      "label": 0,
+      "candidate": 0,
+      "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "variation": "base",
+      "condition": "gradual_drift",
+      "day": 25,
+      "label": null,
+      "candidate": 0,
+      "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
+      "fixed_24h": 0,
+      "reason": "away"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "variation": "base",
+      "condition": "gradual_drift",
+      "day": 26,
+      "label": 0,
+      "candidate": 0,
+      "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "variation": "base",
+      "condition": "gradual_drift",
+      "day": 27,
+      "label": 0,
+      "candidate": 0,
+      "notification_request": 0,
+      "notification_request_times": [],
+      "episode_id": null,
+      "missed_use_at": null,
+      "fixed_24h": 0,
+      "reason": "routine"
+    },
+    {
+      "household": "older_morning_gradual_drift_809",
+      "rhythm": "older_morning",
+      "age_group": "65_plus",
+      "variation": "base",
+      "condition": "gradual_drift",
+      "day": 28,
+      "label": 1,
+      "candidate": 1,
+      "notification_request": 1,
+      "notification_request_times": [
+        "2026-03-02T02:11:52.859419+00:00"
+      ],
+      "episode_id": 1,
+      "missed_use_at": "2026-03-02T09:00:00+09:00",
+      "fixed_24h": 1,
+      "reason": "interruption"
+    }
+  ]
+}
