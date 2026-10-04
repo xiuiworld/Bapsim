@@ -22,18 +22,18 @@
           "households": 8,
           "eligible_days": 96,
           "tp": 15,
-          "fp": 2,
+          "fp": 5,
           "fn": 9,
-          "tn": 70,
+          "tn": 67,
           "recall": 0.625,
-          "false_positive_rate": 0.0278,
-          "nuisance_per_home_21d": 0.25,
+          "false_positive_rate": 0.0694,
+          "nuisance_per_home_21d": 0.625,
           "excluded_days": 16,
           "alerted_away_or_offline": 0
         },
         "nuisance_normal_days": {
           "normal_days": 72,
-          "days_with_unrelated_request": 1
+          "days_with_unrelated_request": 3
         },
         "candidate_days": {
           "households": 8,
@@ -64,12 +64,12 @@
               "households": 4,
               "eligible_days": 48,
               "tp": 7,
-              "fp": 2,
+              "fp": 4,
               "fn": 9,
-              "tn": 30,
+              "tn": 28,
               "recall": 0.4375,
-              "false_positive_rate": 0.0625,
-              "nuisance_per_home_21d": 0.5,
+              "false_positive_rate": 0.125,
+              "nuisance_per_home_21d": 1.0,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
@@ -89,12 +89,12 @@
               "households": 4,
               "eligible_days": 48,
               "tp": 8,
-              "fp": 0,
+              "fp": 1,
               "fn": 0,
-              "tn": 40,
+              "tn": 39,
               "recall": 1.0,
-              "false_positive_rate": 0.0,
-              "nuisance_per_home_21d": 0.0,
+              "false_positive_rate": 0.025,
+              "nuisance_per_home_21d": 0.25,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
@@ -115,19 +115,19 @@
         "notification_days": {
           "households": 8,
           "eligible_days": 96,
-          "tp": 16,
-          "fp": 1,
-          "fn": 8,
-          "tn": 71,
-          "recall": 0.6667,
-          "false_positive_rate": 0.0139,
-          "nuisance_per_home_21d": 0.125,
+          "tp": 17,
+          "fp": 5,
+          "fn": 7,
+          "tn": 67,
+          "recall": 0.7083,
+          "false_positive_rate": 0.0694,
+          "nuisance_per_home_21d": 0.625,
           "excluded_days": 16,
           "alerted_away_or_offline": 0
         },
         "nuisance_normal_days": {
           "normal_days": 72,
-          "days_with_unrelated_request": 1
+          "days_with_unrelated_request": 4
         },
         "candidate_days": {
           "households": 8,
@@ -144,48 +144,38 @@
         },
         "episodes": {
           "episodes": 16,
-          "caught": 15,
-          "missed": 1,
-          "early_request_only": 1,
-          "recall": 0.9375,
+          "caught": 16,
+          "missed": 0,
+          "early_request_only": 0,
+          "recall": 1.0,
           "median_delay_hours": 2.0,
           "p90_delay_hours": 2.26,
-          "missed_examples": [
-            {
-              "household": "older_morning_natural_skips_3119",
-              "episode_id": 2
-            }
-          ]
+          "missed_examples": []
         },
         "by_rhythm": {
           "older_morning": {
             "notification_days": {
               "households": 4,
               "eligible_days": 48,
-              "tp": 8,
-              "fp": 1,
-              "fn": 8,
-              "tn": 31,
-              "recall": 0.5,
-              "false_positive_rate": 0.0312,
-              "nuisance_per_home_21d": 0.25,
+              "tp": 9,
+              "fp": 4,
+              "fn": 7,
+              "tn": 28,
+              "recall": 0.5625,
+              "false_positive_rate": 0.125,
+              "nuisance_per_home_21d": 1.0,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
             "episodes": {
               "episodes": 8,
-              "caught": 7,
-              "missed": 1,
-              "early_request_only": 1,
-              "recall": 0.875,
-              "median_delay_hours": 2.15,
+              "caught": 8,
+              "missed": 0,
+              "early_request_only": 0,
+              "recall": 1.0,
+              "median_delay_hours": 2.09,
               "p90_delay_hours": 2.27,
-              "missed_examples": [
-                {
-                  "household": "older_morning_natural_skips_3119",
-                  "episode_id": 2
-                }
-              ]
+              "missed_examples": []
             }
           },
           "older_twice": {
@@ -193,12 +183,12 @@
               "households": 4,
               "eligible_days": 48,
               "tp": 8,
-              "fp": 0,
+              "fp": 1,
               "fn": 0,
-              "tn": 40,
+              "tn": 39,
               "recall": 1.0,
-              "false_positive_rate": 0.0,
-              "nuisance_per_home_21d": 0.0,
+              "false_positive_rate": 0.025,
+              "nuisance_per_home_21d": 0.25,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
@@ -219,19 +209,19 @@
         "notification_days": {
           "households": 8,
           "eligible_days": 96,
-          "tp": 16,
-          "fp": 1,
-          "fn": 8,
-          "tn": 71,
-          "recall": 0.6667,
-          "false_positive_rate": 0.0139,
-          "nuisance_per_home_21d": 0.125,
+          "tp": 17,
+          "fp": 4,
+          "fn": 7,
+          "tn": 68,
+          "recall": 0.7083,
+          "false_positive_rate": 0.0556,
+          "nuisance_per_home_21d": 0.5,
           "excluded_days": 16,
           "alerted_away_or_offline": 0
         },
         "nuisance_normal_days": {
           "normal_days": 72,
-          "days_with_unrelated_request": 1
+          "days_with_unrelated_request": 3
         },
         "candidate_days": {
           "households": 8,
@@ -248,48 +238,38 @@
         },
         "episodes": {
           "episodes": 16,
-          "caught": 15,
-          "missed": 1,
-          "early_request_only": 1,
-          "recall": 0.9375,
+          "caught": 16,
+          "missed": 0,
+          "early_request_only": 0,
+          "recall": 1.0,
           "median_delay_hours": 2.0,
           "p90_delay_hours": 2.27,
-          "missed_examples": [
-            {
-              "household": "older_morning_stable_3119",
-              "episode_id": 2
-            }
-          ]
+          "missed_examples": []
         },
         "by_rhythm": {
           "older_morning": {
             "notification_days": {
               "households": 4,
               "eligible_days": 48,
-              "tp": 8,
-              "fp": 1,
-              "fn": 8,
-              "tn": 31,
-              "recall": 0.5,
-              "false_positive_rate": 0.0312,
-              "nuisance_per_home_21d": 0.25,
+              "tp": 9,
+              "fp": 3,
+              "fn": 7,
+              "tn": 29,
+              "recall": 0.5625,
+              "false_positive_rate": 0.0938,
+              "nuisance_per_home_21d": 0.75,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
             "episodes": {
               "episodes": 8,
-              "caught": 7,
-              "missed": 1,
-              "early_request_only": 1,
-              "recall": 0.875,
-              "median_delay_hours": 2.21,
+              "caught": 8,
+              "missed": 0,
+              "early_request_only": 0,
+              "recall": 1.0,
+              "median_delay_hours": 2.18,
               "p90_delay_hours": 3.17,
-              "missed_examples": [
-                {
-                  "household": "older_morning_stable_3119",
-                  "episode_id": 2
-                }
-              ]
+              "missed_examples": []
             }
           },
           "older_twice": {
@@ -297,12 +277,12 @@
               "households": 4,
               "eligible_days": 48,
               "tp": 8,
-              "fp": 0,
+              "fp": 1,
               "fn": 0,
-              "tn": 40,
+              "tn": 39,
               "recall": 1.0,
-              "false_positive_rate": 0.0,
-              "nuisance_per_home_21d": 0.0,
+              "false_positive_rate": 0.025,
+              "nuisance_per_home_21d": 0.25,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
@@ -348,18 +328,18 @@
           "households": 8,
           "eligible_days": 96,
           "tp": 10,
-          "fp": 5,
+          "fp": 9,
           "fn": 14,
-          "tn": 67,
+          "tn": 63,
           "recall": 0.4167,
-          "false_positive_rate": 0.0694,
-          "nuisance_per_home_21d": 0.625,
+          "false_positive_rate": 0.125,
+          "nuisance_per_home_21d": 1.125,
           "excluded_days": 16,
           "alerted_away_or_offline": 0
         },
         "nuisance_normal_days": {
           "normal_days": 72,
-          "days_with_unrelated_request": 4
+          "days_with_unrelated_request": 6
         },
         "candidate_days": {
           "households": 8,
@@ -376,21 +356,13 @@
         },
         "episodes": {
           "episodes": 16,
-          "caught": 8,
-          "missed": 8,
-          "early_request_only": 2,
-          "recall": 0.5,
+          "caught": 10,
+          "missed": 6,
+          "early_request_only": 0,
+          "recall": 0.625,
           "median_delay_hours": 0.86,
           "p90_delay_hours": 15.11,
           "missed_examples": [
-            {
-              "household": "older_morning_gradual_drift_7121_unseen_shift_and_missing",
-              "episode_id": 2
-            },
-            {
-              "household": "older_twice_gradual_drift_7121_unseen_shift_and_missing",
-              "episode_id": 2
-            },
             {
               "household": "older_morning_skip_and_late_7103_unseen_shift_and_missing",
               "episode_id": 1
@@ -402,6 +374,14 @@
             {
               "household": "older_twice_skip_and_late_7103_unseen_shift_and_missing",
               "episode_id": 1
+            },
+            {
+              "household": "older_twice_skip_and_late_7103_unseen_shift_and_missing",
+              "episode_id": 2
+            },
+            {
+              "household": "older_morning_skip_and_late_7121_unseen_shift_and_missing",
+              "episode_id": 1
             }
           ]
         },
@@ -411,28 +391,24 @@
               "households": 4,
               "eligible_days": 48,
               "tp": 6,
-              "fp": 1,
+              "fp": 3,
               "fn": 10,
-              "tn": 31,
+              "tn": 29,
               "recall": 0.375,
-              "false_positive_rate": 0.0312,
-              "nuisance_per_home_21d": 0.25,
+              "false_positive_rate": 0.0938,
+              "nuisance_per_home_21d": 0.75,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
             "episodes": {
               "episodes": 8,
-              "caught": 4,
-              "missed": 4,
-              "early_request_only": 1,
-              "recall": 0.5,
+              "caught": 5,
+              "missed": 3,
+              "early_request_only": 0,
+              "recall": 0.625,
               "median_delay_hours": 0.7,
-              "p90_delay_hours": 2.25,
+              "p90_delay_hours": 23.98,
               "missed_examples": [
-                {
-                  "household": "older_morning_gradual_drift_7121_unseen_shift_and_missing",
-                  "episode_id": 2
-                },
                 {
                   "household": "older_morning_skip_and_late_7103_unseen_shift_and_missing",
                   "episode_id": 1
@@ -453,28 +429,24 @@
               "households": 4,
               "eligible_days": 48,
               "tp": 4,
-              "fp": 4,
+              "fp": 6,
               "fn": 4,
-              "tn": 36,
+              "tn": 34,
               "recall": 0.5,
-              "false_positive_rate": 0.1,
-              "nuisance_per_home_21d": 1.0,
+              "false_positive_rate": 0.15,
+              "nuisance_per_home_21d": 1.5,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
             "episodes": {
               "episodes": 8,
-              "caught": 4,
-              "missed": 4,
-              "early_request_only": 1,
-              "recall": 0.5,
-              "median_delay_hours": 1.46,
+              "caught": 5,
+              "missed": 3,
+              "early_request_only": 0,
+              "recall": 0.625,
+              "median_delay_hours": 1.02,
               "p90_delay_hours": 15.11,
               "missed_examples": [
-                {
-                  "household": "older_twice_gradual_drift_7121_unseen_shift_and_missing",
-                  "episode_id": 2
-                },
                 {
                   "household": "older_twice_skip_and_late_7103_unseen_shift_and_missing",
                   "episode_id": 1
@@ -497,18 +469,18 @@
           "households": 8,
           "eligible_days": 96,
           "tp": 10,
-          "fp": 6,
+          "fp": 11,
           "fn": 14,
-          "tn": 66,
+          "tn": 61,
           "recall": 0.4167,
-          "false_positive_rate": 0.0833,
-          "nuisance_per_home_21d": 0.75,
+          "false_positive_rate": 0.1528,
+          "nuisance_per_home_21d": 1.375,
           "excluded_days": 16,
           "alerted_away_or_offline": 0
         },
         "nuisance_normal_days": {
           "normal_days": 72,
-          "days_with_unrelated_request": 5
+          "days_with_unrelated_request": 8
         },
         "candidate_days": {
           "households": 8,
@@ -525,21 +497,13 @@
         },
         "episodes": {
           "episodes": 16,
-          "caught": 8,
-          "missed": 8,
-          "early_request_only": 2,
-          "recall": 0.5,
+          "caught": 10,
+          "missed": 6,
+          "early_request_only": 0,
+          "recall": 0.625,
           "median_delay_hours": 0.86,
           "p90_delay_hours": 15.11,
           "missed_examples": [
-            {
-              "household": "older_morning_gradual_drift_7121_unseen_shift_and_missing",
-              "episode_id": 2
-            },
-            {
-              "household": "older_twice_gradual_drift_7121_unseen_shift_and_missing",
-              "episode_id": 2
-            },
             {
               "household": "older_morning_skip_and_late_7103_unseen_shift_and_missing",
               "episode_id": 1
@@ -551,6 +515,14 @@
             {
               "household": "older_twice_skip_and_late_7103_unseen_shift_and_missing",
               "episode_id": 1
+            },
+            {
+              "household": "older_twice_skip_and_late_7103_unseen_shift_and_missing",
+              "episode_id": 2
+            },
+            {
+              "household": "older_morning_skip_and_late_7121_unseen_shift_and_missing",
+              "episode_id": 1
             }
           ]
         },
@@ -560,28 +532,24 @@
               "households": 4,
               "eligible_days": 48,
               "tp": 6,
-              "fp": 1,
+              "fp": 3,
               "fn": 10,
-              "tn": 31,
+              "tn": 29,
               "recall": 0.375,
-              "false_positive_rate": 0.0312,
-              "nuisance_per_home_21d": 0.25,
+              "false_positive_rate": 0.0938,
+              "nuisance_per_home_21d": 0.75,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
             "episodes": {
               "episodes": 8,
-              "caught": 4,
-              "missed": 4,
-              "early_request_only": 1,
-              "recall": 0.5,
+              "caught": 5,
+              "missed": 3,
+              "early_request_only": 0,
+              "recall": 0.625,
               "median_delay_hours": 0.7,
-              "p90_delay_hours": 2.25,
+              "p90_delay_hours": 23.98,
               "missed_examples": [
-                {
-                  "household": "older_morning_gradual_drift_7121_unseen_shift_and_missing",
-                  "episode_id": 2
-                },
                 {
                   "household": "older_morning_skip_and_late_7103_unseen_shift_and_missing",
                   "episode_id": 1
@@ -602,28 +570,24 @@
               "households": 4,
               "eligible_days": 48,
               "tp": 4,
-              "fp": 5,
+              "fp": 8,
               "fn": 4,
-              "tn": 35,
+              "tn": 32,
               "recall": 0.5,
-              "false_positive_rate": 0.125,
-              "nuisance_per_home_21d": 1.25,
+              "false_positive_rate": 0.2,
+              "nuisance_per_home_21d": 2.0,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
             "episodes": {
               "episodes": 8,
-              "caught": 4,
-              "missed": 4,
-              "early_request_only": 1,
-              "recall": 0.5,
-              "median_delay_hours": 1.46,
+              "caught": 5,
+              "missed": 3,
+              "early_request_only": 0,
+              "recall": 0.625,
+              "median_delay_hours": 1.02,
               "p90_delay_hours": 15.11,
               "missed_examples": [
-                {
-                  "household": "older_twice_gradual_drift_7121_unseen_shift_and_missing",
-                  "episode_id": 2
-                },
                 {
                   "household": "older_twice_skip_and_late_7103_unseen_shift_and_missing",
                   "episode_id": 1
@@ -646,18 +610,18 @@
           "households": 8,
           "eligible_days": 96,
           "tp": 10,
-          "fp": 6,
+          "fp": 10,
           "fn": 14,
-          "tn": 66,
+          "tn": 62,
           "recall": 0.4167,
-          "false_positive_rate": 0.0833,
-          "nuisance_per_home_21d": 0.75,
+          "false_positive_rate": 0.1389,
+          "nuisance_per_home_21d": 1.25,
           "excluded_days": 16,
           "alerted_away_or_offline": 0
         },
         "nuisance_normal_days": {
           "normal_days": 72,
-          "days_with_unrelated_request": 5
+          "days_with_unrelated_request": 7
         },
         "candidate_days": {
           "households": 8,
@@ -674,21 +638,13 @@
         },
         "episodes": {
           "episodes": 16,
-          "caught": 8,
-          "missed": 8,
-          "early_request_only": 2,
-          "recall": 0.5,
+          "caught": 10,
+          "missed": 6,
+          "early_request_only": 0,
+          "recall": 0.625,
           "median_delay_hours": 0.86,
           "p90_delay_hours": 15.11,
           "missed_examples": [
-            {
-              "household": "older_morning_gradual_drift_7121_unseen_shift_and_missing",
-              "episode_id": 2
-            },
-            {
-              "household": "older_twice_gradual_drift_7121_unseen_shift_and_missing",
-              "episode_id": 2
-            },
             {
               "household": "older_morning_skip_and_late_7103_unseen_shift_and_missing",
               "episode_id": 1
@@ -700,6 +656,14 @@
             {
               "household": "older_twice_skip_and_late_7103_unseen_shift_and_missing",
               "episode_id": 1
+            },
+            {
+              "household": "older_twice_skip_and_late_7103_unseen_shift_and_missing",
+              "episode_id": 2
+            },
+            {
+              "household": "older_morning_skip_and_late_7121_unseen_shift_and_missing",
+              "episode_id": 1
             }
           ]
         },
@@ -709,28 +673,24 @@
               "households": 4,
               "eligible_days": 48,
               "tp": 6,
-              "fp": 1,
+              "fp": 3,
               "fn": 10,
-              "tn": 31,
+              "tn": 29,
               "recall": 0.375,
-              "false_positive_rate": 0.0312,
-              "nuisance_per_home_21d": 0.25,
+              "false_positive_rate": 0.0938,
+              "nuisance_per_home_21d": 0.75,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
             "episodes": {
               "episodes": 8,
-              "caught": 4,
-              "missed": 4,
-              "early_request_only": 1,
-              "recall": 0.5,
+              "caught": 5,
+              "missed": 3,
+              "early_request_only": 0,
+              "recall": 0.625,
               "median_delay_hours": 0.7,
-              "p90_delay_hours": 2.25,
+              "p90_delay_hours": 23.98,
               "missed_examples": [
-                {
-                  "household": "older_morning_gradual_drift_7121_unseen_shift_and_missing",
-                  "episode_id": 2
-                },
                 {
                   "household": "older_morning_skip_and_late_7103_unseen_shift_and_missing",
                   "episode_id": 1
@@ -751,28 +711,24 @@
               "households": 4,
               "eligible_days": 48,
               "tp": 4,
-              "fp": 5,
+              "fp": 7,
               "fn": 4,
-              "tn": 35,
+              "tn": 33,
               "recall": 0.5,
-              "false_positive_rate": 0.125,
-              "nuisance_per_home_21d": 1.25,
+              "false_positive_rate": 0.175,
+              "nuisance_per_home_21d": 1.75,
               "excluded_days": 8,
               "alerted_away_or_offline": 0
             },
             "episodes": {
               "episodes": 8,
-              "caught": 4,
-              "missed": 4,
-              "early_request_only": 1,
-              "recall": 0.5,
-              "median_delay_hours": 1.46,
+              "caught": 5,
+              "missed": 3,
+              "early_request_only": 0,
+              "recall": 0.625,
+              "median_delay_hours": 1.02,
               "p90_delay_hours": 15.11,
               "missed_examples": [
-                {
-                  "household": "older_twice_gradual_drift_7121_unseen_shift_and_missing",
-                  "episode_id": 2
-                },
                 {
                   "household": "older_twice_skip_and_late_7103_unseen_shift_and_missing",
                   "episode_id": 1

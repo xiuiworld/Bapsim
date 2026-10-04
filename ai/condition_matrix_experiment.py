@@ -174,7 +174,10 @@ def household(seed: int, rhythm: str, condition: str,
                 flagged |= any(item["routine_status"] == "check_required" for item in decisions)
                 for decision in decisions:
                     for update in notifications.ingest(decision):
-                        if update.action == "notify_requested":
+                        # The opportunity replay counts every caregiver request,
+                        # including a reminder for an existing incident.
+                        if (update.action == "notify_requested" or
+                                (opportunity_interruptions and update.action == "reminder_requested")):
                             requested = True
                             request_times.append(update.as_of)
                             notifications.mark_notified("simulator", device, update.as_of)
@@ -184,7 +187,8 @@ def household(seed: int, rhythm: str, condition: str,
                     flagged |= bool(interval and interval["routine_status"] == "check_required")
                     if interval:
                         for update in notifications.ingest(interval):
-                            if update.action == "notify_requested":
+                            if (update.action == "notify_requested" or
+                                    (opportunity_interruptions and update.action == "reminder_requested")):
                                 requested = True
                                 request_times.append(update.as_of)
                                 notifications.mark_notified("simulator", device, update.as_of)
@@ -197,7 +201,8 @@ def household(seed: int, rhythm: str, condition: str,
             flagged |= bool(interval and interval["routine_status"] == "check_required")
             if interval:
                 for update in notifications.ingest(interval):
-                    if update.action == "notify_requested":
+                    if (update.action == "notify_requested" or
+                            (opportunity_interruptions and update.action == "reminder_requested")):
                         requested = True
                         request_times.append(update.as_of)
                         notifications.mark_notified("simulator", device, update.as_of)
