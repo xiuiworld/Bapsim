@@ -18,6 +18,17 @@ def detection(minute: int, status: str) -> dict[str, object]:
 
 
 class DetectionStateManagerTests(unittest.TestCase):
+    def test_interval_gap_is_one_confirmed_event_across_periodic_ticks(self) -> None:
+        manager = DetectionStateManager(candidate_window=timedelta(hours=36))
+        first = {**detection(0, "check_required"),
+                 "reason_codes": ["UNUSUAL_USE_GAP"],
+                 "evidence": {"last_use_at": detection(-60, "normal")["as_of"],
+                              "threshold_hours": 24.0}}
+        self.assertEqual([item.action for item in manager.ingest(first)], ["notify_requested"])
+        self.assertEqual(manager.ingest({**first, "as_of": detection(1, "normal")["as_of"]}), [])
+        incomplete = DetectionStateManager(candidate_window=timedelta(hours=36))
+        self.assertEqual(incomplete.ingest({**first, "evidence": {}}), [])
+
     def test_current_state_is_an_independent_snapshot(self) -> None:
         manager = DetectionStateManager(min_consecutive=1)
         self.assertIsNone(manager.current_state("simulator", "cooker_01"))

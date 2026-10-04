@@ -52,7 +52,8 @@ class PersonalUsageModel:
     def __init__(self, *, min_covered_days: int = 7, history_days: int = 28,
                  window_hours: float = 2.0, alert_probability: float = 0.72,
                  late_grace_hours: float = 0.0, interval_quantile: float = 0.95,
-                 interval_strategy: str = "empirical") -> None:
+                 interval_strategy: str = "empirical",
+                 cadence_window_support: bool = False) -> None:
         if min_covered_days < 1 or history_days < min_covered_days:
             raise ValueError("invalid learning window")
         if (not 0 < window_hours <= 3 or not 0 < alert_probability <= 1 or
@@ -67,6 +68,7 @@ class PersonalUsageModel:
         self.late_grace = timedelta(hours=late_grace_hours)
         self.interval_quantile = interval_quantile
         self.interval_strategy = interval_strategy
+        self.cadence_window_support = cadence_window_support
         self._devices: dict[tuple[str, str], dict[str, object]] = {}
         self._away_intervals: list[tuple[datetime, datetime]] = []
         self._away_since: datetime | None = None
@@ -329,6 +331,23 @@ class PersonalUsageModel:
                        if start <= opening < end]
         return len(self._group_opens(daily_opens))
 
+    def _cadence_supports_missing_window(self, state: dict[str, object],
+                                         decision_at: datetime) -> bool:
+        """Back a moderately likely clock window with an unusually long use gap."""
+        opens = [at for at in state["opens"] if at <= decision_at and not self._away_at(at)]
+        if not opens:
+            return False
+        intervals = sorted(right - left for left, right in zip(opens, opens[1:])
+                           if self._covered(state, left, right, decision_at)
+                           and not self._away_window(left, right))
+        if len(intervals) < self.min_covered_days:
+            return False
+        last = opens[-1]
+        if not self._covered(state, last, decision_at, decision_at) or self._away_window(last, decision_at):
+            return False
+        limit = intervals[ceil(0.75 * len(intervals)) - 1]
+        return decision_at - last > limit + timedelta(hours=1)
+
     def _profile(self, state: dict[str, object], day: date, slot: int, center: float,
                  now: datetime) -> dict[str, object]:
         count = positive = group_count = group_positive = weekday_count = weekday_positive = 0.0
@@ -389,6 +408,7 @@ class PersonalUsageModel:
                 if evaluation_key in state["evaluations"]:
                     continue
                 profile = self._profile(state, day, index, center, now)
+                cadence_supported = False
                 if away or self._away_window(start, decision_at):
                     status, reason, score = "away", "AWAY_DECLARED", None
                 elif not self._covered(state, start, decision_at, now):
@@ -401,12 +421,17 @@ class PersonalUsageModel:
                     status, reason, score = "normal", None, round(1 - profile["probability"], 4)
                 elif profile["probability"] >= (0.65 if profile["initial_ready"] else self.alert_probability):
                     status, reason, score = "check_required", "EXPECTED_USE_MISSING", profile["probability"]
+                elif (self.cadence_window_support and profile["probability"] >= 0.55 and
+                      self._cadence_supports_missing_window(state, decision_at)):
+                    status, reason, score = "check_required", "EXPECTED_USE_MISSING", profile["probability"]
+                    cadence_supported = True
                 else:
                     status, reason, score = "no_expectation", None, profile["probability"]
                 resumed_before_replay = (now > decision_at and any(
                     decision_at < opening <= now for opening in state["opens"]))
                 if status == "check_required" and resumed_before_replay:
                     status, reason, score = "normal", None, round(1 - profile["probability"], 4)
+                    cadence_supported = False
                 state["evaluations"][evaluation_key] = status
                 # Only an unresolved missed-use decision needs a late workflow
                 # update. Connection loss and lid opening have their own live
@@ -424,6 +449,7 @@ class PersonalUsageModel:
                         "decision_at": decision_at.isoformat(),
                         "replayed_after_delay": now >= decision_at + timedelta(hours=1),
                         "resumed_before_replay": resumed_before_replay,
+                        "cadence_supported": cadence_supported,
                         "model": "personal_usage_v1",
                     },
                 })
