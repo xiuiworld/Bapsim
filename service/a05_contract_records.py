@@ -78,10 +78,14 @@ def _utc(value: datetime | None) -> str | None:
 
 
 class A05ContractRecords:
-    """One live stream per device; never accepts a test-origin report."""
+    """One validated A05 stream; caller must separately verify its origin."""
 
-    def __init__(self, household_id: str, device_id: str, source_ref: str):
+    def __init__(self, household_id: str, device_id: str, source_ref: str,
+                 *, mode: str = "live", test_run_id: str | None = None):
+        if mode not in {"live", "test"} or (mode == "test") != (test_run_id is not None):
+            raise ValueError("test contract records require a test run ID")
         self.household_id, self.device_id, self.source_ref = household_id, device_id, source_ref
+        self.mode, self.test_run_id = mode, test_run_id
         self.stream_id: str | None = None
         self.sequence = 0
         self.previous: tuple[int, int, int] | None = None
@@ -99,13 +103,16 @@ class A05ContractRecords:
         assert self.stream_id is not None
         number = self.sequence
         self.sequence += 1
-        return {"schema_version": "0.1.0", "record_id": f"{self.stream_id}:{number}",
+        record = {"schema_version": "0.1.0", "record_id": f"{self.stream_id}:{number}",
                 "household_id": self.household_id, "device_id": self.device_id,
-                "stream_id": self.stream_id, "sequence": number, "mode": "live",
+                "stream_id": self.stream_id, "sequence": number, "mode": self.mode,
                 "kind": kind, "signal": signal, "value": value if quality == "good" else None,
                 "quality": quality, "observed_at": None, "source_at": _utc(source_at),
                 "received_at": _utc(now), "source_ref": self.source_ref,
                 "inference": inference}
+        if self.test_run_id is not None:
+            record["test_run_id"] = self.test_run_id
+        return record
 
     def offline(self, now: datetime) -> list[dict]:
         if self.previous is None:

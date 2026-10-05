@@ -15,11 +15,12 @@ class HAMQTTOutput:
         self.show = show
         self.logger = logger
         self.lock = asyncio.Lock()
-        self.last_discovery_at = None
+        self.last_discovery_at: dict[str, datetime] = {}
+        self.last_revision: dict[str, int] = {}
 
     async def send_state(self, source: str, payload: dict[str, object]) -> None:
         async with self.lock:
-            if payload["revision"] < self.output.revision:
+            if payload["revision"] < self.last_revision.get(source, -1):
                 return
             await self._send_current(source, payload)
 
@@ -30,22 +31,26 @@ class HAMQTTOutput:
         state_topic = self.output.topic(source, "state")
         availability_topic = self.output.topic(source, "availability")
         try:
-            publish_discovery = source == "matter" and (
-                self.last_discovery_at is None or
-                datetime.now(timezone.utc) - self.last_discovery_at >= timedelta(hours=1)
-            )
+            previous_discovery = self.last_discovery_at.get(source)
+            publish_discovery = (previous_discovery is None or
+                                 datetime.now(timezone.utc) - previous_discovery >= timedelta(hours=1))
             if publish_discovery:
+                simulation = source != "matter"
+                discovery_id = f"bapsim_{self.output.household_id}"
+                if simulation:
+                    discovery_id += "_simulation"
                 discovery = {
-                    "name": "밥심 현재 안내", "unique_id": f"bapsim_{self.output.household_id}_summary",
+                    "name": "밥심 시뮬레이션 안내" if simulation else "밥심 현재 안내",
+                    "unique_id": f"{discovery_id}_summary",
                     "state_topic": state_topic, "value_template": "{{ value_json.summary }}",
                     "json_attributes_topic": state_topic, "availability_topic": availability_topic,
                     "expire_after": 180,
                 }
                 await self.hass.services.async_call("mqtt", "publish", {
-                    "topic": f"homeassistant/sensor/bapsim_{self.output.household_id}/config",
+                    "topic": f"homeassistant/sensor/{discovery_id}/config",
                     "payload": json.dumps(discovery, ensure_ascii=False), "qos": 1, "retain": True,
                 }, blocking=True)
-                self.last_discovery_at = datetime.now(timezone.utc)
+                self.last_discovery_at[source] = datetime.now(timezone.utc)
             for topic, value in ((availability_topic, "online" if payload["observation"] != "unavailable" else "offline"),
                                  (state_topic, json.dumps(payload, ensure_ascii=False))):
                 await self.hass.services.async_call("mqtt", "publish", {
@@ -55,6 +60,7 @@ class HAMQTTOutput:
             self.logger.exception("Bapsim MQTT status publish failed")
             self.show("mqtt_output", "failed", {"topic": state_topic})
         else:
+            self.last_revision[source] = int(payload["revision"])
             self.show("mqtt_output", "published", {"topic": state_topic, "revision": payload["revision"]})
 
     async def send_controls(self) -> None:
