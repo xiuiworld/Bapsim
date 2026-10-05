@@ -1,0 +1,11 @@
+{
+  "version": "unmeasured-candidate-v1",
+  "adc_max": 4095,
+  "led_off": [500, 500, 500, 500],
+  "led_on": [3000, 3000, 3000, 3000],
+  "series_ohms": 10000,
+  "ntc_r25": 10000,
+  "ntc_beta": 3950,
+  "ntc_to_ground": true,
+  "offset_c": 0
+}
