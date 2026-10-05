@@ -9,7 +9,8 @@ def bind_cooker_events(
         hass, callback, cooker_event, session_event, feature_event, observations,
         write_observation, external_service, forwarded_devices, save_later, output, show,
         usage_model, availability_by_device, workflow, dispatch_workflow,
-        archive_service_record, sessions, features, latest_features, evaluate_model, logger
+        archive_service_record, sessions, features, latest_features, evaluate_model, logger,
+        a05_usage_context=None, latest_usage_context=None
 ):
     _LOGGER = logger
 
@@ -47,11 +48,20 @@ def bind_cooker_events(
         except ValueError as exc:
             _LOGGER.warning("Ignored invalid usage-model event: %s", exc)
         if event.data.get("event_type") == "lid_opened" and accepted_open:
+            context = (a05_usage_context.take_open(device_id, observed_at)
+                       if source == "matter" and a05_usage_context is not None else None)
+            if context is not None:
+                archive_service_record("usage_episode", context, observed_at)
+                if latest_usage_context is not None:
+                    latest_usage_context[key] = context
+                show("usage_context", context["classification"], context)
+                save_later()
             for update in workflow.ingest_lid_opening(source, device_id, observed_at):
                 dispatch_workflow(update)
             for opening in set(usage_model.grouped_open_times(*key)) - prior_groups:
                 archive_service_record("usage_group", {
                     "source": source, "device_id": device_id, "group_started_at": opening,
+                    **({"board_usage_context": context} if context is not None else {}),
                 }, opening)
         try:
             updates = sessions.ingest(event.data)

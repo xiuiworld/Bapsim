@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from .analysis_policy import route_personal_decision
 
@@ -13,12 +13,32 @@ class AnalysisMode:
     model_away: bool
 
 
+def add_board_context_evidence(decision: dict, context: dict | None) -> None:
+    """Explain a decision with the last accepted opening, without changing it."""
+    if context is None:
+        return
+    try:
+        at = datetime.fromisoformat(context["observed_at"])
+        decision_at = datetime.fromisoformat(decision["as_of"])
+        if at.tzinfo is None or decision_at.tzinfo is None:
+            return
+    except (KeyError, TypeError, ValueError):
+        return
+    age = decision_at.astimezone(timezone.utc) - at.astimezone(timezone.utc)
+    if timedelta(0) <= age <= timedelta(days=28):
+        decision["evidence"] = {
+            **decision.get("evidence", {}),
+            "last_accepted_open_context": context,
+            "board_context_role": "explanatory_only",
+        }
+
+
 def bind_analysis(
         callback, hass, usage_model, workflow, trend_workflow, controls, observation_issues,
         auxiliary, output, availability_by_device, last_baseline_record_day, mode,
         away_getter, archive_service_record, dispatch_workflow, publish_workflow,
         show, show_output, allow_output, send_mqtt, save_later, assess_personal_use, cooker_only,
-        baseline_event, detection_event
+        baseline_event, detection_event, latest_usage_context=None
 ):
     @callback
     def evaluate_model(source: str, device_id: str, as_of: str) -> None:
@@ -56,7 +76,9 @@ def bind_analysis(
                     publish_workflow(update)
         assessments = assess_personal_use(usage_model, source, device_id, as_of,
                                           online=online, away=effective_away)
+        context = (latest_usage_context or {}).get((source, device_id))
         for decision in assessments.windows:
+            add_board_context_evidence(decision, context)
             archive_service_record("assessment", decision, decision["as_of"])
             if decision["routine_status"] == "check_required":
                 for item in workflow.dump_state():
@@ -80,6 +102,7 @@ def bind_analysis(
                 dispatch_workflow(update)
         interval = assessments.interval
         if interval is not None:
+            add_board_context_evidence(interval, context)
             archive_service_record("assessment", interval, as_of)
             if interval["routine_status"] in {"watch", "check_required", "normal"}:
                 hass.bus.async_fire(detection_event, interval)
@@ -90,6 +113,7 @@ def bind_analysis(
                 dispatch_workflow(update)
         trend = assessments.trend
         if trend is not None:
+            add_board_context_evidence(trend, context)
             archive_service_record("assessment", trend, trend["as_of"])
             hass.bus.async_fire(detection_event, trend)
             show("decline_detection", trend["routine_status"], trend)

@@ -36,6 +36,7 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.service.ha_mqtt_output import HAMQTTOutput
     from .runtime.service.ha_matter_inputs import bind_matter_inputs, register_matter_services
     from .runtime.service.a05_snapshot_input import A05SnapshotInput, verified_report
+    from .runtime.service.a05_usage_context import A05UsageContext
     from .runtime.service.a05_contract_records import A05ContractRecords
     from .runtime.service.ha_a05_connection_test import A05TestController
     from .runtime.service.ha_journal import HAJournal
@@ -67,6 +68,7 @@ else:
     from service.ha_mqtt_output import HAMQTTOutput
     from service.ha_matter_inputs import bind_matter_inputs, register_matter_services
     from service.a05_snapshot_input import A05SnapshotInput, verified_report
+    from service.a05_usage_context import A05UsageContext
     from service.a05_contract_records import A05ContractRecords
     from service.ha_a05_connection_test import A05TestController
     from service.ha_journal import HAJournal
@@ -119,6 +121,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     matter_board_signals: dict[str, MatterBoardSignalAdapter] = {}
     a05_inputs: dict[str, A05SnapshotInput] = {}
     a05_records: dict[str, A05ContractRecords] = {}
+    a05_usage_context = A05UsageContext()
+    latest_usage_context: dict[tuple[str, str], dict[str, object]] = {}
     matter_report_at: dict[str, datetime] = {}
     availability_by_device: dict[tuple[str, str], str] = {}
     forwarded_devices: set[tuple[str, str]] = set()
@@ -197,6 +201,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 ((item["source"], item["device_id"]), item)
                 for item in stored.get("latest_features", [])
             )
+            for item in stored.get("latest_usage_context", []):
+                if (isinstance(item, dict) and item.get("source") == "matter" and
+                        isinstance(item.get("device_id"), str) and
+                        isinstance(item.get("observed_at"), str) and
+                        isinstance(item.get("classification"), str)):
+                    latest_usage_context[("matter", item["device_id"])] = item
             stored_board_history = stored.get("board_history", [])
             if not isinstance(stored_board_history, list):
                 stored_board_history = []
@@ -300,6 +310,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 for source, device_id in sorted(forwarded_devices)
             ],
             "latest_features": list(latest_features.values()),
+            "latest_usage_context": list(latest_usage_context.values()),
             "board_history": board_history[-BOARD_HISTORY_LIMIT:],
             "away": away,
             "notification_target": notification_target,
@@ -332,6 +343,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     show_initial_routines()
     show("detection_status", "waiting")
     show("features", "waiting")
+    show("usage_context", "waiting")
     show("notification_delivery", "not_sent")
     show("observation_issue_status", "unknown")
     show("mqtt_output", "waiting")
@@ -361,6 +373,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         show("baseline", "ready" if profile["ready"] else "learning", profile)
     for snapshot in latest_features.values():
         show("features", "available" if snapshot.get("availability") == "online" else "unavailable", snapshot)
+    for context in latest_usage_context.values():
+        show("usage_context", context["classification"], context)
 
     @callback
     def publish_workflow(update) -> None:
@@ -409,7 +423,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         lambda: away, lambda category, payload, at: archive_service_record(category, payload, at),
         dispatch_workflow, publish_workflow,
         show, show_output, allow_output, send_mqtt, save_later, assess_personal_use, cooker_only,
-        BASELINE_EVENT, DETECTION_EVENT)
+        BASELINE_EVENT, DETECTION_EVENT, latest_usage_context)
 
     @callback
     def publish(events: list[NormalizedCookerEvent]) -> None:
@@ -497,7 +511,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         hass, callback, COOKER_EVENT, SESSION_EVENT, FEATURE_EVENT, observations,
         write_observation, external_service, forwarded_devices, save_later, output, show,
         usage_model, availability_by_device, workflow, dispatch_workflow,
-        archive_service_record, sessions, features, latest_features, evaluate_model, _LOGGER)
+        archive_service_record, sessions, features, latest_features, evaluate_model, _LOGGER,
+        a05_usage_context, latest_usage_context)
 
     matter_inputs = bind_matter_inputs(
         hass, er, callback, EVENT_HOMEASSISTANT_STARTED, RAW_EVENT, CONTEXT_RAW_EVENT,
@@ -577,10 +592,16 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             output.household_id, adapter.device_id, entity_id))
         if raw is None:
             journal_io.archive_contract(recorder.offline(now))
+            a05_usage_context.reset(adapter.device_id)
         else:
-            journal_io.archive_contract(recorder.accept(raw, now, getattr(state, "last_updated", None)))
+            records = recorder.accept(raw, now, getattr(state, "last_updated", None))
+            journal_io.archive_contract(records)
+            if records:
+                a05_usage_context.observe(adapter.device_id, entity_id, raw, records, now)
         lid_raw = raw if raw is not None and raw["SignalQuality"]["LidOpen"] == 1 else None
         for item in adapter.accept(lid_raw, now):
+            if item["event_type"] == "lid_state" and item["value"] == "open" and raw is not None:
+                a05_usage_context.stage_open(adapter.device_id, item["observed_at"])
             hass.bus.async_fire(RAW_EVENT, item)
         show_matter_readiness(now)
 

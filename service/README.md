@@ -6,6 +6,9 @@
 - `output.py`: 버전·revision·180초 유효기간이 있는 결과 상태. 실물과 시뮬레이션 MQTT 토픽 분리.
 - `auxiliary.py`: 가상 보조 활동이 있을 때 시뮬레이션 안내 후보를 30분씩, 최대 2시간 보류. 실물 Matter 판단에는 적용하지 않음.
 - `analysis_policy.py`: HA 내부 모드와 독립 작업자가 창·간격·장기 변화 평가를 같은 순서로 실행하는 공통 진입점.
+- `a05_usage_context.py`: 검증된 **live** A05 보고의 취사 추정·보온 추정·표면 온도와 계약 기록 ID를 실제 개방 사건에 연결. `bapsim_records/`의 `usage_episode`/`usage_group`, HA `sensor.bapsim_usage_context`, 판단 기록의 `evidence.last_accepted_open_context`에 설명 근거로 남김.
+
+보드 맥락 분류는 `warming_possible_use`, 2시간 이내 같은 연속 스트림의 취사 추정이 있는 `recent_cooking_possible_use`, 또는 `unclassified_open`이다. 모두 **식사 확정이 아닌 사용 가능 행동**이며 개방 자체는 추정값이 unknown/결측이어도 개인 사용 기록에 남는다. 품질·모델 버전·온도·근거 ID를 함께 표시하고, 단절/부팅·순번 공백에서는 오래된 취사 맥락을 버린다. 이 연결은 기본 **HA 내부 분석 모드**에 적용된다. 개인 모델의 사용 시각·간격·감소 임계값과 실제 알림 발송 정책은 변경하지 않는다. A05 `input_kind=test`는 계속 live 학습·운영 알림으로 들어오지 않는다. 독립 작업자 모드에 같은 설명 근거를 전송하는 계약과 실센서 의미/보정 검증은 후속 범위다.
 
 HA에서 MQTT 통합과 브로커를 설정하면 기본 모드의 통합이 `mqtt.publish`로 상태·discovery를 게시합니다. 브로커가 없을 때는 `sensor.bapsim_mqtt_output`에 `broker_unavailable`을 표시합니다.
 
