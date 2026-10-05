@@ -1,0 +1,56 @@
+test_causal_features_do_not_change_with_future (tools.a07_edge.test_a07.ObservationsTest.test_causal_features_do_not_change_with_future) ... ok
+test_debounce_bounce_missing_and_reboot (tools.a07_edge.test_a07.ObservationsTest.test_debounce_bounce_missing_and_reboot) ... ok
+test_fault_blocks_model_but_preserves_other_led_observations (tools.a07_edge.test_a07.ObservationsTest.test_fault_blocks_model_but_preserves_other_led_observations) ... ok
+test_gap_and_reboot_require_new_complete_window (tools.a07_edge.test_a07.ObservationsTest.test_gap_and_reboot_require_new_complete_window) ... ok
+test_led_reheat_blink_and_solid (tools.a07_edge.test_a07.ObservationsTest.test_led_reheat_blink_and_solid) ... ok
+test_measured_import_excludes_unlabelled_and_checks_group_leakage (tools.a07_edge.test_a07.ObservationsTest.test_measured_import_excludes_unlabelled_and_checks_group_leakage) ... ok
+test_nonfinite_inference_abstains (tools.a07_edge.test_a07.ObservationsTest.test_nonfinite_inference_abstains) ... ok
+test_ntc_roundtrip_both_wirings_and_rails (tools.a07_edge.test_a07.ObservationsTest.test_ntc_roundtrip_both_wirings_and_rails) ... ok
+test_raw_reader_rejects_duplicate_and_missing_provenance (tools.a07_edge.test_a07.ObservationsTest.test_raw_reader_rejects_duplicate_and_missing_provenance) ... ok
+test_seeded_generation_reproducible (tools.a07_edge.test_a07.ObservationsTest.test_seeded_generation_reproducible) ... ok
+test_sequence_gap_is_not_hidden_by_regular_timestamps (tools.a07_edge.test_a07.ObservationsTest.test_sequence_gap_is_not_hidden_by_regular_timestamps) ... ok
+test_tree_can_learn_and_abstain_independently (tools.a07_edge.test_a07.ObservationsTest.test_tree_can_learn_and_abstain_independently) ... ok
+test_unknown_inference_not_inactive (tools.a07_edge.test_a07.ObservationsTest.test_unknown_inference_not_inactive) ... ok
+test_faults_recover_only_after_required_history (tools.a07_edge.test_raw_board.ReplayOracleTests.test_faults_recover_only_after_required_history) ... ok
+test_generates_test_only_board_publisher_without_touching_firmware (tools.a07_edge.test_matter_publish.MatterPublisherTests.test_generates_test_only_board_publisher_without_touching_firmware) ... ok
+test_model_trace_to_a05_wire_to_b_phase_result (tools.a07_edge.test_matter_publish.MatterPublisherTests.test_model_trace_to_a05_wire_to_b_phase_result) ... ok
+test_selects_four_observed_stages_from_model (tools.a07_edge.test_matter_publish.MatterPublisherTests.test_selects_four_observed_stages_from_model) ... ok
+test_bad_payloads_rejected (tools.a05_contract.test_wire.WireTests.test_bad_payloads_rejected) ... ok
+test_continuity (tools.a05_contract.test_wire.WireTests.test_continuity) ... ok
+test_roundtrip_all_scenarios_and_base64 (tools.a05_contract.test_wire.WireTests.test_roundtrip_all_scenarios_and_base64) ... ok
+test_validate_snapshot (unittest.loader._FailedTest.test_validate_snapshot) ... ERROR
+test_accepts_only_matching_live_probe_report (test_a05_snapshot_input.A05SnapshotInputTests.test_accepts_only_matching_live_probe_report) ... ok
+test_gap_and_stale_report_break_continuity (test_a05_snapshot_input.A05SnapshotInputTests.test_gap_and_stale_report_break_continuity) ... ok
+test_gap_excludes_unobserved_interval_from_model_coverage (test_a05_snapshot_input.A05SnapshotInputTests.test_gap_excludes_unobserved_interval_from_model_coverage) ... ok
+test_new_report_baselines_then_detects_only_observed_opening (test_a05_snapshot_input.A05SnapshotInputTests.test_new_report_baselines_then_detects_only_observed_opening) ... ok
+test_every_signal_has_contract_type_quality_and_provenance (test_a05_contract_records.A05ContractRecordTests.test_every_signal_has_contract_type_quality_and_provenance) ... ok
+test_invalid_atomic_payload_is_rejected (test_a05_contract_records.A05ContractRecordTests.test_invalid_atomic_payload_is_rejected) ... ok
+test_long_silence_starts_new_stream_even_without_counter_gap (test_a05_contract_records.A05ContractRecordTests.test_long_silence_starts_new_stream_even_without_counter_gap) ... ok
+test_partial_quality_gap_and_restart (test_a05_contract_records.A05ContractRecordTests.test_partial_quality_gap_and_restart) ... ok
+test_a07_phase_run_requires_model_bearing_four_stage_board_reports (test_a05_connection_test.A05ConnectionTestTests.test_a07_phase_run_requires_model_bearing_four_stage_board_reports) ... ok
+test_a07_phase_run_restarts_after_out_of_order_report (test_a05_connection_test.A05ConnectionTestTests.test_a07_phase_run_restarts_after_out_of_order_report) ... ok
+test_a07_phase_run_restarts_when_model_version_changes (test_a05_connection_test.A05ConnectionTestTests.test_a07_phase_run_restarts_when_model_version_changes) ... ok
+test_closed_then_open_requires_continuity_and_real_change (test_a05_connection_test.A05ConnectionTestTests.test_closed_then_open_requires_continuity_and_real_change) ... ok
+test_ha_callbacks_persist_board_result_and_call_only_chosen_phone_once (test_a05_connection_test.A05ConnectionTestTests.test_ha_callbacks_persist_board_result_and_call_only_chosen_phone_once) ... ok
+test_test_origin_keeps_full_provenance_checks_and_live_rejection (test_a05_connection_test.A05ConnectionTestTests.test_test_origin_keeps_full_provenance_checks_and_live_rejection) ... ok
+test_expired_report_closes_coverage_at_last_report (test_a05_ha_integration.A05HAIntegrationTests.test_expired_report_closes_coverage_at_last_report) ... ok
+test_ha_callback_archives_only_verified_live_contract_records (test_a05_ha_integration.A05HAIntegrationTests.test_ha_callback_archives_only_verified_live_contract_records) ... ok
+test_test_origin_is_excluded_and_live_sequence_is_forwarded (test_a05_ha_integration.A05HAIntegrationTests.test_test_origin_is_excluded_and_live_sequence_is_forwarded) ... ok
+
+======================================================================
+ERROR: test_validate_snapshot (unittest.loader._FailedTest.test_validate_snapshot)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_validate_snapshot
+Traceback (most recent call last):
+  File "C:\Users\xiui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\unittest\loader.py", line 137, in loadTestsFromName
+    module = __import__(module_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\xiui\Documents\Projects\Bapsim\tools\a05_contract\test_validate_snapshot.py", line 7, in <module>
+    from validate_snapshot import validate
+ModuleNotFoundError: No module named 'validate_snapshot'
+
+
+----------------------------------------------------------------------
+Ran 38 tests in 1.274s
+
+FAILED (errors=1)

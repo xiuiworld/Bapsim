@@ -1,0 +1,326 @@
+{
+  "reevaluation": {
+    "baseline": {
+      "normal": {
+        "windows": 36600,
+        "invalid_windows": 1825,
+        "coverage": 0.6271311475409836,
+        "accepted_accuracy": 0.9921578878577964,
+        "known_recall_including_abstentions": 0.7320154291224686,
+        "unknown_false_acceptance": 0.0,
+        "invalid_false_acceptance": 0,
+        "confusion_true_rows_pred_columns": [
+          [
+            9007,
+            7,
+            0,
+            7243
+          ],
+          [
+            173,
+            9184,
+            0,
+            588
+          ],
+          [
+            0,
+            0,
+            4582,
+            326
+          ],
+          [
+            0,
+            0,
+            0,
+            5490
+          ]
+        ],
+        "label_order": [
+          "inactive",
+          "cooking",
+          "warming",
+          "unknown"
+        ],
+        "matches_saved_metrics": true
+      },
+      "stress": {
+        "windows": 12200,
+        "invalid_windows": 4705,
+        "coverage": 0.3851639344262295,
+        "accepted_accuracy": 0.9533943392211108,
+        "known_recall_including_abstentions": 0.43201542912246865,
+        "unknown_false_acceptance": 0.03879781420765027,
+        "invalid_false_acceptance": 0,
+        "confusion_true_rows_pred_columns": [
+          [
+            1689,
+            9,
+            8,
+            3769
+          ],
+          [
+            100,
+            1710,
+            31,
+            1356
+          ],
+          [
+            0,
+            0,
+            1081,
+            617
+          ],
+          [
+            34,
+            10,
+            27,
+            1759
+          ]
+        ],
+        "label_order": [
+          "inactive",
+          "cooking",
+          "warming",
+          "unknown"
+        ],
+        "matches_saved_metrics": true
+      }
+    },
+    "refined": {
+      "normal": {
+        "windows": 36600,
+        "invalid_windows": 1825,
+        "coverage": 0.6313114754098361,
+        "accepted_accuracy": 0.9997403271877434,
+        "known_recall_including_abstentions": 0.742526518804243,
+        "unknown_false_acceptance": 0.001092896174863388,
+        "invalid_false_acceptance": 0,
+        "confusion_true_rows_pred_columns": [
+          [
+            9344,
+            0,
+            0,
+            6913
+          ],
+          [
+            0,
+            9147,
+            0,
+            798
+          ],
+          [
+            0,
+            0,
+            4609,
+            299
+          ],
+          [
+            6,
+            0,
+            0,
+            5484
+          ]
+        ],
+        "label_order": [
+          "inactive",
+          "cooking",
+          "warming",
+          "unknown"
+        ],
+        "matches_saved_metrics": true
+      },
+      "stress": {
+        "windows": 12200,
+        "invalid_windows": 4705,
+        "coverage": 0.38131147540983606,
+        "accepted_accuracy": 0.9651762682717111,
+        "known_recall_including_abstentions": 0.43297974927675986,
+        "unknown_false_acceptance": 0.04590163934426229,
+        "invalid_false_acceptance": 0,
+        "confusion_true_rows_pred_columns": [
+          [
+            1702,
+            16,
+            8,
+            3749
+          ],
+          [
+            20,
+            1702,
+            34,
+            1441
+          ],
+          [
+            0,
+            0,
+            1086,
+            612
+          ],
+          [
+            45,
+            10,
+            29,
+            1746
+          ]
+        ],
+        "label_order": [
+          "inactive",
+          "cooking",
+          "warming",
+          "unknown"
+        ],
+        "matches_saved_metrics": true
+      }
+    }
+  },
+  "rules": {
+    "normal": {
+      "windows": 36600,
+      "invalid_windows": 1825,
+      "coverage": 0.3046448087431694,
+      "accepted_accuracy": 0.9948878923766816,
+      "known_recall_including_abstentions": 0.35657344905175187,
+      "unknown_false_acceptance": 0.0069216757741347905,
+      "invalid_false_acceptance": 0,
+      "confusion_true_rows_pred_columns": [
+        [
+          1423,
+          19,
+          0,
+          14815
+        ],
+        [
+          0,
+          5087,
+          0,
+          4858
+        ],
+        [
+          0,
+          0,
+          4583,
+          325
+        ],
+        [
+          38,
+          0,
+          0,
+          5452
+        ]
+      ],
+      "label_order": [
+        "inactive",
+        "cooking",
+        "warming",
+        "unknown"
+      ]
+    },
+    "stress": {
+      "windows": 12200,
+      "invalid_windows": 4705,
+      "coverage": 0.21327868852459017,
+      "accepted_accuracy": 0.9289008455034589,
+      "known_recall_including_abstentions": 0.23307618129218902,
+      "unknown_false_acceptance": 0.07704918032786885,
+      "invalid_false_acceptance": 0,
+      "confusion_true_rows_pred_columns": [
+        [
+          370,
+          3,
+          8,
+          5094
+        ],
+        [
+          0,
+          991,
+          33,
+          2173
+        ],
+        [
+          0,
+          0,
+          1056,
+          642
+        ],
+        [
+          109,
+          0,
+          32,
+          1689
+        ]
+      ],
+      "label_order": [
+        "inactive",
+        "cooking",
+        "warming",
+        "unknown"
+      ]
+    }
+  },
+  "archived_board_log_recheck": {
+    "model": "a07-refined-v1-b1673351122b",
+    "preprocessing": "a07-preprocess-v1",
+    "cases": 14,
+    "samples": 33959,
+    "windows": 442,
+    "failures": 0,
+    "state_bytes": 28952,
+    "window_mean_ns": 1883721,
+    "window_max_ns": 2265000,
+    "stack_reserved_bytes": 4096,
+    "stack_unused_bytes": 2424,
+    "log_sha256": "c087ceaa8035f60890959b75650db6f41d6754c95b773b3e8fb93cf55d2264dc",
+    "synthetic_only": true
+  },
+  "app_sha256": "78f047048e62a1b15a0f682f5f7de4939c88860a7d3f313b3ebae4c375d5c8bc",
+  "independent_slow_blink": {
+    "hz": 0.15,
+    "windows": 61,
+    "valid": 61,
+    "predictions": {
+      "inactive": 0,
+      "cooking": 0,
+      "warming": 18,
+      "unknown": 43
+    },
+    "note": "Constructed reheat-like waveform; not measured ground truth."
+  },
+  "hysteresis_after_gap": {
+    "previous_on": {
+      "last_valid": true,
+      "last_lock_duty": 1.0,
+      "last_lock_enum": 2
+    },
+    "previous_off": {
+      "last_valid": true,
+      "last_lock_duty": 0.0,
+      "last_lock_enum": 1
+    }
+  },
+  "infinite_beta": {
+    "accepted": true,
+    "valid_windows": 61,
+    "temperature_c": 25.0
+  },
+  "snapshot_sampling": {
+    "board_edges_seconds": [
+      [
+        1,
+        "open"
+      ],
+      [
+        3,
+        "closed"
+      ]
+    ],
+    "poll_seconds": [
+      0,
+      5
+    ],
+    "observed": [
+      "closed",
+      "closed"
+    ],
+    "recoverable_openings_from_values": 0
+  }
+}
