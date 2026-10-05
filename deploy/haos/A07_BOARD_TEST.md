@@ -44,11 +44,18 @@ attribute 경로와 HA 수신기는 기존과 같다. 별도 자기시험 대형
 
 SDK 환경이 잡힌 PowerShell에서 기존 A05 절차대로 ZAP과 앱을 빌드한다.
 앱 슬롯 범위와 롤백 HEX를 확인한 뒤 **앱 영역만** 플래시한다.
+Windows에서는 빌드 폴더도 짧게 지정한다. A 노트북에서 긴 빌드 경로를
+사용하면 Matter 생성 객체의 전체 경로가 265자가 되어 `arm-zephyr-eabi-ar`
+단계에서 파일이 존재해도 `No such file or directory`로 실패했다.
+아래 `$a07Build`는 새 임시 빌드 경로이며, SDK 명령 래퍼가 작업 폴더를
+변경할 수 있으므로 앱과 ZAP 경로도 절대 경로로 전달한다.
 
 ```powershell
-west zap-generate --full -z local-data/a05/a07-phase-test/src/default_zap/contact_sensor.zap -j local-data/a05/a07-phase-test/src/default_zap/zcl.json
-west build --sysbuild -b nrf54lm20dk/nrf54lm20b/cpuapp local-data/a05/a07-phase-test -d local-data/a05/a07-phase-test/build -- -DCONFIG_CHIP_DEVICE_VENDOR_ID=65521
-Get-Content local-data/a05/a07-phase-test/build/domains.yaml
+$a07App = (Resolve-Path local-data/a05/a07-phase-test).Path
+$a07Build = Join-Path $env:TEMP 'bap7'
+west zap-generate --full -z "$a07App/src/default_zap/contact_sensor.zap" -j "$a07App/src/default_zap/zcl.json"
+west build --sysbuild -b nrf54lm20dk/nrf54lm20b/cpuapp $a07App -d $a07Build -- -DCONFIG_CHIP_DEVICE_VENDOR_ID=65521
+Get-Content "$a07Build/domains.yaml"
 ```
 
 `domains.yaml`의 `domains` 목록에서 `build_dir`가 이 앱의 빌드 폴더를
@@ -60,7 +67,7 @@ Get-Content local-data/a05/a07-phase-test/build/domains.yaml
 들어가는지 기존 A05 절차대로 확인한다.
 
 ```powershell
-west flash -d local-data/a05/a07-phase-test/build --domain a07-phase-test --no-rebuild --dev-id 1051887912
+west flash -d $a07Build --domain a07-phase-test --no-rebuild --dev-id 1051887912
 ```
 
 보드가 재부팅한 뒤 기존 Node 4와 Matter entry
