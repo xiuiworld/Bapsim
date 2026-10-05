@@ -2,8 +2,12 @@
 
 import asyncio
 import importlib.util
+import json
 import sys
 from datetime import timedelta
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -12,6 +16,54 @@ from test_ha_service_integration import COMPONENT, FakeHass, ha_modules
 
 
 class A05HAIntegrationTests(TestCase):
+    def test_ha_callback_archives_only_verified_live_contract_records(self):
+        async def scenario(root):
+            with patch.dict(sys.modules, ha_modules({})):
+                spec = importlib.util.spec_from_file_location("bapsim_a05_contract_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                hass.config = SimpleNamespace(path=lambda name: str(Path(root) / name))
+                entity_id = "sensor.a05_reportcounter"
+                _, initial = report(0, 0, False, "test")
+                hass.states.async_set(entity_id, initial.state, initial.attributes)
+                hass.registry_entries[entity_id] = report()[0]
+                self.assertTrue(await module.async_setup(hass, {}))
+                await hass.services.async_call("bapsim", "register_a05_snapshot", {
+                    "device_id": "cooker", "entity_id": entity_id,
+                    "matter_entry_id": "entry-1", "node_id": 4,
+                })
+
+                def change(counter, sequence, lid, origin, invalid=False):
+                    old = hass.states.get(entity_id)
+                    _, new = report(counter, sequence, lid, origin)
+                    if invalid:
+                        new.attributes["raw_snapshot"]["WarmLed"] = 99
+                    hass.states.async_set(entity_id, new.state, new.attributes)
+                    hass.bus.async_fire("state_changed", {
+                        "entity_id": entity_id, "old_state": old,
+                        "new_state": hass.states.get(entity_id),
+                    })
+
+                change(1, 1, False, "test")
+                change(2, 2, False, "live")
+                change(3, 3, True, "live")
+                change(4, 4, False, "live", invalid=True)
+                if hass.tasks:
+                    await asyncio.gather(*hass.tasks)
+                files = list((Path(root) / "bapsim_contract_observations").glob("contract-*.jsonl"))
+                self.assertEqual(len(files), 1)
+                rows = [json.loads(line) for line in files[0].read_text(encoding="utf-8").splitlines()]
+                self.assertEqual(len(rows), 23)  # initial 8, next 7, offline 8
+                self.assertEqual([row["value"] for row in rows if row["signal"] == "lid_open"],
+                                 [False, True, None])
+                self.assertEqual([row["value"] for row in rows if row["signal"] == "device_connection"],
+                                 ["online", "offline"])
+                self.assertTrue(all(row["source_ref"] == entity_id and row["mode"] == "live"
+                                    for row in rows))
+        with TemporaryDirectory() as root:
+            asyncio.run(scenario(root))
+
     def test_expired_report_closes_coverage_at_last_report(self):
         async def scenario():
             with patch.dict(sys.modules, ha_modules({})):

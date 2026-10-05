@@ -38,7 +38,8 @@ def make_notification_handlers(
                     publish_workflow(sent)
             elif outcome != "ha_accepted":
                 manager.cancel_request(update.source, update.device_id, now)
-        show("notification_delivery", outcome, {"incident_id": update.incident_id,
+        show("notification_delivery", outcome, {"source": update.source,
+                                                  "incident_id": update.incident_id,
                                                   "notification_id": notification_id,
                                                   "next_retry_at": record["next_retry_at"]})
         archive_service_record("notification", {
@@ -63,11 +64,13 @@ def make_notification_handlers(
             return
         if suppressed(update.action, update.incident_id, controls, notification_time):
             manager.cancel_request(update.source, update.device_id, notification_time)
-            show("notification_delivery", "paused", {"incident_id": update.incident_id})
+            show("notification_delivery", "paused", {"source": update.source,
+                                                       "incident_id": update.incident_id})
             return
         if quiet_hours.is_quiet(notification_time):
             queue_quiet(pending_quiet, update)
             show("notification_delivery", "quiet_hours", {
+                "source": update.source,
                 "incident_id": update.incident_id,
                 "next_delivery_at": quiet_hours.next_delivery_at(notification_time),
             })

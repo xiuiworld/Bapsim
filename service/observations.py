@@ -20,6 +20,8 @@ class ObservationJournal:
 
     def append(self, event: Mapping[str, object]) -> Path:
         at = event.get("observed_at", event.get("as_of"))
+        if at is None:
+            at = event.get("received_at")
         if not isinstance(at, str):
             raise ValueError("normalized event needs observed_at")
         moment = datetime.fromisoformat(at.replace("Z", "+00:00"))

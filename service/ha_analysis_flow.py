@@ -17,7 +17,7 @@ def bind_analysis(
         callback, hass, usage_model, workflow, trend_workflow, controls, observation_issues,
         auxiliary, output, availability_by_device, last_baseline_record_day, mode,
         away_getter, archive_service_record, dispatch_workflow, publish_workflow,
-        show, send_mqtt, save_later, assess_personal_use, cooker_only,
+        show, show_output, allow_output, send_mqtt, save_later, assess_personal_use, cooker_only,
         baseline_event, detection_event
 ):
     @callback
@@ -73,7 +73,7 @@ def bind_analysis(
                 "window", cooker_only(decision), workflow, trend_workflow,
                 deferred=deferred)
             if deferred:
-                show("auxiliary_deferral", "deferred", {"device_id": device_id,
+                show("auxiliary_deferral", "deferred", {"source": source, "device_id": device_id,
                                                        "until": auxiliary.pending[-1]["due_at"]})
                 continue
             for update in updates:
@@ -101,11 +101,12 @@ def bind_analysis(
         decline_state = trend_workflow.current_state(source, device_id)
         state = output.build(as_of, profile, "available" if online else "unavailable",
                              gap_state, decline_state)
-        show("output_state", state["summary"], state)
-        if hass.services.has_service("mqtt", "publish"):
-            hass.async_create_task(send_mqtt(source, state))
-        else:
-            show("mqtt_output", "broker_unavailable", {"topic": output.topic(source, "state")})
+        if allow_output(source):
+            show_output(source, state)
+            if hass.services.has_service("mqtt", "publish"):
+                hass.async_create_task(send_mqtt(source, state))
+            else:
+                show("mqtt_output", "broker_unavailable", {"topic": output.topic(source, "state")})
         save_later()
 
     return evaluate_model
