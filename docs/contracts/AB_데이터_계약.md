@@ -54,6 +54,19 @@ UTF-8 JSON, 한 기록에 한 신호를 담는다. 파일 교환은 JSONL(한 �
 
 `inference` 객체는 `method`(`edge_model` 또는 `rule`), `version`(string), `score`(0~1 또는 null)를 갖는다. score는 선택된 상태에 대한 모델 내부 점수이며 정확도·섭취 확률이 아니다. 추정 기능 미지원 시 inference=null을 허용한다. 방법/버전을 모르는 값을 확인된 Edge AI 출력으로 표시하지 않는다.
 
+### 개발용 A05/A07 연결 시험 기록의 경계
+
+`bapsim.start_a05_connection_test`로 명시적으로 시작한 검증에서는 B가
+`bapsim_test_runs/`에 같은 신호별 형태의 별도 기록을 남긴다. 이 기록의
+`mode=test`와 `test_run_id`는 **개발용 실행 journal 확장**이며 위 표의
+공통 관측 계약 `0.1.0`의 mode enum에 추가된 값이 아니다. 따라서 일반
+`live`/`simulation`/`replay` 소비자에게 이 파일을 그대로 공급하지 않는다.
+실제 A05 엔티티의 `input_kind=test`도 보드/HA 출처 표지이며 B 기록의
+`mode`와 서로 다른 필드다. 시험 출처는 기존 플랫폼·unique ID·entry·node·
+path·schema·counter 검증을 통과해야 하고, 실행 ID로 격리된 계약 변환은
+개인 학습·실물 알림에 전달되지 않는다. 시험 결과는 실제 센서 정확도나
+운영 `live` 계약 승인을 뜻하지 않는다.
+
 ## 4. 신호 사전
 
 | signal | good일 때 value | 생산 주체 / 의미 |
