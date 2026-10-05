@@ -29,6 +29,17 @@ def raw(
 
 
 class CookerEventNormalizerTests(unittest.TestCase):
+    def test_ordered_history_debounces_event_time_not_shared_arrival(self):
+        normalizer = CookerEventNormalizer()
+        events=[]
+        for observed,value in [(0,'closed'),(1,'open'),(4,'closed'),(7,'open'),(8,'closed')]:
+            events.extend(normalizer.ingest(raw(10,'lid_state',value,observed_second=observed),
+                                            ordered_history=True))
+        events.extend(normalizer.flush(START+timedelta(seconds=10)))
+        # Three-second opening/closing preserved, one-second bounce excluded.
+        self.assertEqual([e.event_type for e in events],['device_online','lid_opened','lid_closed'])
+        self.assertTrue(all(e.received_at==raw(10,'lid_state','closed')['received_at'] for e in events))
+
     def test_lid_requires_known_transition_and_debounce(self) -> None:
         normalizer = CookerEventNormalizer()
         self.assertEqual([e.event_type for e in normalizer.ingest(raw(0, "lid_state", "closed"))], ["device_online"])

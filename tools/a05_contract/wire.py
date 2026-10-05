@@ -11,6 +11,35 @@ HEADER = struct.Struct("<4sHBIIQIBh5B7BBHB")
 MAGIC = b"BS05"
 MAX_SIZE = HEADER.size + 64
 PATH = "1/4294048769/4293984260"
+HISTORY_PATH = "1/4294048769/4293984261"
+HISTORY_CAPACITY = 8
+
+
+def decode_history(payload):
+    """Atomic bounded journal, oldest first. Never silently sort or fill holes."""
+    if isinstance(payload, str):
+        payload = base64.b64decode(payload, validate=True)
+    if not isinstance(payload, bytes) or not 4 <= len(payload) <= 892:
+        raise ValueError("Invalid history size/type")
+    if payload[:3] != b"BH\x01" or not 1 <= payload[3] <= HISTORY_CAPACITY:
+        raise ValueError("Invalid history header/count")
+    rows, origin, pos = [], None, 4
+    for _ in range(payload[3]):
+        if pos >= len(payload):
+            raise ValueError("Truncated history")
+        size = payload[pos]; pos += 1
+        row, test = decode(payload[pos:pos+size]); pos += size
+        if origin is not None and test != origin:
+            raise ValueError("Mixed history origins")
+        if rows and (row["BootId"] != rows[-1]["BootId"] or
+                     row["ReportCounter"] != rows[-1]["ReportCounter"]+1 or
+                     row["ObservationSequence"] != rows[-1]["ObservationSequence"]+1 or
+                     row["UptimeMs"] < rows[-1]["UptimeMs"]):
+            raise ValueError("Nonconsecutive history")
+        rows.append(row); origin = test
+    if pos != len(payload):
+        raise ValueError("Trailing history data")
+    return rows, origin
 
 
 def encode(snapshot, *, test_input):

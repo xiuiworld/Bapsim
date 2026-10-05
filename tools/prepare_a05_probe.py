@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import shutil
 import xml.etree.ElementTree as ET
 
 
@@ -21,16 +22,25 @@ def main():
     attr = copy.deepcopy(next(x for x in cluster['attributes'] if x['name'] == 'ReportCounter'))
     attr.update(name='SnapshotPacked', code=0xFFF10004, type='octet_string', defaultValue='', maxLength=110)
     cluster['attributes'].append(attr)
+    history = copy.deepcopy(attr)
+    history.update(name='SnapshotHistory', code=0xFFF10005, type='long_octet_string', maxLength=892)
+    cluster['attributes'].append(history)
     (zap / 'contact_sensor.zap').write_text(json.dumps(model, indent=2))
     xml = ET.parse(zap / 'NordicDevKitCluster.xml')
     ET.SubElement(xml.getroot().find('cluster'), 'attribute', side='server',
                   code='0xfff10004', define='SNAPSHOT_PACKED', type='octet_string',
                   length='110', writable='false', optional='false', default='',
                   name='SnapshotPacked', reportable='true')
+    ET.SubElement(xml.getroot().find('cluster'), 'attribute', side='server',
+                  code='0xfff10005', define='SNAPSHOT_HISTORY', type='long_octet_string',
+                  length='892', writable='false', optional='false', default='',
+                  name='SnapshotHistory', reportable='true')
     xml.write(zap / 'NordicDevKitCluster.xml', encoding='utf-8', xml_declaration=True)
     app = a.output / 'src/app_task.cpp'
+    shutil.copyfile(Path(__file__).with_name('a05_contract')/'history.hpp', app.parent/'a05_history.hpp')
     text = app.read_text()
     text = text.replace('#include <zephyr/logging/log.h>', '#include <zephyr/logging/log.h>\n#include <zephyr/random/random.h>\n#include <zephyr/sys/byteorder.h>')
+    text = '#include "a05_history.hpp"\n' + text
     start, end = text.index('uint32_t sReportCounter'), text.index('constexpr chip::EndpointId')
     text = text[:start] + Path(__file__).with_name('a05_contract').joinpath('probe_cpp.inc').read_text() + '\n' + text[end:]
     text = text.replace('Clusters::NordicDevKit::Attributes::UserLED::Set(1, pressed);',
@@ -39,8 +49,9 @@ def main():
                         'sBootId = sys_rand32_get();\n    k_timer_init(&sProbeTimer, ProbeTick, nullptr);')
     text = text.replace('K_SECONDS(60)', 'K_SECONDS(15)')
     app.write_text(text)
-    with (a.output / 'prj.conf').open('a') as f:
-        f.write('\nCONFIG_CHIP_DEVICE_SOFTWARE_VERSION=3401005\nCONFIG_CHIP_DEVICE_SOFTWARE_VERSION_STRING="bapsim-a05-test-1"\n')
+    # Zephyr's VERSION takes precedence over the CHIP Kconfig version options.
+    (a.output / 'VERSION').write_text('VERSION_MAJOR = 3\nVERSION_MINOR = 4\n'
+        'PATCHLEVEL = 1\nVERSION_TWEAK = 6\nEXTRAVERSION = a05-history-1\n')
     print('A05 test snapshot prepared; 15-second accelerated scenarios, not live sensors.')
 
 

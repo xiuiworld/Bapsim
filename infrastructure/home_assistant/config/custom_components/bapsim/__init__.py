@@ -35,7 +35,7 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.service.ha_dashboard import HADashboard
     from .runtime.service.ha_mqtt_output import HAMQTTOutput
     from .runtime.service.ha_matter_inputs import bind_matter_inputs, register_matter_services
-    from .runtime.service.a05_snapshot_input import A05SnapshotInput, verified_report
+    from .runtime.service.a05_snapshot_input import A05SnapshotInput, verified_report, pending_reports, report_time
     from .runtime.service.a05_contract_records import A05ContractRecords
     from .runtime.service.ha_a05_connection_test import A05TestController
     from .runtime.service.ha_journal import HAJournal
@@ -66,7 +66,7 @@ else:
     from service.ha_dashboard import HADashboard
     from service.ha_mqtt_output import HAMQTTOutput
     from service.ha_matter_inputs import bind_matter_inputs, register_matter_services
-    from service.a05_snapshot_input import A05SnapshotInput, verified_report
+    from service.a05_snapshot_input import A05SnapshotInput, verified_report, pending_reports, report_time
     from service.a05_contract_records import A05ContractRecords
     from service.ha_a05_connection_test import A05TestController
     from service.ha_journal import HAJournal
@@ -465,7 +465,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         if event.data.get("event_type") == "away_state":
             return
         try:
-            publish(normalizer.ingest(event.data))
+            ordered_history = event.data.get("source") == "matter" and any(
+                adapter.buffered and adapter.device_id == event.data.get("device_id")
+                for adapter in a05_inputs.values())
+            publish(normalizer.ingest(event.data, ordered_history=ordered_history))
         except ValueError as exc:
             _LOGGER.warning("Ignored invalid raw cooker event: %s", exc)
             return
@@ -571,17 +574,27 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         raw = verified_report(entry, state, adapter.matter_entry_id, adapter.node_id)
         if raw is not None and previous is None:
             return  # HA's initial cached state is not a fresh board report.
-        if raw is not None and previous is not None and previous.state == state.state:
-            return
         recorder = a05_records.setdefault(entity_id, A05ContractRecords(
             output.household_id, adapter.device_id, entity_id))
         if raw is None:
             journal_io.archive_contract(recorder.offline(now))
+            for item in adapter.accept(None, now):
+                hass.bus.async_fire(RAW_EVENT, item)
         else:
-            journal_io.archive_contract(recorder.accept(raw, now, getattr(state, "last_updated", None)))
-        lid_raw = raw if raw is not None and raw["SignalQuality"]["LidOpen"] == 1 else None
-        for item in adapter.accept(lid_raw, now):
-            hass.bus.async_fire(RAW_EVENT, item)
+            # Consume retained raw reports in board order before exposing the
+            # latest state. A fresh consumer intentionally establishes a baseline.
+            adapter.buffered = state.attributes.get("read_method") == "buffered_read_5s"
+            reports = pending_reports(state, raw, recorder.previous)
+            for report in reports:
+                at = report_time(report, raw, now, adapter.last_report)
+                # Do not backfill an old outage as continuously observed use.
+                if at is None or now - at > timedelta(minutes=3):
+                    continue
+                journal_io.archive_contract(recorder.accept(report, now, at))
+                lid_raw = report if report["SignalQuality"]["LidOpen"] == 1 else None
+                for item in adapter.accept(lid_raw, at):
+                    item["received_at"] = now.isoformat()
+                    hass.bus.async_fire(RAW_EVENT, item)
         show_matter_readiness(now)
 
     unsubscribe_a05 = hass.bus.async_listen("state_changed", on_a05_state)

@@ -2,6 +2,8 @@ uint32_t sReportCounter = 0, sObservationSequence = 0, sBootId = 0;
 uint8_t sScenario = 0;
 bool sLidOpen = true;
 k_timer sProbeTimer;
+static a05::History sHistory;
+static uint8_t sHistoryBytes[a05::History::MAX_BYTES];
 
 void PublishSnapshot(bool advance)
 {
@@ -32,6 +34,11 @@ void PublishSnapshot(bool advance)
     // All snapshot fields are committed in one Matter attribute write on the
     // Matter event loop. Standard attributes remain separate projections.
     auto status = Clusters::NordicDevKit::Attributes::SnapshotPacked::Set(1, ByteSpan(frame, n));
+    sHistory.append(frame, n);
+    const size_t historySize=sHistory.encode(sHistoryBytes, sizeof(sHistoryBytes));
+    auto historyStatus=Clusters::NordicDevKit::Attributes::SnapshotHistory::Set(1, ByteSpan(sHistoryBytes, historySize));
+    if(historyStatus != Protocols::InteractionModel::Status::Success)
+        LOG_ERR("A05 history publish failed status=%u", static_cast<unsigned>(historyStatus));
     Clusters::NordicDevKit::Attributes::ReportCounter::Set(1, sReportCounter);
     if (auto contact = Clusters::BooleanState::FindClusterOnEndpoint(1)) contact->SetStateValue(!sLidOpen);
     if (sScenario == 2) Clusters::TemperatureMeasurement::Attributes::MeasuredValue::SetNull(2);

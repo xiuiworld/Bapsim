@@ -151,12 +151,14 @@ class CookerEventNormalizer:
         )
         return min(deadlines, default=None)
 
-    def flush(self, now: datetime) -> list[NormalizedCookerEvent]:
+    def flush(self, now: datetime, *, device_key=None) -> list[NormalizedCookerEvent]:
         """Confirm all lid candidates whose debounce time has elapsed."""
         if now.tzinfo is None or now.utcoffset() is None:
             raise ValueError("flush time must include a timezone")
         emitted: list[NormalizedCookerEvent] = []
-        for state in self._devices.values():
+        for key, state in self._devices.items():
+            if device_key is not None and key != device_key:
+                continue
             pending = state.pending_lid
             if pending is None or pending.due_at > now:
                 continue
@@ -168,11 +170,16 @@ class CookerEventNormalizer:
             emitted.append(self._event(pending.raw, kind, pending.value))
         return emitted
 
-    def ingest(self, raw: Mapping[str, object]) -> list[NormalizedCookerEvent]:
+    def ingest(self, raw: Mapping[str, object], *, ordered_history=False) -> list[NormalizedCookerEvent]:
         payload = self._payload(raw)
         observed = self._timestamp(payload["observed_at"])
         received = self._timestamp(payload["received_at"])
-        emitted = self.flush(received)
+        # A verified ordered board journal may contain multiple transitions in
+        # one receive batch. Debounce their event-time spacing, not arrival spacing.
+        # Raw fields and the default live/simulator policy remain unchanged.
+        clock = min(observed, received) if ordered_history else received
+        key = (payload["source"], payload["device_id"])
+        emitted = self.flush(clock, device_key=key if ordered_history else None)
 
         channel = self.raw_fields.get((payload["source"], payload["event_type"]))
         if channel not in {"lid", "cooking", "availability"}:
@@ -220,7 +227,7 @@ class CookerEventNormalizer:
                 kind = "lid_opened" if value == "open" else "lid_closed"
                 emitted.append(self._event(payload, kind, value))
             elif state.pending_lid is None or state.pending_lid.value != value:
-                state.pending_lid = _PendingLid(value, received + self.lid_debounce, payload)
+                state.pending_lid = _PendingLid(value, clock + self.lid_debounce, payload)
             return emitted
 
         if value not in {"started", "finished"}:

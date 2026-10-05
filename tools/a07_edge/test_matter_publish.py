@@ -87,6 +87,9 @@ class MatterPublisherTests(TestCase):
             app = root / "local-data" / "a05-app"
             source = app / "src" / "app_task.cpp"
             source.parent.mkdir(parents=True)
+            schema = source.parent / 'default_zap/NordicDevKitCluster.xml'
+            schema.parent.mkdir()
+            schema.write_text('<attribute name="SnapshotHistory"/>')
             source.write_text('''#include <zephyr/sys/byteorder.h>
 uint32_t sReportCounter = 0;
 void PublishSnapshot(bool advance) {}

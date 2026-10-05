@@ -4,6 +4,8 @@ k_timer sProbeTimer;
 bool sA07ReplayActive = false;
 unsigned sA07Stage = 0;
 static a07::Preprocessor sA07Processor;
+static a05::History sHistory;
+static uint8_t sHistoryBytes[a05::History::MAX_BYTES];
 
 void PublishA07Stage()
 {
@@ -47,6 +49,11 @@ void PublishA07Stage()
         return; // same stage may be retried; never advance the report counter
     }
     sReportCounter = next; sObservationSequence = meta.sequence;
+    sHistory.append(frame, length);
+    const size_t historySize=sHistory.encode(sHistoryBytes, sizeof(sHistoryBytes));
+    auto historyStatus=Clusters::NordicDevKit::Attributes::SnapshotHistory::Set(1, ByteSpan(sHistoryBytes, historySize));
+    if(historyStatus != Protocols::InteractionModel::Status::Success)
+        LOG_ERR("A07 history publish failed status=%u", static_cast<unsigned>(historyStatus));
     Clusters::NordicDevKit::Attributes::ReportCounter::Set(1, next);
     if (result.lid_good) {
         if (auto contact = Clusters::BooleanState::FindClusterOnEndpoint(1))
