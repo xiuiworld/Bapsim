@@ -10,14 +10,15 @@ from .a05_contract_records import MAX_AGE, valid_snapshot
 PATH = "1/4294048769/4293984260"
 
 
-def verified_report(entry, state, matter_entry_id: str, node_id: int) -> dict | None:
-    """Accept only a live A05 report from its expected Matter entry and node."""
+def _verified_report(entry, state, matter_entry_id: str, node_id: int,
+                     input_kind: str) -> dict | None:
+    """Validate one explicit origin without relaxing the A05 provenance checks."""
     if (entry is None or entry.platform != "bapsim_matter_probe" or
             entry.unique_id != f"a05_{matter_entry_id}_{node_id}_ReportCounter" or
             state is None or state.state in {"unknown", "unavailable"}):
         return None
     attrs = state.attributes
-    if (attrs.get("input_kind") != "live" or attrs.get("transport") != "matter" or
+    if (attrs.get("input_kind") != input_kind or attrs.get("transport") != "matter" or
             attrs.get("matter_entry_id") != matter_entry_id or
             attrs.get("node_id") != node_id or attrs.get("attribute_path") != PATH or
             attrs.get("read_method") != "explicit_read_5s" or
@@ -36,6 +37,16 @@ def verified_report(entry, state, matter_entry_id: str, node_id: int) -> dict | 
             attrs.get("report_counter") != counter):
         return None
     return raw
+
+
+def verified_report(entry, state, matter_entry_id: str, node_id: int) -> dict | None:
+    """Accept only live reports for personal learning and live notifications."""
+    return _verified_report(entry, state, matter_entry_id, node_id, "live")
+
+
+def verified_test_report(entry, state, matter_entry_id: str, node_id: int) -> dict | None:
+    """Accept only test reports for an explicitly armed development run."""
+    return _verified_report(entry, state, matter_entry_id, node_id, "test")
 
 
 class A05SnapshotInput:
