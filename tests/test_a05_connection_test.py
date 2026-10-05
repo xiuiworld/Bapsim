@@ -18,6 +18,33 @@ from tests.test_ha_service_integration import COMPONENT, FakeHass, ha_modules
 
 
 class A05ConnectionTestTests(TestCase):
+    def test_a07_phase_run_requires_model_bearing_four_stage_board_reports(self):
+        now = datetime.now(timezone.utc)
+        run = A05ConnectionTest("home", "board", "sensor.a05_reportcounter", "run-ai", now,
+                                scenario="a07_phase_sequence")
+        for counter, phase, quality in ((1, 1, 1), (2, 2, 1), (3, 3, 1), (4, 0, 0)):
+            raw = report(counter, counter, False, "test")[1].attributes["raw_snapshot"]
+            raw.update(CookerPhase=phase, InferenceMethod=1,
+                       ModelVersion="a07-tree-v1-test",
+                       InferenceScore=9000 if quality else None)
+            raw["SignalQuality"]["CookerPhase"] = quality
+            records, result = run.accept(raw, now + timedelta(seconds=counter * 15), now)
+            self.assertTrue(all(r["mode"] == "test" for r in records))
+            if counter < 4:
+                self.assertIsNone(result)
+            else:
+                self.assertEqual(result["model_version"], "a07-tree-v1-test")
+                self.assertEqual([r["phase"] for r in result["phase_evidence"]],
+                                 ["inactive", "cooking", "warming", "unknown"])
+                self.assertEqual([r["report_counter"] for r in result["phase_evidence"]],
+                                 [1, 2, 3, 4])
+        fixture = A05ConnectionTest("home", "board", "sensor.a05_reportcounter",
+                                    "run-fixture", now, scenario="a07_phase_sequence")
+        raw = report(1, 1, False, "test")[1].attributes["raw_snapshot"]
+        _, result = fixture.accept(raw, now, now)
+        self.assertIsNone(result)
+        self.assertEqual(fixture.phase, "await_inactive")
+
     def test_test_origin_keeps_full_provenance_checks_and_live_rejection(self):
         entry, state = report(origin="test")
         self.assertIsNotNone(verified_test_report(entry, state, "entry-1", 4))
@@ -91,9 +118,15 @@ class A05ConnectionTestTests(TestCase):
                 run = hass.data["bapsim"]["a05_test_controller"].run
                 self.assertEqual(run.phase, "await_closed")
 
-                async def feed(counter, lid, origin="test"):
+                async def feed(counter, lid, origin="test", phase=None):
                     previous = hass.states.get("sensor.a05_reportcounter")
                     _, state = report(counter, counter, lid, origin)
+                    if phase is not None:
+                        raw = state.attributes["raw_snapshot"]
+                        raw.update(CookerPhase=phase, InferenceMethod=1,
+                                   ModelVersion="a07-tree-v1-test",
+                                   InferenceScore=9000 if phase else None)
+                        raw["SignalQuality"]["CookerPhase"] = 1 if phase else 0
                     hass.states.async_set("sensor.a05_reportcounter", state.state, state.attributes)
                     hass.bus.async_fire("state_changed", {
                         "entity_id": "sensor.a05_reportcounter", "old_state": previous,
@@ -152,5 +185,15 @@ class A05ConnectionTestTests(TestCase):
                     await feed(8, False)
                 self.assertEqual(controller.run.phase, "storage_failed")
                 self.assertEqual(len(phone_calls), 1)
+                await hass.services.async_call("bapsim", "start_a05_connection_test", {
+                    "entity_id": "sensor.a05_reportcounter", "device_id": "cooker_a_test",
+                    "phone_service": "notify.mobile_app_test_phone",
+                    "scenario": "a07_phase_sequence",
+                })
+                for counter, phase in ((9, 1), (10, 2), (11, 3), (12, 0)):
+                    await feed(counter, False, phase=phase)
+                self.assertEqual(controller.run.phase, "ha_accepted")
+                self.assertEqual(len(phone_calls), 2)
+                self.assertIn("A07 합성 원시 재생", phone_calls[1]["message"])
 
         asyncio.run(scenario())

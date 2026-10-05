@@ -34,7 +34,8 @@ class A05TestController:
         return {"kind": "a05_connection_test_run", "mode": "test",
                 "test_run_id": run.test_run_id, "household_id": run.household_id,
                 "device_id": run.device_id, "source_ref": run.source_ref,
-                "phase": phase, "received_at": now.astimezone(timezone.utc).isoformat(), **extra}
+                "scenario": run.scenario, "phase": phase,
+                "received_at": now.astimezone(timezone.utc).isoformat(), **extra}
 
     def _show(self, run: A05ConnectionTest) -> None:
         self.show("a05_connection_test", run.phase, run.status())
@@ -46,6 +47,7 @@ class A05TestController:
             raise ValueError("Stop the current A05 test before starting another")
         entity_id = call.data.get("entity_id")
         device_id = call.data.get("device_id")
+        scenario = call.data.get("scenario", "lid_connection")
         adapter = self.a05_inputs.get(entity_id)
         if adapter is None or device_id != adapter.device_id:
             raise ValueError("Register this A05 entity and matching device ID first")
@@ -60,7 +62,8 @@ class A05TestController:
                 not self.hass.services.has_service("notify", target)):
             raise ValueError("Choose one registered test phone notify.mobile_app_* service")
         now = datetime.now(timezone.utc)
-        run = A05ConnectionTest(self.household_id, device_id, entity_id, uuid4().hex, now)
+        run = A05ConnectionTest(self.household_id, device_id, entity_id,
+                                uuid4().hex, now, scenario=scenario)
         if not await self.journal.write_test([self._record(run, "armed", now)]):
             raise ValueError("Test journal unavailable; mobile test was not armed")
         self.run = run
@@ -141,9 +144,11 @@ class A05TestController:
         # One attempt per explicit run, including failures and uncertain outcomes.
         run.mobile_attempted = True
         target = self.phone_service
+        evidence_ref = (result.get("opened_record_id") or
+                        result["phase_evidence"][-1]["record_id"])
         if not await self.journal.write_test([
                 self._record(run, "mobile_attempt", datetime.now(timezone.utc),
-                             opened_record_id=result["opened_record_id"])]):
+                             opened_record_id=evidence_ref)]):
             run.stop("storage_failed")
             self.phone_service = None
             self._show(run)
@@ -151,10 +156,12 @@ class A05TestController:
         if run.stopped or self.phone_service != target:
             return
         try:
+            description = ("A07 합성 원시 재생의 대기→취사→보온→판단 불가 보고가 B 시험 기록에 반영됐습니다. "
+                           if run.scenario == "a07_phase_sequence" else
+                           "실제 A05 보드의 닫힘→열림이 B 계약 기록과 시험 결과에 반영됐습니다. ")
             await self.hass.services.async_call("notify", target, {
                 "title": "밥심 개발용 연결 시험",
-                "message": ("실제 A05 보드의 닫힘→열림이 B 계약 기록과 시험 결과에 반영됐습니다. "
-                            f"실행 ID: {run.test_run_id}"),
+                "message": description + f"실행 ID: {run.test_run_id}",
                 "data": {"url": DETAIL_PATH, "clickAction": DETAIL_PATH,
                          "tag": f"bapsim_a05_test_{run.test_run_id}"},
             }, blocking=True)
