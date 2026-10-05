@@ -34,7 +34,7 @@ class ObservationsTest(unittest.TestCase):
         t, adc, lid, boot = self.clean()
         adc[:, 1] = np.where(np.arange(len(t)) % 20 < 10, 3000, 500)
         x, valid, _, led = extract(t, adc, lid, boot, self.cal)
-        self.assertTrue(valid.all())
+        self.assertFalse(valid.any())  # warm blinking must abstain even if its short window looks solid
         self.assertTrue((led[:, 1] == 3).all())
         self.assertTrue((led[:, 0] == 1).all())
 

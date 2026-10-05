@@ -15,7 +15,7 @@ import shutil
 import numpy as np
 
 from .model import export_c, tree_predict
-from .observations import Calibration, extract, temperature_adc
+from .observations import Calibration, extract, temperature_adc, PREPROCESS_VERSION
 from .raw_board import cases
 
 
@@ -112,7 +112,13 @@ def prepare(model_path, app):
     if model.get("input_kind") != "synthetic" or model.get("live_qualified") is not False or \
        not str(model.get("version", "")).startswith("a07-"):
         raise ValueError("Only a versioned, non-live synthetic A07 model is allowed")
+    schema = app / 'src/default_zap/NordicDevKitCluster.xml'
+    if not schema.exists() or 'SnapshotHistory' not in schema.read_text(encoding='utf-8'):
+        raise ValueError("Regenerate a fresh A05 app with SnapshotHistory before preparing A07")
     stages = select_stages(model)
+    shutil.copyfile(Path(__file__).parents[1]/'a05_contract/history.hpp', app/'src/a05_history.hpp')
+    if '#include "a05_history.hpp"' not in text:
+        text = '#include "a05_history.hpp"\n' + text
     out = app / "src/a07"
     out.mkdir(exist_ok=True)
     export_c(model, out / "a07_model.h")
@@ -135,7 +141,8 @@ def prepare(model_path, app):
                 "target_sources(app PRIVATE src/a07/raw_selftest.cpp)"):
         cmake_text = cmake_text.replace(old, "")
     cmake.write_text(cmake_text, encoding="utf-8")
-    manifest = {"model_version": model["version"], "input_kind": "test",
+    manifest = {"model_version": model["version"], "preprocess_version": PREPROCESS_VERSION,
+                "input_kind": "test",
                 "synthetic_replay": True, "stage_seconds": 15,
                 "stages": [{"expected": STAGES[i], "raw_source": name,
                             "samples": len(data["t"])} for i, (name, data) in enumerate(stages)],

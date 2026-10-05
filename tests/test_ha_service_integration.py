@@ -523,7 +523,13 @@ class HAServiceIntegrationTests(TestCase):
         asyncio.run(scenario())
 
     def test_sent_incident_resumption_creates_distinct_local_notification(self):
-        now = datetime.now(timezone.utc).isoformat()
+        # This tests resumption, not quiet hours. A wall-clock run at 00:00
+        # Seoul time otherwise suppresses the notification for one minute.
+        now = datetime(2026, 10, 5, 3, tzinfo=timezone.utc).isoformat()
+        class FixedClock:
+            @staticmethod
+            def now(tz=None):
+                return datetime.fromisoformat(now)
         seed = {
             "workflow": [{"source": "simulator", "device_id": "cooker_01",
                           "status": "notified", "incident_id": "incident-1",
@@ -551,7 +557,8 @@ class HAServiceIntegrationTests(TestCase):
                 self.assertIn("다시 사용", notifications[0]["message"])
                 self.assertIn(":resumed", notifications[0]["notification_id"])
 
-        asyncio.run(scenario())
+        with patch("service.ha_notification_flow.datetime", FixedClock):
+            asyncio.run(scenario())
 
     def test_external_worker_mode_forwards_observations_and_controls(self):
         async def scenario():

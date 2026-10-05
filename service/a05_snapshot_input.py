@@ -8,6 +8,46 @@ from .a05_contract_records import MAX_AGE, valid_snapshot
 
 
 PATH = "1/4294048769/4293984260"
+HISTORY_PATH = "1/4294048769/4293984261"
+
+
+def valid_history(rows, latest):
+    if type(rows) is not list or not 1 <= len(rows) <= 8 or rows[-1] != latest:
+        return False
+    for i, row in enumerate(rows):
+        if not valid_snapshot(row):
+            return False
+        if i and (row["BootId"] != rows[i-1]["BootId"] or
+                  row["ReportCounter"] != rows[i-1]["ReportCounter"]+1 or
+                  row["ObservationSequence"] != rows[i-1]["ObservationSequence"]+1 or
+                  row["UptimeMs"] < rows[i-1]["UptimeMs"]):
+            return False
+    return True
+
+
+def pending_reports(state, latest, previous):
+    """Return unseen reports; first observation/reboot is a latest baseline.
+
+    Retention overflow is NOT filled: existing consumers see a sequence gap.
+    No replay after a consumer restart or observed offline interval.
+    """
+    if state.attributes.get("read_method") != "buffered_read_5s" or previous is None:
+        return [latest]
+    if latest["BootId"] != previous[0] or latest["ReportCounter"] < previous[2]:
+        return [latest]
+    return [r for r in state.attributes["raw_history"] if r["ReportCounter"] > previous[2]]
+
+
+def report_time(raw, latest, now, last=None):
+    """Estimated UTC from read time and board elapsed time, not a board UTC clock."""
+    age_ms = latest["UptimeMs"] - raw["UptimeMs"]
+    # Validate before constructing timedelta: wire uptime is an unsigned uint64.
+    if not 0 <= age_ms <= MAX_AGE.total_seconds() * 1000:
+        return None
+    if last is not None and last >= now:
+        return None
+    at = now - timedelta(milliseconds=age_ms)
+    return max(at, last + timedelta(microseconds=1)) if last is not None else at
 
 
 def _verified_report(entry, state, matter_entry_id: str, node_id: int,
@@ -21,11 +61,15 @@ def _verified_report(entry, state, matter_entry_id: str, node_id: int,
     if (attrs.get("input_kind") != input_kind or attrs.get("transport") != "matter" or
             attrs.get("matter_entry_id") != matter_entry_id or
             attrs.get("node_id") != node_id or attrs.get("attribute_path") != PATH or
-            attrs.get("read_method") != "explicit_read_5s" or
+            attrs.get("read_method") not in ("explicit_read_5s", "buffered_read_5s") or
             attrs.get("schema_version") != 1):
         return None
     raw = attrs.get("raw_snapshot")
     if not valid_snapshot(raw):
+        return None
+    if attrs.get("read_method") == "buffered_read_5s" and (
+            attrs.get("history_path") != HISTORY_PATH or
+            not valid_history(attrs.get("raw_history"), raw)):
         return None
     boot, sequence, counter = (raw.get(key) for key in
                                ("BootId", "ObservationSequence", "ReportCounter"))
@@ -59,6 +103,7 @@ class A05SnapshotInput:
         self.previous: tuple[int, int, int] | None = None
         self.last_report: datetime | None = None
         self.last_lid: bool | None = None
+        self.buffered = False
 
     def deadline(self) -> datetime | None:
         return self.last_report + MAX_AGE if self.last_report else None

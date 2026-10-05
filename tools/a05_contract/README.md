@@ -60,3 +60,50 @@ The B service has a separate `bapsim_matter_probe` path in `service/a05_snapshot
 `python -m unittest discover -s tests -p 'test_a05*.py'` covers the HA callback through the separate contract journal with test/live separation, malformed reports, all signals, quality, and restart/gap stream changes. The A05 test-origin device is intentionally excluded from live records; this software integration test does not change the existing 5-second polling loss limit.
 
 Offline tests: `python -m unittest discover -s tools/a05_contract -p 'test_*.py' -v`. Device/HA evidence is recorded separately in `docs/hardware/A05_데이터모델_구현.md`.
+## 중간 개폐 보존용 선택적 이력 읽기
+
+`prepare_a05_probe.py`로 새 시험 앱을 생성하면 기존 SnapshotPacked v1과 함께
+`SnapshotHistory`를 제공한다. endpoint 1 / cluster `0xFFF1FC01` /
+attribute `0xFFF10005` (`1/4294048769/4293984261`), 읽기 전용
+`long_octet_string`, 최대 892바이트다. 기존 단일 Snapshot의 형식·경로는 유지한다.
+
+형식은 `BH` 2바이트, 형식 버전 1바이트(1), 개수 1바이트(1~8),
+각 보고의 길이 1바이트와 기존 SnapshotPacked bytes의 반복이다.
+최근 **8개 보고**를 오래된 순서로 보관한다. 개폐뿐 아니라 주기 보고도 슬롯을
+차지한다. 모든 보고는 같은 BootId·출처이고 report counter와 observation
+sequence가 각각 +1이며 uptime은 감소하지 않아야 한다. 재부팅 시 RAM 이력은
+소멸한다. 카운터 wrap을 연속 이력으로 해석하지 않는다.
+
+새 보드 앱과 재생성한 `ha_bundle/sensor.py`, 이력 처리를 지원하는 B 번들을
+설치한 뒤 기존 A05 YAML 센서 항목에 `snapshot_history: true`를 지정한다.
+기본 false는 기존 보드와 호환된다. true에서는 이력 속성 읽기 실패를 기존
+최신값 읽기로 조용히 대체하지 않고 unavailable로 처리한다. 최신값과 이력을
+별도로 읽어 합치지 않고, 이력 속성 한 번의 읽기에서 최신값까지 얻는다.
+
+HA ReportCounter의 `read_method=buffered_read_5s`, `history_path`,
+`raw_history`가 B의 추가 검증 대상이다. B는 이미 처리한 보고를 제외하고
+순서대로 계약 기록과 기존 8필드 raw 경계에 전달한다. test/live 출처 검증은
+그대로 유지한다. 최초 수신·소비자 재시작·관측 offline 이후에는 최신 보고를
+기준 상태로 잡으며 보관된 과거를 새 행동으로 재생하지 않는다.
+
+이력 보관 한도를 넘으면 누락된 순번을 복원하지 않는다. 첫 남은 보고에서
+공백을 표시하고 새 기준 상태를 잡는다. 보드 uptime 차이로 추정한 사건 시각은
+HA 읽기 시각을 기준으로 하며 정확한 보드 UTC가 아니다. 이전 관측보다 시간이
+뒤로 가지 않도록 보정하고 실제 수신 시각은 별도로 보존한다. 3분보다 오래된
+보관 보고는 행동으로 재생하지 않는다.
+
+이 기능은 **전달된 개폐 기록의 보존**을 개선한다. B 정규화기의 기존 2초
+debounce와 60분 사용 묶음 정책은 변경하지 않는다. 따라서 짧은 원시 개폐
+기록 수와 최종 사용 행동 수는 다른 지표다. 새로운 물리 센서 드라이버나
+무제한 오프라인 복원 기능이 아니다. 실제 버튼·단절·초과·재부팅 시험 결과는
+[1차 개선 검증 기록](../../docs/hardware/A_중간점검_1차_개선.md)의 5·6절을 참고한다.
+
+읽기 오류 중에는 unavailable로 처리하되 마지막 정상 순번은 진단용으로
+보존한다. `last_discontinuity`는 읽기 오류·순번 공백·재부팅을 구분하고,
+`last_gap`은 가장 최근 누락의 boot·처음/마지막 순번·보고 수를 보존한다.
+현재 정상 수신 중이어도 과거의 `last_gap`이 남을 수 있다. 명시적으로 실행한
+B 개발 시험의 이력 복구와 live 분석의 offline 이후 최신값 기준 설정은 구분한다.
+
+검증된 buffered 입력의 정규화는 여러 보고가 같은 시각에 도착하더라도 보드
+사건 시각 간격으로 2초 debounce를 적용한다. 같은 배치의 3초 개방은 유지하고
+1초 개방은 기존 정책에 따라 행동에서 제외하지만 계약 원시 기록에는 남는다.

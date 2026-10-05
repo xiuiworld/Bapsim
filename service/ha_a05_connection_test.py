@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from .a05_connection_test import A05ConnectionTest
-from .a05_snapshot_input import verified_test_report
+from .a05_snapshot_input import verified_test_report, pending_reports, report_time
 
 
 DETAIL_PATH = "/bapsim-lab/a05-test"
@@ -111,8 +111,7 @@ class A05TestController:
     def on_state(self, entity_id, entry, state, previous, now: datetime) -> None:
         run = self.run
         if (run is None or run.stopped or run.result is not None or
-                entity_id != run.source_ref or previous is None or state is None or
-                previous.state == state.state):
+                entity_id != run.source_ref or previous is None or state is None):
             return
         adapter = self.a05_inputs.get(entity_id)
         if adapter is None or adapter.device_id != run.device_id:
@@ -122,7 +121,15 @@ class A05TestController:
         if (raw is None or not isinstance(source_at, datetime) or source_at.tzinfo is None or
                 source_at < run.started_at or source_at > now):
             return
-        records, result = run.accept(raw, now, source_at)
+        records, result = [], None
+        for report in pending_reports(state, raw, run.contract.previous):
+            at = report_time(report, raw, source_at)
+            if at is None or at < run.started_at:
+                continue  # retained data preceding the explicit arm is not evidence
+            batch, current = run.accept(report, now, at)
+            records.extend(batch)
+            if current is not None:
+                result = current
         if not records:
             self._show(run)
             return

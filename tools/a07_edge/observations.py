@@ -17,6 +17,9 @@ FEATURES = tuple(f"{name}_{stat}" for name in LEDS for stat in ("duty", "edges")
     "surface_c", "slope_c_per_min", "lid_open_fraction")
 LABELS = ("inactive", "cooking", "warming", "unknown")
 SCHEMA = "a07.raw.v1"
+PREPROCESS_VERSION = "a07-preprocess-v3"
+# Candidate bound until physical LEDs are measured: 20 s at 20 Hz.
+LED_HISTORY_SAMPLES = 400
 
 
 @dataclass(frozen=True)
@@ -32,14 +35,22 @@ class Calibration:
     offset_c: float = 0.
 
     def validate(self):
+        if not isinstance(self.led_off, (tuple, list)) or not isinstance(self.led_on, (tuple, list)) or \
+                len(self.led_off) != 4 or len(self.led_on) != 4:
+            raise ValueError("four LED calibrations required")
+        numbers = (self.adc_max, self.series_ohms, self.ntc_r25, self.ntc_beta,
+                   *self.led_off, *self.led_on, self.offset_c)
+        if not all(isinstance(x, (int, float)) and not isinstance(x, bool)
+                   and math.isfinite(x) for x in numbers):
+            raise ValueError("nonfinite or nonnumeric calibration")
         if self.adc_max <= 2 or min(self.series_ohms, self.ntc_r25, self.ntc_beta) <= 0:
             raise ValueError("invalid divider/NTC calibration")
-        if len(self.led_off) != 4 or len(self.led_on) != 4:
-            raise ValueError("four LED calibrations required")
+        if type(self.ntc_to_ground) is not bool:
+            raise ValueError("divider direction must be boolean")
         if any(abs(a-b) < 100 for a, b in zip(self.led_off, self.led_on)):
             raise ValueError("insufficient LED calibration contrast")
-        if not all(math.isfinite(float(x)) for x in (*self.led_off, *self.led_on, self.offset_c)):
-            raise ValueError("nonfinite calibration")
+        if any(not 0 <= x <= self.adc_max for x in (*self.led_off, *self.led_on)):
+            raise ValueError("LED calibration outside ADC range")
 
 
 def ntc_c(adc, cal):
@@ -83,7 +94,7 @@ def debounce(t_ms, values, hold_ms=50):
 
 
 def extract(t_ms, adc, lid, boot, cal, step_seconds=2, sequence=None):
-    """20Hz input, 2s optical window + 60s history, no cross-gap imputation.
+    """20Hz input; 2s features, 20s LED guard, 60s temperature/link history.
 
     Missing a required channel abstains the model; LED/NTC observations remain
     individually available. Returns features, validity, end sample and LED enums.
@@ -106,9 +117,19 @@ def extract(t_ms, adc, lid, boot, cal, step_seconds=2, sequence=None):
     # Hysteresis prevents chatter. No derived label is used as a feature.
     on = np.zeros((n, 4), dtype=bool)
     state = np.zeros(4, dtype=bool)
+    known = np.zeros(4, dtype=bool)
     for i in range(n):
+        if i == 0 or not (40 <= t_ms[i]-t_ms[i-1] <= 60 and
+                          boot[i] == boot[i-1] and sequence[i] == sequence[i-1]+1):
+            state[:] = False
+            known[:] = False
+        good = optical_good[i].copy()
+        known &= good
+        state &= good
+        known |= good & ((normalized[i] > .6) | (normalized[i] < .4))
         state = np.where(normalized[i] > .6, True, np.where(normalized[i] < .4, False, state))
-        on[i] = state
+        optical_good[i] = good & known
+        on[i] = state & known
     temp = ntc_c(adc[:, 4], cal)
     # NTC acquisition is 1Hz: intermediate storage must not manufacture samples.
     contact = debounce(t_ms, lid)
@@ -119,7 +140,16 @@ def extract(t_ms, adc, lid, boot, cal, step_seconds=2, sequence=None):
         duty = on[a:end+1].mean(axis=0)
         edges = np.count_nonzero(np.diff(on[a:end+1].astype(np.int8), axis=0), axis=0)
         q = optical_good[a:end+1].all(axis=0)
-        enums = np.where(q, np.where(edges >= 2, 3, np.where(duty > .9, 2, np.where(duty < .1, 1, 0))), 0)
+        h = end-LED_HISTORY_SAMPLES+1
+        long_edges = np.count_nonzero(np.diff(on[h:end+1].astype(np.int8), axis=0), axis=0)
+        long_link = (np.all((np.diff(t_ms[h:end+1]) >= 40) & (np.diff(t_ms[h:end+1]) <= 60))
+                     and np.all(boot[h:end+1] == boot[end])
+                     and np.all(np.diff(sequence[h:end+1]) == 1))
+        long_good = optical_good[h:end+1].all(axis=0) & long_link
+        # Three edges distinguish repeated switching from a single pulse.
+        # One/two edges are transitional, not evidence of sustained on/off.
+        enums = np.where(long_good, np.where(long_edges >= 3, 3,
+                    np.where(long_edges == 0, np.where(on[end], 2, 1), 0)), 0)
         ti = np.arange(b, end+1, 20)
         temps = temp[ti]
         temp_ok = np.isfinite(temps).all()
@@ -131,7 +161,10 @@ def extract(t_ms, adc, lid, boot, cal, step_seconds=2, sequence=None):
         f = np.column_stack((duty, edges)).ravel().tolist()
         f += [float(temps[-1]) if temp_ok else 0., slope, float(np.maximum(contact[a:end+1], 0).mean())]
         features.append(f)
-        valid.append(bool(q.all() and temp_ok and continuous and contact_ok))
+        # Keep the trained 2 s features unchanged; gate their use with the
+        # longer observation. Warm blinking is reheat/ambiguous, not warming.
+        valid.append(bool(q.all() and (enums != 0).all() and enums[1] != 3
+                          and temp_ok and continuous and contact_ok))
         observations.append(enums)
     return np.asarray(features, np.float32), np.asarray(valid), ends, np.asarray(observations, np.int8)
 

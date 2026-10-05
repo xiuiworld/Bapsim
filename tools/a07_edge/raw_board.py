@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import shutil
 import numpy as np
-from .observations import Calibration, extract, temperature_adc
+from .observations import Calibration, extract, temperature_adc, PREPROCESS_VERSION
 from .model import tree_predict
 
 
@@ -20,7 +20,8 @@ def cases():
                 boot=np.ones(n, dtype=int), seq=i.copy(), cal=cal)
     for name in ('steady_ramp', 'warming', 'cooling', 'blink_and_bounce', 'inverted_led', 'warmup',
                  'missing_led', 'ntc_fault', 'contact_fault', 'time_gap',
-                 'sequence_gap', 'boot_restart', 'hysteresis_edges', 'reversed_ntc'):
+                 'sequence_gap', 'boot_restart', 'hysteresis_edges', 'reversed_ntc',
+                 'gap_midpoint_on', 'gap_midpoint_off', 'missing_midpoint', 'startup_midpoint'):
         d = {k: v.copy() if isinstance(v, np.ndarray) else v for k, v in base.items()}
         if name == 'warming':
             d['adc'][:, :4] = [500, 3000, 500, 500]
@@ -61,6 +62,15 @@ def cases():
         elif name == 'reversed_ntc':
             d['cal'] = replace(cal, ntc_to_ground=False, offset_c=1.25)
             d['adc'][:, 4] = 4095-d['adc'][:, 4]
+        elif name in ('gap_midpoint_on', 'gap_midpoint_off', 'missing_midpoint', 'startup_midpoint'):
+            d['adc'][:1200, 0] = 500 if name == 'gap_midpoint_off' else 3000
+            d['adc'][1200:, 0] = 1750
+            if name.startswith('gap_'):
+                d['t'][1200:] += 200
+            elif name == 'missing_midpoint':
+                d['adc'][1200, 0] = np.nan
+            else:
+                d['adc'][:, 0] = 1750
         yield name, d
 
 
@@ -102,12 +112,15 @@ def prepare(model_path, app):
     lines.append('static const ReplayCase cases[] = {'+','.join(refs)+'};')
     (out/'raw_vectors.h').write_text('\n'.join(lines))
     shutil.copyfile(Path(__file__).with_name('raw_selftest.cpp'), out/'raw_selftest.cpp')
+    shutil.copyfile(Path(__file__).with_name('blink_selftest.hpp'), out/'blink_selftest.hpp')
     cmake = app/'CMakeLists.txt'
     marker = 'target_sources(app PRIVATE src/a07/raw_selftest.cpp)'
     text = cmake.read_text()
     if marker not in text:
         cmake.write_text(text+'\n'+marker+'\n')
-    result = {'model': model['version'], 'preprocess': 'a07-preprocess-v1', 'cases': report,
+    result = {'model': model['version'], 'preprocess': PREPROCESS_VERSION, 'cases': report,
+              'safety': {'rejected': 55, 'accepted': 10, 'recovery': 28},
+              'blink': {'cases': 220, 'windows': 6860},
               'tolerance': {'absolute': 0.00002, 'relative': 0.000002}, 'measured': False}
     (out/'raw_manifest.json').write_text(json.dumps(result, indent=2))
     return result
