@@ -23,6 +23,11 @@ views:
           - 닫힘 계약 기록: `{{ a.get('closed_record_id', '대기') }}`
           {% set r = a.get('result') or {} %}
           - 열림 계약 기록: `{{ r.get('opened_record_id', '대기') }}`
+          - 실행 시나리오: `{{ a.get('scenario', '대기') }}`
+          {% for item in a.get('phase_evidence', []) %}
+          - A07 {{ item.phase }}: `{{ item.record_id }}` · 보고 {{ item.report_counter }} · 품질 {{ item.quality }}
+          {% endfor %}
+          - A07 모델 버전: `{{ r.get('model_version', '대기') }}`
           - 알림 호출 시도: **{{ a.get('mobile_attempted', false) }}**
           - HA 알림 서비스가 요청을 받았다는 상태는 실제 폰 수신 증거가 아닙니다.
   - title: Simulator
