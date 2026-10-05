@@ -34,6 +34,8 @@
 
 GitHub의 MERGEABLE은 텍스트 충돌이 없다는 의미다. 계약 준수·통합 성공·팀 승인과 다르다. B 파일은 최신 원격 커밋을 별도 `local-data/a07/merge-review/b-source`에 export해서 확인했다. 현재 A checkout의 오래된 B 코드로 최신 B 구현을 판정하지 않는다.
 
+후속 점검: A 커밋 `8097491`과 B `b356897`의 merge-tree에서 A 개인 실행계획 문서 한 곳의 충돌을 발견했다. A의 실제 A05/A06·폰 검증 증거와 A07 완료 기록을 보존하고 빠른 개폐 한계를 명시해 해결했다. B 최신 기준을 **A 브랜치에만** 병합해 main #9까지 포함한 통합 코드를 검사했다. main에는 병합하지 않았다. PR 리뷰 diff는 B 브랜치 대비 A 변경으로 제한한다.
+
 ## 3. 데이터 형식 대조
 
 원본은 [Matter·HA 명세](../contracts/Matter_HA_연동_명세.md), [A–B 계약](../contracts/AB_데이터_계약.md), [보드 출력 설계](보드_출력과_상태_추정.md)다.
@@ -118,6 +120,7 @@ GitHub의 MERGEABLE은 텍스트 충돌이 없다는 의미다. 계약 준수·�
 
 - A07 PC 테스트 14개 통과. A05 codec/validation 8개 통과.
 - B 원격 `b356897` export의 전체 unittest 181개 통과. 알림 실패 테스트에서 출력되는 ConnectionError 로그는 예상 모의 실패이며 최종 테스트 결과는 OK.
+- 문서 충돌 해결 후 실제 B+A 통합 checkout에서도 전체 unittest 181개와 같은 4가지 계약 대조를 다시 통과했다. main 병합 승인이나 아직 없는 publisher의 실기 통합 검증은 아니다.
 - `python -m tools.a07_edge.check_ab_contract --b-root <B 소스>`: inactive/cooking/warming/unknown 4개 후보 snapshot의 codec, B 변환, 온도 단위, 점수·모델 버전, test의 live 거부, 잘못된 출처 거부, 중복 무시, 독립 센서 오류 처리 통과.
 - 이는 **후보 데이터와 B 함수의 오프라인 대조**다. 아직 없는 publisher나 B의 전체 시험 분석 경로가 통합됐다는 증거가 아니다.
 - 기존 실기 결과는 [A07 기록](../hardware/A07_합성학습_검증.md), 이전 개폐→폰 결과는 [A06 기록](../hardware/A06_HA_OS_배포_검증.md) 참조.

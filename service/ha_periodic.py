@@ -74,7 +74,8 @@ def bind_periodic(
                 latest_open = usage_model.profile(*key, as_of)["last_lid_open_at"]
                 if latest_open and datetime.fromisoformat(latest_open) > datetime.fromisoformat(decision["deferred_from"]):
                     continue
-                show("auxiliary_deferral", "expired", {"device_id": decision["device_id"]})
+                show("auxiliary_deferral", "expired", {"source": decision["source"],
+                                                       "device_id": decision["device_id"]})
                 for update in workflow.ingest(cooker_only(decision)):
                     dispatch_workflow(update)
         if observations is not None and state.last_observation_prune_day != now.date():

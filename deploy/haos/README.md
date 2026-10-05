@@ -2,8 +2,8 @@
 
 ## Deployment boundary
 
-Use commit `6839bfa` or a later reviewed commit containing this directory and the
-A05 bridge. This deployment chooses **HA internal analysis mode**. B's normalizer,
+Use the exact commit reported for PR #10's A05 connection-test delivery (run
+`git rev-parse HEAD` after checkout). This deployment chooses **HA internal analysis mode**. B's normalizer,
 analysis, output, state and notification code runs in the Bapsim HA integration;
 Docker Desktop runs **only Mosquitto**. Do not run the repository root
 `compose.yaml` or `compose.standalone.yaml` for this installation: both create
@@ -36,8 +36,9 @@ whole `infrastructure/home_assistant/config` directory over the HA OS config.
   configuration service for changing that window; B must provide one if a
   different window is required.
 * Optional mobile target: identify a registered `notify.mobile_app_*` service
-  for a test phone. Set it through `bapsim.set_notification_target` only after
-  validating its owner. Leave it unset for the A05 test-origin check.
+  for a test phone. `bapsim.set_notification_target` accepts that full name or
+  its `mobile_app_*` suffix. Validate its owner first. Leave it unset for the
+  A05 test-origin check.
 
 ## Install
 
@@ -96,41 +97,46 @@ bapsim:
 Do not set `external_service: true`. Validate HA configuration and restart
 HA Core. Confirm Bapsim services and `sensor.bapsim_matter_input` exist.
 Keep the existing `bapsim_matter_probe` installation that produces A05 sensors.
+The generated ZIP contains the Bapsim integration code, **not** the lab
+dashboard YAML. If A uses the repository lab dashboard, update the HA OS copy
+of `dashboards/bapsim_lab.yaml` from
+`infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml` at the same
+commit. Merge the simulator recorder entities from the repository
+`configuration.yaml` only if A wants their history; do not overwrite the HA
+OS configuration. The Simulator view now has separate analysis cards.
 
-## A05 test-origin verification
-
-Confirm `sensor.a05_reportcounter` (or its actual entity ID) updates and its
-attributes show `input_kind: test`, `transport: matter`, the expected entry,
-node and SnapshotPacked path. In HA Developer Tools, call:
+In internal mode, simulator evaluations update `sensor.bapsim_simulation_*`
+cards and the simulation MQTT prefix; they do not replace the live
+`sensor.bapsim_output_state`. Both output cards are created at startup.
+Before a fresh evaluation, live displays `awaiting_matter`, simulation
+displays `waiting`, and `sensor.bapsim_mqtt_output=waiting` means no result
+has yet been published. Each output card switches to `expired` at its own
+`valid_until` (180 seconds after generation). Both MQTT discovery sensors
+also use `expire_after: 180`. Verify this with a simulator result and then
+call B's bounded test service in HA Developer Tools:
 
 ```yaml
-action: bapsim.register_a05_snapshot
+action: bapsim.test_pause_simulation_output
 data:
-  device_id: cooker_a_test
-  entity_id: sensor.a05_reportcounter
-  matter_entry_id: <this HA's Matter entry ID>
-  node_id: <this HA's node ID>
+  duration_seconds: 240
 ```
 
-Use the actual IDs, including a numeric node ID. A valid registration should
-show the bound A05 source in `sensor.bapsim_matter_input`. Its source is
-verified, but `inputs_available` stays false and the overall readiness is
-`connection_unverified` while reports have `input_kind=test`. No A05 raw
-`lid_state`/`availability=online` event is forwarded to B's live personal
-learning or live notifications. An incorrect entry/node/entity binding must
-be rejected by the registration service. Do not change the probe's origin to
-`live` or turn off provenance checks to make this test pass.
+It pauses **only simulation result publication**; analysis and live output
+continue. About 180 seconds after the last result, the simulation output card
+must show `expired`, and the simulation MQTT discovery sensor must expire.
+Publication resumes automatically after 240 seconds or an HA restart. This
+checks the consumer expiry path using the B simulator, not A05 board ingestion.
 
-This is currently a **test-input rejection test**, not a full test-origin
-ingestion test. B's existing bridge accepts only a verified `live` report.
-If A05 needs test-origin data to traverse the B raw-event boundary, B must
-implement and verify a separate test source/isolated storage and notification
-path. A should not reimplement B's collection or normalization code.
+## A05 real-board development test
 
-For the remaining pipeline, use B's offline simulation command
-`python -m tools.simulate_notification_flow` or the simulator in a separately
-identified test household. Offline simulation sends nothing to HA/MQTT/phone.
-Do not present it as Matter-to-phone proof.
+The exact A deployment and button procedure is in
+[`A05_CONNECTION_TEST.md`](A05_CONNECTION_TEST.md). It uses the existing A05
+receiver and firmware. Its explicit ten-minute test run accepts verified
+`input_kind=test` reports in a separate B contract processor, requires a fresh
+closed→open board sequence, persists records under `bapsim_test_runs/`, and
+attempts one notification to the chosen test phone. The live bridge still
+rejects test reports, and the simulator's mobile block remains in force. This
+is a connection test, not seven-day personal learning or AI performance proof.
 
 ## Persistence, stop, backup and restore
 
@@ -138,11 +144,16 @@ MQTT topics are `bapsim/v1/<household_id>/...` for Matter and
 `bapsim/simulation/v1/<household_id>/...` for simulator. Use different
 household IDs and mobile targets for separate installations. The HA internal
 state store itself contains both sources, so topic separation alone is not
-an independent data store. A05 test reports are rejected before that store.
+an independent data store. Physical separation is not a requirement of the
+current development contract; independent deletion, backup or access control
+of test and live data would require a separate B storage design. A05 test
+reports are rejected before the live model store.
 
 HA OS stores Bapsim state in `.storage/bapsim.pipeline`, raw events in
 `bapsim_events/`, normalized observations in `bapsim_observations/` (90 days),
-and service records in `bapsim_records/` (180 days), all under its config
+service records in `bapsim_records/` (180 days), live A05 contract records in
+`bapsim_contract_observations/` (90 days), and explicit A05 test runs in
+`bapsim_test_runs/` (7 days), all under its config
 directory. Keep HA's own database/configuration and Matter state in the
 normal HA backup. Mosquitto's persisted messages and password hash are in
 `local-data/a06/mosquitto/` on Windows. `.env` is local and ignored by Git.
@@ -168,9 +179,9 @@ HA instances from one restored Matter Fabric.
 
 ## Acceptance boundary
 
-On the current test board, passing evidence is: HA receives A05 snapshots,
-Bapsim recognizes the configured probe provenance, rejects `input_kind=test`
-for live analysis, and MQTT/HA status infrastructure is reachable. Full
-Matter→B live analysis→phone delivery requires a supported live producer and
-separate end-to-end evidence. The A05 receiver polls every five seconds;
-rapid intermediate lid transitions are not guaranteed to appear in HA.
+On the current test board, passing evidence is a matching run ID across two
+real board reports, B test contract records, the test result, HA mobile service
+acceptance, and A's observed phone receipt and detail navigation. Live
+personal-analysis performance still requires supported live input and separate
+long-term evidence. The A05 receiver polls every five seconds; brief lid
+transitions are not guaranteed to appear in HA.
