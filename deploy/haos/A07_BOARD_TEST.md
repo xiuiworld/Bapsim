@@ -48,7 +48,19 @@ SDK 환경이 잡힌 PowerShell에서 기존 A05 절차대로 ZAP과 앱을 빌�
 ```powershell
 west zap-generate --full -z local-data/a05/a07-phase-test/src/default_zap/contact_sensor.zap -j local-data/a05/a07-phase-test/src/default_zap/zcl.json
 west build --sysbuild -b nrf54lm20dk/nrf54lm20b/cpuapp local-data/a05/a07-phase-test -d local-data/a05/a07-phase-test/build -- -DCONFIG_CHIP_DEVICE_VENDOR_ID=65521
-west flash -d local-data/a05/a07-phase-test/build --domain probe --no-rebuild --dev-id BOARD_SERIAL
+Get-Content local-data/a05/a07-phase-test/build/domains.yaml
+```
+
+`domains.yaml`의 `domains` 목록에서 `build_dir`가 이 앱의 빌드 폴더를
+가리키는 **앱 도메인**을 확인한다. 이 폴더 이름대로 생성된 빌드에서는
+`name: a07-phase-test`가 예상되며, 이전 `probe` 앱의 도메인을 재사용하지
+않는다. `default` 값이나 MCUboot·factory data 도메인을 추측해 기록하지
+말고, 실제 출력의 앱 `name`이 아래와 같을 때에만 실행한다. 이름이 다르면
+`--domain` 값을 확인된 앱 이름으로 바꾸고, signed HEX 주소가 앱 슬롯에만
+들어가는지 기존 A05 절차대로 확인한다.
+
+```powershell
+west flash -d local-data/a05/a07-phase-test/build --domain a07-phase-test --no-rebuild --dev-id BOARD_SERIAL
 ```
 
 보드가 재부팅한 뒤 기존 Node 4와 Matter entry
