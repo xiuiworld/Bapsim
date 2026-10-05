@@ -138,6 +138,12 @@ attempts one notification to the chosen test phone. The live bridge still
 rejects test reports, and the simulator's mobile block remains in force. This
 is a connection test, not seven-day personal learning or AI performance proof.
 
+For the next sensor-free integration, use
+[`A07_BOARD_TEST.md`](A07_BOARD_TEST.md). It runs an explicitly started
+synthetic raw replay on the real board, publishes A07 model results through
+the verified test-origin A05 path, and selects `a07_phase_sequence` in B.
+It does not qualify the model for live use.
+
 ## Persistence, stop, backup and restore
 
 MQTT topics are `bapsim/v1/<household_id>/...` for Matter and

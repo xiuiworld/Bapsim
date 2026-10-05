@@ -66,8 +66,14 @@ unregister_a05_snapshot:
           domain: sensor
 start_a05_connection_test:
   name: Start one A05 board-to-phone development test
-  description: Explicitly arm a ten-minute test-origin run for one registered A05 probe and one chosen test phone. A fresh closed then open board report is required; at most one mobile service call is made. Live learning and alerts are unaffected.
+  description: Explicitly arm a ten-minute test-origin run for one registered A05 probe and one chosen test phone. Default requires fresh closed then open; a07_phase_sequence requires model-bearing inactive, cooking, warming, unknown reports. At most one mobile call. Live learning and alerts are unaffected.
   fields:
+    scenario:
+      selector:
+        select:
+          options:
+            - lid_connection
+            - a07_phase_sequence
     device_id:
       required: true
       selector:

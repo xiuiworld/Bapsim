@@ -21,6 +21,10 @@ struct Sample {
 struct Result {
     float x[11];
     uint8_t led[4]; // unknown=0, off=1, on=2, blinking=3
+    uint8_t led_quality[4]; // channel observations remain independent of model validity
+    float surface_c; // latest 1 Hz candidate, not the model's 60 s slope
+    int8_t lid; // debounced; -1 is unknown
+    bool surface_good, lid_good;
     bool valid;
 };
 class Preprocessor {
@@ -107,6 +111,7 @@ public:
             double duty=on_count[j]/40.0;
             out.x[2*j]=static_cast<float>(duty); out.x[2*j+1]=edges[j];
             out.led[j]=!(good&(1u<<j)) ? 0 : edges[j]>=2 ? 3 : duty>0.9 ? 2 : duty<0.1 ? 1 : 0;
+            out.led_quality[j]=(good&(1u<<j)) ? 1 : 0;
         }
         double xs[60], ts[60], xm=0, tm=0;
         bool temp_ok=true;
@@ -124,6 +129,10 @@ public:
             out.x[9]=den>0 ? static_cast<float>(num/den) : NAN;
         }
         out.x[10]=lid_count/40.0f;
+        out.surface_good=std::isfinite(ts[59]);
+        out.surface_c=out.surface_good ? static_cast<float>(ts[59]) : NAN;
+        out.lid=at(count-1).contact;
+        out.lid_good=out.lid>=0;
         out.valid=good==15 && temp_ok && continuous && contact_ok;
         return true;
     }
