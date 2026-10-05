@@ -101,21 +101,26 @@ class A05ConnectionTest:
         # The old rule-based fixture has method=rule/version=test-fixture-only.
         # Evidence here must come from the A07 model-bearing board publisher.
         version = raw["ModelVersion"]
-        if raw["InferenceMethod"] != 1 or not version.startswith("a07-"):
-            return None
         item = next((r for r in records if r["signal"] == "cooker_phase"), None)
-        if item is None:
-            return None
+        model_bearing = raw["InferenceMethod"] == 1 and version.startswith("a07-")
         wanted = PHASE_SEQUENCE[len(self.phase_evidence)]
-        accepted = (item["value"] == wanted and
+        accepted = (model_bearing and item is not None and
+                    item["value"] == wanted and
                     item["quality"] == ("unknown" if wanted is None else "good") and
                     (not self.phase_evidence or item["kind"] in ("change", "quality")) and
                     (self.phase_stream is None or item["stream_id"] == self.phase_stream) and
                     (self.model_version is None or version == self.model_version) and
-                    (not self.phase_evidence or raw["ReportCounter"] !=
-                     self.phase_evidence[-1]["report_counter"]))
+                    (not self.phase_evidence or raw["ReportCounter"] ==
+                     self.phase_evidence[-1]["report_counter"] + 1))
         if not accepted:
-            return None
+            self.phase_evidence.clear()
+            self.phase_stream = self.model_version = None
+            self.phase = "await_inactive"
+            # A new replay may start with the same report that broke the old one.
+            if not (model_bearing and item is not None and item["value"] == "inactive" and
+                    item["quality"] == "good"):
+                return None
+            wanted = PHASE_SEQUENCE[0]
         if self.phase_stream is None:
             self.phase_stream, self.model_version = item["stream_id"], version
         self.phase_evidence.append({"phase": wanted if wanted is not None else "unknown",

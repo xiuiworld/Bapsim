@@ -18,6 +18,49 @@ from tests.test_ha_service_integration import COMPONENT, FakeHass, ha_modules
 
 
 class A05ConnectionTestTests(TestCase):
+    def test_a07_phase_run_restarts_after_out_of_order_report(self):
+        now = datetime.now(timezone.utc)
+        run = A05ConnectionTest("home", "board", "sensor.a05_reportcounter",
+                                "run-replay", now, scenario="a07_phase_sequence")
+        for counter, phase in enumerate((1, 2, 1, 2, 3, 0), start=1):
+            raw = report(counter, counter, False, "test")[1].attributes["raw_snapshot"]
+            raw.update(CookerPhase=phase, InferenceMethod=1,
+                       ModelVersion="a07-tree-v1-test",
+                       InferenceScore=9000 if phase else None)
+            raw["SignalQuality"]["CookerPhase"] = 1 if phase else 0
+            _, result = run.accept(raw, now + timedelta(seconds=counter * 15), now)
+            if counter < 6:
+                self.assertIsNone(result)
+            else:
+                self.assertEqual([e["phase"] for e in result["phase_evidence"]],
+                                 ["inactive", "cooking", "warming", "unknown"])
+                self.assertEqual([e["report_counter"] for e in result["phase_evidence"]],
+                                 [3, 4, 5, 6])
+        self.assertEqual(run.phase, "board_input_confirmed")
+
+    def test_a07_phase_run_restarts_when_model_version_changes(self):
+        now = datetime.now(timezone.utc)
+        run = A05ConnectionTest("home", "board", "sensor.a05_reportcounter",
+                                "run-version", now, scenario="a07_phase_sequence")
+        for counter, phase, version in ((1, 1, "a07-first"), (2, 2, "a07-first"),
+                                        (3, 3, "a07-second"), (4, 0, "a07-second"),
+                                        (5, 1, "a07-second"), (6, 2, "a07-second"),
+                                        (7, 3, "a07-second"), (8, 0, "a07-second")):
+            raw = report(counter, counter, False, "test")[1].attributes["raw_snapshot"]
+            raw.update(CookerPhase=phase, InferenceMethod=1, ModelVersion=version,
+                       InferenceScore=9000 if phase else None)
+            raw["SignalQuality"]["CookerPhase"] = 1 if phase else 0
+            _, result = run.accept(raw, now + timedelta(seconds=counter * 15), now)
+            if counter == 3:
+                self.assertEqual(run.phase, "await_inactive")
+                self.assertEqual(run.phase_evidence, [])
+            if counter < 8:
+                self.assertIsNone(result)
+            else:
+                self.assertEqual(result["model_version"], "a07-second")
+                self.assertEqual([e["report_counter"] for e in result["phase_evidence"]],
+                                 [5, 6, 7, 8])
+
     def test_a07_phase_run_requires_model_bearing_four_stage_board_reports(self):
         now = datetime.now(timezone.utc)
         run = A05ConnectionTest("home", "board", "sensor.a05_reportcounter", "run-ai", now,
