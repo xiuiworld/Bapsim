@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="830" viewBox="0 0 1000 830">
+<rect width="1000" height="830" fill="white"/>
+<text x="40" y="28" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="34" fill="#193047">1. 광센서 하나 연결하기</text>
+<text x="40" y="80" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="22" fill="#4c6072">연결 원리 그림 — 실제 보드·브레드보드 구멍 위치가 아닙니다.</text>
+<text x="230" y="137" dominant-baseline="text-before-edge" text-anchor="middle" font-family="Malgun Gothic, sans-serif" font-size="26" fill="#bc3f42">전원 VS</text>
+<text x="440" y="143" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="21" fill="#4c6072">보드 입력 전압과 맞춘 전원 · 인출 위치 미확정</text>
+<polyline points="230,177 230,231" fill="none" stroke="#bc3f42" stroke-width="4" stroke-linejoin="round"/>
+<rect x="140" y="232" width="180" height="68" rx="12" fill="#fff4d4" stroke="#bea157" stroke-width="2"/>
+<circle cx="169" cy="266" r="17" fill="#d0a95d"/>
+<text x="199" y="250" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="24" fill="#193047">GL5528</text>
+<text x="365" y="237" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="25" fill="#193047">빛을 받는 광센서</text>
+<text x="365" y="274" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="22" fill="#4c6072">LED 앞에 붙일 부품</text>
+<polyline points="230,300 230,390" fill="none" stroke="#007b85" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="230" cy="390" r="9" fill="#007b85"/>
+<text x="40" y="354" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="22" fill="#007b85">여기서 선이</text>
+<text x="40" y="387" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="22" fill="#007b85">갈라져요 →</text>
+<polyline points="230,390 718,390" fill="none" stroke="#007b85" stroke-width="4" stroke-linejoin="round"/>
+<rect x="399" y="366" width="144" height="48" rx="9" fill="#fff0d4" stroke="#866e47" stroke-width="2"/>
+<polyline points="434,368 434,412" fill="none" stroke="#79502d" stroke-width="8" stroke-linejoin="round"/>
+<polyline points="454,368 454,412" fill="none" stroke="#272e37" stroke-width="8" stroke-linejoin="round"/>
+<polyline points="482,368 482,412" fill="none" stroke="#dc8628" stroke-width="8" stroke-linejoin="round"/>
+<polyline points="518,368 518,412" fill="none" stroke="#79502d" stroke-width="8" stroke-linejoin="round"/>
+<text x="471" y="430" dominant-baseline="text-before-edge" text-anchor="middle" font-family="Malgun Gothic, sans-serif" font-size="22" fill="#4c6072">10kΩ 직렬 저항</text>
+<rect x="720" y="305" width="240" height="333" rx="12" fill="#eaf2f7" stroke="#c8d3df" stroke-width="2"/>
+<text x="840" y="324" dominant-baseline="text-before-edge" text-anchor="middle" font-family="Malgun Gothic, sans-serif" font-size="28" fill="#193047">개발 보드</text>
+<circle cx="737" cy="390" r="7" fill="#007b85"/>
+<text x="848" y="378" dominant-baseline="text-before-edge" text-anchor="middle" font-family="Malgun Gothic, sans-serif" font-size="24" fill="#193047">ADC 입력</text>
+<text x="840" y="440" dominant-baseline="text-before-edge" text-anchor="middle" font-family="Malgun Gothic, sans-serif" font-size="22" fill="#193047">이 선의 신호를</text>
+<text x="840" y="474" dominant-baseline="text-before-edge" text-anchor="middle" font-family="Malgun Gothic, sans-serif" font-size="22" fill="#193047">보드가 읽어요</text>
+<text x="840" y="561" dominant-baseline="text-before-edge" text-anchor="middle" font-family="Malgun Gothic, sans-serif" font-size="24" fill="#193047">GND 핀</text>
+<circle cx="840" cy="622" r="7" fill="#43566a"/>
+<polyline points="230,390 230,510" fill="none" stroke="#007b85" stroke-width="4" stroke-linejoin="round"/>
+<rect x="158" y="514" width="144" height="48" rx="9" fill="#fff0d4" stroke="#866e47" stroke-width="2"/>
+<polyline points="193,516 193,560" fill="none" stroke="#79502d" stroke-width="8" stroke-linejoin="round"/>
+<polyline points="213,516 213,560" fill="none" stroke="#272e37" stroke-width="8" stroke-linejoin="round"/>
+<polyline points="241,516 241,560" fill="none" stroke="#dc8628" stroke-width="8" stroke-linejoin="round"/>
+<polyline points="277,516 277,560" fill="none" stroke="#79502d" stroke-width="8" stroke-linejoin="round"/>
+<text x="355" y="521" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="25" fill="#193047">10kΩ 저항</text>
+<polyline points="230,562 230,678" fill="none" stroke="#43566a" stroke-width="4" stroke-linejoin="round"/>
+<polyline points="230,678 840,678 840,629" fill="none" stroke="#43566a" stroke-width="4" stroke-linejoin="round"/>
+<text x="480" y="691" dominant-baseline="text-before-edge" text-anchor="middle" font-family="Malgun Gothic, sans-serif" font-size="23" fill="#43566a">GND — 센서 회로와 보드의 공통 접지</text>
+<text x="40" y="751" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="24" fill="#193047">빛이 밝아지면 → 가운데 전압이 올라감 · 같은 회로 4개 사용</text>
+<text x="40" y="792" dominant-baseline="text-before-edge" text-anchor="start" font-family="Malgun Gothic, sans-serif" font-size="20" fill="#4c6072">색은 그림 구분용입니다. 실제 점퍼선 색과 무관하게 연결 지점을 확인하세요.</text>
+</svg>
