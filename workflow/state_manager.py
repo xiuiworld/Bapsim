@@ -39,6 +39,7 @@ class _State:
     interval_hours: float | None = None
     next_reminder_at: str | None = None
     last_lid_open_at: str | None = None
+    evidence_ids: tuple[str, ...] = ()
 
 
 class DetectionStateManager:
@@ -73,14 +74,17 @@ class DetectionStateManager:
                               state.reason_codes, notification_id)
 
     @staticmethod
-    def _evidence(detection: Mapping[str, object]) -> tuple[str | None, float | None]:
+    def _evidence(detection: Mapping[str, object]) -> tuple[str | None, float | None, tuple[str, ...]]:
         evidence = detection.get("evidence")
         if not isinstance(evidence, Mapping):
-            return None, None
+            return None, None, ()
         window = evidence.get("window_end")
         hours = evidence.get("threshold_hours")
         interval = float(hours) if isinstance(hours, (int, float)) and hours > 0 else None
-        return window if isinstance(window, str) else None, interval
+        ids = evidence.get("evidence_ids")
+        linked = tuple(dict.fromkeys(item for item in ids if isinstance(item, str) and item))[:64] \
+            if isinstance(ids, (list, tuple)) else ()
+        return window if isinstance(window, str) else None, interval, linked
 
     def ingest(self, detection: Mapping[str, object]) -> list[WorkflowUpdate]:
         source = str(detection["source"])
@@ -91,7 +95,7 @@ class DetectionStateManager:
         key = (source, device_id)
         state = self._states.setdefault(key, _State())
         reasons = tuple(str(item) for item in detection.get("reason_codes", []))
-        window, interval = self._evidence(detection)
+        window, interval, evidence_ids = self._evidence(detection)
 
         if kind == "check_required":
             if state.status in {"notified", "checking"}:
@@ -112,6 +116,7 @@ class DetectionStateManager:
                     return []
                 state.pending_window = window
                 state.interval_hours = interval
+                state.evidence_ids = evidence_ids
                 state.pending_action = "reminder_requested"
                 return [self._update(source, device_id, state, "reminder_requested", as_of)]
             if state.status == "check_required":
@@ -141,6 +146,7 @@ class DetectionStateManager:
             state.pending_action = "notify_requested"
             state.interval_hours = interval
             state.next_reminder_at = None
+            state.evidence_ids = evidence_ids
             return [self._update(source, device_id, state, "notify_requested", as_of)]
 
         if kind in {"no_expectation", "learning"}:
@@ -189,7 +195,9 @@ class DetectionStateManager:
         state.notification_count += 1
         state.last_notification_window = state.pending_window
         state.pending_action = None
-        if state.interval_hours is not None:
+        if self.reminder_cadence is not None:
+            state.next_reminder_at = (self._time(as_of) + self.reminder_cadence).isoformat()
+        elif state.interval_hours is not None:
             state.next_reminder_at = (self._time(as_of) + timedelta(hours=state.interval_hours)).isoformat()
         return self._update(source, device_id, state, action, as_of)
 
@@ -239,6 +247,11 @@ class DetectionStateManager:
         for item in stored:
             state = _State(**{name: item[name] for name in _State.__dataclass_fields__ if name in item})
             state.reason_codes = tuple(state.reason_codes)
+            state.evidence_ids = tuple(state.evidence_ids)
+            if (self.reminder_cadence is not None and state.next_reminder_at is None and
+                    state.last_notified_at and state.status in {"notified", "checking"}):
+                state.next_reminder_at = (self._time(state.last_notified_at) +
+                                          self.reminder_cadence).isoformat()
             if state.notification_count == 0 and state.last_notified_at and state.status in {"notified", "checking"}:
                 state.notification_count = 1
             if state.status == "check_required" and state.incident_id and state.pending_action is None:

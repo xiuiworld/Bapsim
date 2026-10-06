@@ -7,10 +7,13 @@ dominate them. Missing reports and declared absence never become inactivity.
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from datetime import date, datetime, time, timedelta, timezone
 from math import atan2, ceil, cos, exp, log, pi, sin, sqrt
 from statistics import NormalDist, median
 from typing import Mapping
+
+from .evidence import usage_group_id
 
 
 KST = timezone(timedelta(hours=9))
@@ -146,6 +149,18 @@ class PersonalUsageModel:
     def grouped_open_times(self, source: str, device_id: str) -> tuple[str, ...]:
         """Expose observed usage groups without requiring a persisted snapshot."""
         return tuple(at.isoformat() for at in self._device(source, device_id)["opens"])
+
+    @staticmethod
+    def _group_evidence(state: dict[str, object], source: str, device_id: str,
+                        openings: list[datetime]) -> list[str]:
+        """Link used openings to accepted, persisted group starts."""
+        groups = state["opens"]
+        starts = set()
+        for opening in openings:
+            index = bisect_right(groups, opening) - 1
+            if index >= 0:
+                starts.add(groups[index])
+        return [usage_group_id(source, device_id, at.isoformat()) for at in sorted(starts)[-64:]]
 
     def dump_state(self) -> dict[str, object]:
         devices = []
@@ -427,10 +442,11 @@ class PersonalUsageModel:
         return decision_at - last > limit + timedelta(hours=1)
 
     def _profile(self, state: dict[str, object], day: date, slot: int, center: float,
-                 now: datetime, history_days: int) -> dict[str, object]:
+                 now: datetime, history_days: int, source: str, device_id: str) -> dict[str, object]:
         count = positive = group_count = group_positive = weekday_count = weekday_positive = 0.0
         positive_days = 0
         covered_days = 0
+        evidence_times = []
         for offset in range(1, history_days + 1):
             previous = day - timedelta(days=offset)
             start, end = self._window(previous, center)
@@ -440,6 +456,8 @@ class PersonalUsageModel:
             flagged = state["evaluations"].get(f"{previous.isoformat()}|{slot}") == "check_required"
             weight = 0.15 if flagged else 1.0
             used = self._used(state, start, end)
+            if used:
+                evidence_times.extend(at for at in state["raw_opens"] if start <= at < end)
             positive_days += int(used)
             count += weight
             positive += weight * used
@@ -467,6 +485,7 @@ class PersonalUsageModel:
                                   and positive_days >= 2),
             "schedule_excluded": bool(configured and not expected_today and weekday_positive < 3),
             "initial_configured": configured is not None,
+            "evidence_ids": self._group_evidence(state, source, device_id, evidence_times),
         }
 
     def evaluate(self, source: str, device_id: str, as_of: str, *, online: bool,
@@ -486,7 +505,8 @@ class PersonalUsageModel:
                 evaluation_key = f"{day.isoformat()}|{index}"
                 if evaluation_key in state["evaluations"]:
                     continue
-                profile = self._profile(state, day, index, center, now, history_days)
+                profile = self._profile(state, day, index, center, now, history_days,
+                                        source, device_id)
                 cadence_supported = False
                 if away or self._away_window(start, decision_at):
                     status, reason, score = "away", "AWAY_DECLARED", None
@@ -541,7 +561,7 @@ class PersonalUsageModel:
         state = self._device(source, device_id)
         day = now.astimezone(KST).date()
         centers, history_days = self._centers(state, day)
-        windows = [self._profile(state, day, index, center, now, history_days)
+        windows = [self._profile(state, day, index, center, now, history_days, source, device_id)
                    for index, center in enumerate(centers)]
         recent_opens = [at for at in state["opens"] if now - timedelta(hours=24) < at <= now]
         previous_opens = [at for at in state["opens"] if at <= now]
@@ -577,8 +597,12 @@ class PersonalUsageModel:
         if clock_available and not self.interval_with_clock_windows:
             return None
         opens = [at for at in state["opens"] if at <= now and not self._away_at(at)]
-        intervals = [right - left for left, right in zip(opens, opens[1:])
-                     if self._covered(state, left, right, now) and not self._away_window(left, right)]
+        sampled_opens = set()
+        intervals = []
+        for left, right in zip(opens, opens[1:]):
+            if self._covered(state, left, right, now) and not self._away_window(left, right):
+                intervals.append(right - left)
+                sampled_opens.update((left, right))
         if len(intervals) < self.min_covered_days:
             return None
         intervals.sort()
@@ -615,6 +639,8 @@ class PersonalUsageModel:
             "reason_codes": ["UNUSUAL_USE_GAP"] if status == "check_required" else [],
             "score": None,
             "evidence": {"model": "personal_interval_v1", "sample_count": len(intervals),
+                         "evidence_ids": self._group_evidence(
+                             state, source, device_id, sorted(sampled_opens | {last})),
                          "last_use_at": last.isoformat(), "p95_hours": round(p95.total_seconds() / 3600, 2),
                          "threshold_hours": round(limit.total_seconds() / 3600, 2),
                          "interval_quantile": self.interval_quantile,
@@ -634,6 +660,7 @@ class PersonalUsageModel:
         if not online or away:
             return None
         counts: list[tuple[date, int]] = []
+        evidence_times = []
         for offset in range(28, 0, -1):
             sample_day = now.astimezone(KST).date() - timedelta(days=offset)
             start = datetime.combine(sample_day, time.min, KST).astimezone(timezone.utc)
@@ -641,6 +668,7 @@ class PersonalUsageModel:
             if not self._covered(state, start, end, now) or self._away_window(start, end):
                 continue
             counts.append((sample_day, self._daily_group_count(state, start, end)))
+            evidence_times.extend(at for at in state["raw_opens"] if start <= at < end)
         recent = [count for sample_day, count in counts if day - timedelta(days=6) <= sample_day <= day]
         reference = [count for sample_day, count in counts if day - timedelta(days=27) <= sample_day < day - timedelta(days=6)]
         if len(recent) < 5 or len(reference) < 10:
@@ -676,6 +704,7 @@ class PersonalUsageModel:
             "reason_codes": [reason],
             "score": round(1 - recent_rate / reference_rate, 4) if reference_rate else None,
             "evidence": {"model": "personal_usage_v1", "assessment_type": "declining_usage",
+                         "evidence_ids": self._group_evidence(state, source, device_id, evidence_times),
                          "recent_days": len(recent), "reference_days": len(reference),
                          "recent_rate": round(recent_rate, 4), "reference_rate": round(reference_rate, 4)},
         }

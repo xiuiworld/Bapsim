@@ -33,6 +33,8 @@ UTF-8 JSON `schema_version=0.1.0`. 한 가정에 대한 현재 상태를 한 객
 
 assessment 필수 필드: `assessment_id`(string), `type`(`usage_gap` 또는 `declining_usage`), `status`(`watch`/`deferred`/`notified`/`resolved`), `reason_codes`(string 배열), `evidence_ids`(관측/행동 ID 배열), `next_evaluate_at`(UTC 또는 null).
 
+현재 개인 사용 모델의 `evidence_ids`는 해당 판단의 기준 계산에 실제 들어간 **유효한 사용 묶음**의 안정적인 `usage_group:<hash>` ID를 최근 64개까지 담는다. HA 내부 모드의 `usage_group` 서비스 기록에도 같은 `record_id`를 보존하고, 독립 작업자 모드에서는 영속 모델의 묶음 시작 시각에서 같은 ID를 재생성한다. 64개 제한 때문에 이 배열은 모든 근거의 완전한 목록이 아니다. 초기 설정값이나 관측 범위만으로 판단해 연결할 사용 묶음이 없으면 빈 배열이 맞으며, 없는 관측을 만들어 넣지 않는다. `sensor_issues`는 밥솥 관측이 끊기면 `cooker_data_unavailable`을 담는다. `next_evaluate_at`은 상태 관리자가 알고 있는 다음 알림 정책 검토 가능 시각(간격 공백 또는 장기 감소의 재안내)만 담는다. 일반 창 평가의 다음 정확한 시각을 모를 때와 해소된 판단은 null이다. 이 값은 실제 폰 발송 예약이나 보장을 뜻하지 않는다.
+
 reason_codes의 첫 목록은 `expected_window_missed`, `unusual_gap`, `declining_frequency`, `auxiliary_activity`, `quiet_hours`, `observation_gap`, `usage_resumed`다. 상태 모델은 각 판단별로 관리하고 learning/observation을 하나의 상태 enum으로 합치지 않는다. 목록에 없는 코드를 임의로 의미 추정하지 않는다.
 
 결과 만료는 **게시 주기 60초, 유효 180초**를 시작값으로 제안한다. 변화가 없어도 게시 시각과 만료를 갱신한다. 계산 프로세스가 멈췄는데 오래된 ‘정상’이 그대로 보이는 것을 방지하려는 서비스 기준이며 센서 보고 주기와 다르다.
