@@ -3,6 +3,7 @@
 #include "a07/a07_snapshot.hpp"
 #include "a07/a07_model.h"
 #include "a05_history.hpp"
+#include "temperature.hpp"
 namespace a08 {
 // Single producer. Caller serializes access with the Matter consumer.
 class Pipeline {
@@ -13,13 +14,14 @@ class Pipeline {
     uint32_t boot=0, counter=0;
     bool seen=false, calibrated=false;
     double adc_max=4095;
+    a07::Calibration temperature_cal{};
 public:
     a05::History history;
     uint8_t frame[110]{};
     size_t length=0;
     uint32_t reports() const { return counter; }
     bool reset(const a07::Calibration &cal) {
-        calibrated=processor.reset(cal); adc_max=cal.adc_max; latest={}; latest.lid=-1;
+        calibrated=processor.reset(cal); temperature_cal=cal; adc_max=cal.adc_max; latest={}; latest.lid=-1;
         stable=candidate=-1; seen=false; counter=0; length=0;
         history=a05::History{}; return calibrated;
     }
@@ -37,6 +39,9 @@ public:
         }
         a07::Result result{};
         if(calibrated && processor.push(s,result)) latest=result;
+        const double temp=calibrated ? temperature_c(s.adc[4],temperature_cal) : static_cast<double>(NAN);
+        latest.surface_good=std::isfinite(temp);
+        latest.surface_c=latest.surface_good ? static_cast<float>(temp) : NAN;
         // Immediate faults invalidate cached inference before the next 2 s result.
         bool faulty=false;
         for(int j=0;j<5;j++) {

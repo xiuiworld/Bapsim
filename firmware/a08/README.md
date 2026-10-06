@@ -1,7 +1,7 @@
 # A08 센서 제품 앱 통합
 
 2026-10-06. nRF Connect SDK 3.4.1 / nrf54lm20dk/nrf54lm20b/cpuapp.
-센서 입고 전 제품 경로의 통합 소스다. 실측 검증·live 승인은 아직 하지 않았다.
+제품 경로의 통합 소스다. NTC는 명목 온도 출력을 지원하며 기준 온도계 보정·live 승인은 아직 하지 않았다.
 Nordic SDK 자체를 저장소에 복사하지 않고 A05 데이터 모델 생성기에 제품 코드를 적용한다.
 
 ## 연결과 기본값
@@ -9,22 +9,25 @@ Nordic SDK 자체를 저장소에 복사하지 않고 A05 데이터 모델 생�
 `sensors.hpp` ADC/GPIO → `pipeline.hpp` → 전처리 v3 → 고정 모델 →
 SnapshotPacked + 최근 8개 SnapshotHistory → 기존 HA 수신기.
 50 ms 취득 루프에서 50 ms 안정된 접점 변화를 즉시 기록하고, 정기 보고는 2초다.
-ADC 다섯 채널은 한 번의 sequence로 읽는다. 취득 스레드는 Matter 통신보다 우선하며
+ADC 센서 다섯 채널과 내부 VDD 채널은 한 번의 sequence로 읽는다. 취득 스레드는 Matter 통신보다 우선하며
 서버 초기화 완료를 기다린 뒤 시작한다. 동기식 UART 출력이 관측을 방해하지 않도록
 Matter 상세/진행 로그는 제품 루프 시작 때 끄고 오류 로그는 유지한다.
 관측 간격은 200개 표본마다 `A08 TIMING`으로 기록한다.
 모델은 60초 연속 이력을 요구하고 2초마다 계산한다. 광 판정은 20초 창이다.
 늦어진 루프는 과거 표본을 가짜로 채우지 않는다.
 
-`config.hpp`의 `SENSORS_CONFIRMED=false`, `SUPPLY_MV=0`은 의도한 기본값이다.
-ADC 드라이버는 실행하지만 확인 전 입력은 결측 처리한다. 떠 있는 핀을 정상 온도·개폐로
-보고하지 않는다. 합성 보정값을 실물 보정으로 사용하면 안 된다.
+`config.hpp`의 `SENSORS_CONFIRMED=false`는 광/개폐 채널을 계속 결측 처리한다.
+`TEMPERATURE_ENABLED=true`는 NTC만 활성화한다. `SUPPLY_MV=0`이면 6번째 ADC 채널로
+매번 내부 VDD를 읽어 센서 공급 전압으로 사용한다. 공급 측정 실패·레일 포화·비정상 비율은
+온도를 결측 처리한다. 이 방식은 센서 전원을 같은 VDD:IO에 연결한 현재 도면을 전제로 한다.
+별도 외부 전원으로 센서를 공급할 때는 그 전압을 따로 측정해야 한다.
 센서 확인 뒤 공급 전압, 광 4채널 off/on, NTC 방향·저항·계수·오프셋,
 접점 극성을 실측해 설정하고 보정 버전을 바꾼다.
 
 ADC는 AIN7/6/5/4/3, 접점은 P1.10을 사용한다. GPIO는 외부 풀업을 전제로 입력만 설정한다.
 12비트, 내부 기준, gain 1/4, 40 us 취득 시간을 사용하며 SDK의 내부 기준 전압 API로
-raw를 mV로 바꾼 후 `mV / SUPPLY_MV * 4095`로 정규화한다.
+raw를 mV로 바꾼다. 내부 VDD를 사용하는 경우 `raw / supply_raw * 4095`로 정규화하여
+mV 정수 반올림을 피한다. 공급 전압을 명시한 경우 `mV / SUPPLY_MV * 4095`를 사용한다.
 포화·읽기 실패·공급 전압 범위 밖은 결측이다. 원시 코드/드라이버 상태는 UART에 10초마다 남긴다.
 채널 설정과 mV 환산은 `SENSOR_ADC_GAIN`을 공유한다. LM20의 900mV 기준에서
 변환 범위는 3.6V지만 핀 허용 전압은 여전히 VDD 이하다. 실제 보드에서 기존 gain 1은
@@ -71,7 +74,8 @@ west build --sysbuild -b nrf54lm20dk/nrf54lm20b/cpuapp <app> -d <build> -- -DCON
 실패하면 취득을 시작하지 않는다. 성공 로그는 `A08 INTEGRATION END failures=0`이다.
 `A08 START`의 driver_errors와 이후 `A08 R`의 p(스냅샷), h(이력) 발행 결과도 확인한다.
 둘 다 0이어야 성공이다. `firmware.a08.verify`는 부팅 검사, 미보정 값 보류,
-ADC 읽기, 발행 성공과 최소 60초 연속 정상 주기를 검사한다.
+ADC 읽기, 발행 성공과 최소 60초 연속 정상 주기를 검사한다. 현재 온도 전용 설정에는
+`--temperature`를 추가하여 온도 유효·광/개폐 unknown·공급전압 환산을 함께 검사한다.
 
 ```powershell
 python -m firmware.a08.verify <board.log> --output <new-verification.json>
@@ -91,3 +95,24 @@ NTC 입력은 약 1.42V로 읽혔다. `SENSORS_CONFIRMED=false`와 `SUPPLY_MV=0`
 
 설치 이미지·복구본·생성 소스·로그·검증 JSON은 Git 제외 로컬 폴더
 `local-data/deployments/2026-10-06-adc-range/`에 있다.
+
+## 온도 전용 활성화 — 2026-10-06
+
+`3.4.1-a08-temperature-3+9`는 내부 VDD와 NTC 입력의 비율로 저항을 구하고
+10kΩ@25°C / B3950 식으로 명목 섭씨 온도를 계산한다. 내부 VDD 측정은 약 3.02V였다.
+기준 온도계로 오차를 보정한 값은 아니다. 현재 지원 출력 범위는 기존 전송 계약과
+프로브 제품 범위의 교집합인 -20~120°C다.
+
+광/개폐/AI의 유효성과 분리하여 시작 직후부터 2초마다 SnapshotPacked와
+Matter endpoint 2 TemperatureMeasurement에 온도를 발행한다. 60초 모델 이력을 기다리지 않는다.
+온도 입력 또는 공급 측정이 무효이면 다음 보고에서 온도를 unknown으로 바꾼다.
+다른 센서는 미확인 상태를 유지하고 출처는 test다.
+
+설치·복구 이미지와 실기 로그는 `local-data/deployments/2026-10-06-temperature/`에 보관한다.
+검사는 `python -m firmware.a08.verify <log> --temperature --output <new-json>`로 실행한다.
+부팅 자체 검사에는 25°C 기준, 온도 변화 방향, 잘못된 입력 거부, 다른 센서 없이 즉시 온도 보고,
+단선 입력에서 기존 온도를 보존하지 않는 경우를 포함한다.
+
+실기 결과: 통합/드라이버 오류 0, 80초 연속 48~52ms 취득 및 환산 검사 통과,
+온도 보고 45회 모두 유효(30.59~31.06°C), SnapshotPacked/이력 발행 결과 모두 성공.
+이는 기준 온도계와 비교한 정확도 보증이나 HA 화면의 별도 수신 확인은 아니다.
