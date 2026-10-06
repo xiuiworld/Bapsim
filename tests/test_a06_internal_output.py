@@ -4,11 +4,13 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
+from pathlib import Path
 import sys
 from types import SimpleNamespace
 import types
 from unittest import TestCase
 from unittest.mock import patch
+from jinja2 import Environment
 
 from service.ha_dashboard import HADashboard
 from service.ha_mqtt_subscriptions import bind_mqtt_subscriptions, valid_worker_state
@@ -18,6 +20,25 @@ from test_ha_service_integration import COMPONENT, FakeHass, ha_modules
 
 
 class A06InternalOutputTests(TestCase):
+    def test_caregiver_observation_copy_distinguishes_available_gap_and_initial(self):
+        dashboard_file = (Path(__file__).resolve().parents[1] /
+                          "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
+        content = dashboard_file.read_text(encoding="utf-8")
+        start = content.index("          ## 생활 루틴 확인")
+        end = content.index("      - type: entities", start)
+        template = Environment().from_string("\n".join(
+            line.removeprefix("          ") for line in content[start:end].splitlines()))
+
+        def render(issue):
+            return template.render(states=lambda entity: issue if entity ==
+                                   "sensor.bapsim_observation_issue_status" else "waiting",
+                                   state_attr=lambda *args: None)
+
+        self.assertNotIn("관측 상태를 먼저 확인하세요", render("available"))
+        self.assertNotIn("관측 확인 전", render("available"))
+        self.assertIn("관측 상태를 먼저 확인하세요", render("disconnected"))
+        self.assertIn("관측 확인 전", render("unknown"))
+
     def test_simulator_updates_only_simulation_card_and_expires(self):
         async def scenario():
             with patch.dict(sys.modules, ha_modules({})):

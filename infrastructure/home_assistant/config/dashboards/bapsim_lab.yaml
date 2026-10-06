@@ -109,8 +109,10 @@ views:
           밥솥 사용의 변화를 보여줍니다. 식사 여부나 건강 상태를 확정하지 않습니다.
           {% set issue = states('sensor.bapsim_observation_issue_status') %}
           {% set output = states('sensor.bapsim_output_state') %}
-          {% if issue not in ['normal', 'resolved', 'unknown', 'unavailable', 'none'] %}
-          **관측 상태를 먼저 확인하세요:** {{ issue }}. 관측이 부족하면 생활 변화로 단정하지 않습니다.
+          {% if issue in ['disconnected', 'alert_requested'] %}
+          **관측 상태를 먼저 확인하세요:** 연결 기록이 부족합니다. 생활 변화로 단정하지 않습니다.
+          {% elif issue in ['unknown', 'unavailable', 'not_observed'] %}
+          **관측 확인 전:** 새 실물 기록을 기다리고 있습니다.
           {% endif %}
           - 현재 실물 결과: **{{ output }}**
           {% set incident_options = state_attr('input_select.bapsim_active_assessment', 'options') or [] %}
