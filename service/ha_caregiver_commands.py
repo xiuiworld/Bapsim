@@ -18,6 +18,39 @@ class CaregiverHandlers(NamedTuple):
     on_mobile_action: Callable
 
 
+ACTIVE_STATUSES = frozenset({"check_required", "notified", "checking"})
+
+
+def _selected_id(hass, entity_id: str) -> str | None:
+    state = hass.states.get(entity_id)
+    value = getattr(state, "state", None)
+    return value.rsplit(" | ", 1)[-1] if isinstance(value, str) and " | " in value else None
+
+
+async def refresh_dashboard_choices(hass, workflow, trend_workflow, controls, logger=None) -> None:
+    if not hass.services.has_service("input_select", "set_options"):
+        return
+    assessments = [item for item in (*workflow.dump_state(), *trend_workflow.dump_state())
+                   if item.get("incident_id") and item["status"] in ACTIVE_STATUSES]
+    choices = ["선택"] + [
+        f"{item['device_id']} · {item['status']} | {item['incident_id']}"
+        for item in assessments
+    ]
+    pauses = ["선택"] + [f"{pause_id} | {pause_id}" for pause_id in controls.pauses]
+    for entity_id, options in (("input_select.bapsim_active_assessment", choices),
+                               ("input_select.bapsim_active_pause", pauses)):
+        if hass.states.get(entity_id) is None:
+            continue
+        try:
+            await hass.services.async_call("input_select", "set_options", {
+                "entity_id": entity_id, "options": options,
+            }, blocking=True)
+        except Exception as exc:
+            if logger is not None:
+                logger.warning("Could not refresh caregiver choice %s: %s", entity_id,
+                               type(exc).__name__)
+
+
 def bind_caregiver_commands(
         callback, hass, workflow, trend_workflow, controls, usage_model, analysis_mode,
         output, external_service, show, send_controls, publish_workflow, save_now, save_later, logger
@@ -29,18 +62,22 @@ def bind_caregiver_commands(
         response = call.data["response"]
         source = call.data.get("source")
         device_id = call.data.get("device_id")
+        selected_incident = None
         if source is None and device_id is None:
+            selected = _selected_id(hass, "input_select.bapsim_active_assessment")
             active = [
                 item for item in (*workflow.dump_state(), *trend_workflow.dump_state())
-                if item["status"] in {"check_required", "notified", "checking"}
+                if item["status"] in ACTIVE_STATUSES and
+                (selected is None or item.get("incident_id") == selected)
             ]
             if len(active) != 1:
                 _LOGGER.warning("Caregiver response needs exactly one active incident or an explicit source and device_id")
                 return
             source, device_id = active[0]["source"], active[0]["device_id"]
+            selected_incident = active[0]["incident_id"]
         elif not isinstance(source, str) or not isinstance(device_id, str):
             raise ValueError("source and device_id must be supplied together")
-        incident_id = call.data.get("incident_id")
+        incident_id = call.data.get("incident_id") or selected_incident
         if incident_id is None and sum(
             item["status"] in {"check_required", "notified", "checking"}
             and item["source"] == source and item["device_id"] == device_id
@@ -93,6 +130,7 @@ def bind_caregiver_commands(
                 raise
         show("notification_controls", controls.revision, controls.dump_state())
         show("notification_control_result", result["status"], result)
+        await refresh_dashboard_choices(hass, workflow, trend_workflow, controls, _LOGGER)
         if hass.services.has_service("mqtt", "publish"):
             hass.async_create_task(send_controls())
         if command.get("action") == "acknowledge":
@@ -134,20 +172,24 @@ def bind_caregiver_commands(
         if action == "acknowledge":
             active = [item for item in (*workflow.dump_state(), *trend_workflow.dump_state())
                       if item["incident_id"] and item["status"] in {"check_required", "notified", "checking"}]
+            requested = call.data.get("assessment_id") or _selected_id(
+                hass, "input_select.bapsim_active_assessment")
             if external_service:
                 entity = hass.states.get("sensor.bapsim_output_state")
                 active = [item for item in (entity.attributes.get("assessments", []) if entity else [])
                           if item.get("status") in {"watch", "notified"}]
-                if len(active) == 1:
-                    command["assessment_id"] = active[0]["assessment_id"]
-            elif len(active) == 1:
-                command["assessment_id"] = active[0]["incident_id"]
+            if requested is not None:
+                active = [item for item in active if
+                          item.get("assessment_id", item.get("incident_id")) == requested]
+            if len(active) == 1:
+                command["assessment_id"] = active[0].get("assessment_id", active[0].get("incident_id"))
             if len(active) != 1:
                 raise ValueError("Acknowledge requires exactly one active assessment")
         elif action == "pause_lifestyle":
             command.update({"pause_id": str(uuid.uuid4()), "starts_at": now.isoformat()})
         else:
-            pause_id = call.data.get("pause_id")
+            pause_id = call.data.get("pause_id") or _selected_id(
+                hass, "input_select.bapsim_active_pause")
             if not isinstance(pause_id, str) or not pause_id:
                 raise ValueError("pause_id is required to cancel")
             command["pause_id"] = pause_id

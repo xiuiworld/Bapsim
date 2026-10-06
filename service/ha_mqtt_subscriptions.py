@@ -3,11 +3,28 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 
-def bind_mqtt_subscriptions(hass, output, set_notification_control, show, logger, external_service):
+def valid_worker_state(payload, household_id: str, now: datetime) -> bool:
+    if (not isinstance(payload, dict) or payload.get("schema_version") != "0.1.0" or
+            payload.get("household_id") != household_id or
+            type(payload.get("revision")) is not int or payload["revision"] < 1 or
+            not isinstance(payload.get("summary"), str)):
+        return False
+    try:
+        generated = datetime.fromisoformat(str(payload["generated_at"]).replace("Z", "+00:00"))
+        expires = datetime.fromisoformat(str(payload["valid_until"]).replace("Z", "+00:00"))
+    except (KeyError, TypeError, ValueError):
+        return False
+    return (generated.tzinfo is not None and expires.tzinfo is not None and
+            generated <= now + timedelta(seconds=30) and now < expires and
+            timedelta(0) < expires - generated <= timedelta(seconds=180))
+
+
+def bind_mqtt_subscriptions(hass, output, set_notification_control, show, logger,
+                            external_service, show_output=None):
     _LOGGER = logger
     unsubscribe_control = None
     unsubscribe_worker: list = []
@@ -66,8 +83,11 @@ def bind_mqtt_subscriptions(hass, output, set_notification_control, show, logger
                 payload = json.loads(message.payload)
                 if not isinstance(payload, dict):
                     raise ValueError("worker state must be an object")
-                if payload.get("household_id") == output.household_id:
-                    show("output_state", payload.get("summary", ""), payload)
+                if valid_worker_state(payload, output.household_id, datetime.now(timezone.utc)):
+                    if show_output is not None:
+                        show_output("matter", payload)
+                    else:
+                        show("output_state", payload["summary"], payload)
             except (TypeError, ValueError):
                 _LOGGER.warning("Ignored invalid worker state")
 
@@ -76,9 +96,12 @@ def bind_mqtt_subscriptions(hass, output, set_notification_control, show, logger
                 payload = json.loads(message.payload)
                 if not isinstance(payload, dict):
                     raise ValueError("simulation state must be an object")
-                if payload.get("household_id") == output.household_id:
-                    show("simulation_output_state", payload.get("summary", ""),
-                         {**payload, "mode": "simulation"})
+                if valid_worker_state(payload, output.household_id, datetime.now(timezone.utc)):
+                    if show_output is not None:
+                        show_output("simulator", payload)
+                    else:
+                        show("simulation_output_state", payload["summary"],
+                             {**payload, "mode": "simulation"})
             except (TypeError, ValueError):
                 _LOGGER.warning("Ignored invalid simulation worker state")
 
