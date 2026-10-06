@@ -702,6 +702,116 @@ class HAServiceIntegrationTests(TestCase):
 
         asyncio.run(scenario())
 
+    def test_control_is_not_accepted_before_storage_commits(self):
+        async def scenario(fail):
+            modules = ha_modules({})
+            base_store = modules["homeassistant.helpers.storage"].Store
+
+            class DelayedStore(base_store):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.started = asyncio.Event()
+                    self.release = asyncio.Event()
+                    self.commits = 0
+
+                async def async_save(self, snapshot):
+                    self.started.set()
+                    await self.release.wait()
+                    if fail:
+                        raise OSError("storage unavailable")
+                    await super().async_save(snapshot)
+                    self.commits += 1
+
+            modules["homeassistant.helpers.storage"].Store = DelayedStore
+            with patch.dict(sys.modules, modules):
+                spec = importlib.util.spec_from_file_location(
+                    f"bapsim_ha_delayed_control_{fail}", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                self.assertTrue(await module.async_setup(hass, {}))
+                store = hass.data["bapsim"]["store"]
+                now = datetime.now(timezone.utc)
+                request = {"command_id": "pause-delayed", "action": "pause_lifestyle",
+                           "pause_id": "trip-delayed", "starts_at": now.isoformat(),
+                           "ends_at": (now + timedelta(hours=2)).isoformat()}
+                task = asyncio.create_task(hass.services.async_call(
+                    "bapsim", "set_notification_control", request))
+                await store.started.wait()
+                self.assertEqual(hass.states.get(
+                    "sensor.bapsim_notification_control_result").state, "applying")
+                self.assertEqual(store.commits, 0)
+                store.release.set()
+                if fail:
+                    with self.assertRaises(OSError):
+                        await task
+                    self.assertEqual(hass.states.get(
+                        "sensor.bapsim_notification_control_result").state, "failed")
+                    self.assertEqual(store.commits, 0)
+                    self.assertFalse(hass.data["bapsim"]["notification_controls"].pauses)
+                else:
+                    await task
+                    self.assertEqual(hass.states.get(
+                        "sensor.bapsim_notification_control_result").state, "accepted")
+                    self.assertEqual(store.commits, 1)
+                    self.assertIn("trip-delayed", store.saved["notification_controls"]["pauses"])
+
+        asyncio.run(scenario(False))
+        asyncio.run(scenario(True))
+
+    def test_dashboard_can_select_one_of_two_incidents_and_cancel_pause(self):
+        seed = {"workflow": [{"source": "matter", "device_id": "cooker_01",
+                             "status": "notified", "incident_id": "gap-1",
+                             "reason_codes": ["EXPECTED_USE_MISSING"]}],
+                "trend_workflow": [{"source": "matter", "device_id": "cooker_01",
+                                    "status": "notified", "incident_id": "trend-1",
+                                    "reason_codes": ["DECLINING_USAGE"]}]}
+
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules(seed)):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_choices_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+
+                async def set_options(call):
+                    entity_id = call.data["entity_id"]
+                    options = call.data["options"]
+                    hass.states.async_set(entity_id, options[0], {"options": options})
+
+                hass.services.async_register("input_select", "set_options", set_options)
+                hass.states.async_set("input_select.bapsim_active_assessment", "선택", {})
+                hass.states.async_set("input_select.bapsim_active_pause", "선택", {})
+                self.assertTrue(await module.async_setup(hass, {}))
+                await asyncio.gather(*hass.tasks)
+                hass.tasks.clear()
+                options = hass.states.get("input_select.bapsim_active_assessment").attributes["options"]
+                self.assertEqual(len(options), 3)
+                choice = next(item for item in options if item.endswith(" | trend-1"))
+                hass.states.async_set("input_select.bapsim_active_assessment", choice, {"options": options})
+                local_end = datetime.now(timezone(timedelta(hours=9))) + timedelta(hours=2)
+                hass.states.async_set("input_datetime.bapsim_control_until",
+                                      local_end.strftime("%Y-%m-%d %H:%M:%S"), {})
+                await hass.services.async_call("bapsim", "dashboard_control", {"action": "acknowledge"})
+                self.assertEqual(hass.data["bapsim"]["trend_workflow"].dump_state()[0]["status"],
+                                 "checking")
+                self.assertEqual(hass.data["bapsim"]["workflow"].dump_state()[0]["status"],
+                                 "notified")
+
+                now = datetime.now(timezone.utc)
+                await hass.services.async_call("bapsim", "set_notification_control", {
+                    "command_id": "pause-choice", "action": "pause_lifestyle", "pause_id": "trip-1",
+                    "starts_at": now.isoformat(), "ends_at": (now + timedelta(hours=2)).isoformat(),
+                })
+                options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
+                hass.states.async_set("input_select.bapsim_active_pause", options[1], {"options": options})
+                await hass.services.async_call("bapsim", "dashboard_control", {"action": "cancel_pause"})
+                self.assertNotIn("trip-1", hass.data["bapsim"]["notification_controls"].pauses)
+                if hass.tasks:
+                    await asyncio.gather(*hass.tasks)
+
+        asyncio.run(scenario())
+
     def test_acknowledge_requires_active_assessment_and_records_expiry(self):
         seed = {"workflow": [{"source": "matter", "device_id": "cooker_01", "status": "notified",
                               "incident_id": "case-1", "reason_codes": ["EXPECTED_USE_MISSING"]}]}
