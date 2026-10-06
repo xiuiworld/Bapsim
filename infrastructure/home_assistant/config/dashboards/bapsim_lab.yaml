@@ -117,6 +117,7 @@ views:
           - sensor.bapsim_interval_detection
           - sensor.bapsim_baseline
           - sensor.bapsim_features
+          - sensor.bapsim_usage_context
           - sensor.bapsim_notification_delivery
           - sensor.bapsim_observation_issue_status
           - sensor.bapsim_notification_controls
@@ -140,6 +141,7 @@ views:
           {% set p = states.sensor.bapsim_baseline.attributes if states.sensor.bapsim_baseline is defined else {} %}
           {% set windows = state_attr('sensor.bapsim_baseline', 'windows') or [] %}
           {% set d = states.sensor.bapsim_detection_status.attributes if states.sensor.bapsim_detection_status is defined else {} %}
+          {% set c = states.sensor.bapsim_usage_context.attributes if states.sensor.bapsim_usage_context is defined else {} %}
           {% set cooks = f.get('cook_count_24h') %}
           {% set opens = p.get('lid_open_count_24h') %}
           ### 개인별 사용 패턴
@@ -149,6 +151,14 @@ views:
           {% endfor %}
           ### 현재 관측
           - 최근 24시간 취사 세션: **{{ cooks ~ '회' if cooks is not none else '미관측' }}** / 뚜껑 열림: **{{ opens ~ '회' if opens is not none else '미관측' }}**
+          ### 최근 실물 개방의 맥락
+          {% if c.get('source') == 'matter' and c.get('lid_record_id') %}
+          - 분류: **{{ {'warming_possible_use':'보온 중 사용 가능 행동', 'recent_cooking_possible_use':'최근 취사 뒤 사용 가능 행동', 'unclassified_open':'개방 확인·용도 불명'}.get(c.get('classification'), '용도 불명') }}** (식사 확정 아님)
+          - 보드 추정: **{{ c.get('phase') or '판단 불가' }}** · 품질 {{ c.get('phase_quality') }} · 모델 {{ c.get('model_version') or '없음' }}
+          - 표면 온도: **{{ c.get('temperature_c') ~ ' °C' if c.get('temperature_quality') == 'good' else '미확인' }}** · 근거 {{ c.get('lid_record_id') }}
+          {% else %}
+          - 검증된 실물 개방 맥락 없음
+          {% endif %}
           - 시뮬레이션 최근 뚜껑 열림: **{{ as_timestamp(state_attr('sensor.bapsim_simulation_output_state', 'last_usage_at')) | timestamp_custom('%Y-%m-%d %H:%M', true) if state_attr('sensor.bapsim_simulation_output_state', 'last_usage_at') else '미관측' }}**
           - 판정 근거: **{{ (d.get('reason_codes') or []) | join(', ') if d.get('reason_codes') else '없음' }}**
           - 밥솥 판정: **{{ states('sensor.bapsim_detection_status') }}**
