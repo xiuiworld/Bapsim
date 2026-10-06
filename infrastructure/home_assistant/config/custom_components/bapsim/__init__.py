@@ -739,7 +739,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     caregiver = bind_caregiver_commands(
         callback, hass, workflow, trend_workflow, controls, usage_model, analysis_mode,
-        output, external_service, show, send_controls, publish_workflow, save_later, _LOGGER)
+        output, external_service, show, send_controls, publish_workflow, save_now, save_later, _LOGGER)
     service_registry.register("respond", caregiver.respond)
     service_registry.register("set_notification_control", caregiver.set_notification_control)
     service_registry.register("dashboard_control", caregiver.dashboard_control)
