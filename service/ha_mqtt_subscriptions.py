@@ -24,7 +24,7 @@ def valid_worker_state(payload, household_id: str, now: datetime) -> bool:
 
 
 def bind_mqtt_subscriptions(hass, output, set_notification_control, show, logger,
-                            external_service, show_output=None):
+                            external_service, show_output=None, refresh_choices=None):
     _LOGGER = logger
     unsubscribe_control = None
     unsubscribe_worker: list = []
@@ -112,6 +112,8 @@ def bind_mqtt_subscriptions(hass, output, set_notification_control, show, logger
                     raise ValueError("worker controls must be an object")
                 if payload.get("household_id") == output.household_id:
                     show("notification_controls", payload.get("revision", 0), payload)
+                    if refresh_choices is not None:
+                        refresh_choices()
             except (TypeError, ValueError):
                 _LOGGER.warning("Ignored invalid worker controls")
 

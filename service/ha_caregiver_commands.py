@@ -8,7 +8,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from typing import Callable, NamedTuple
+from typing import Callable, Mapping, NamedTuple
 
 
 class CaregiverHandlers(NamedTuple):
@@ -27,11 +27,54 @@ def _selected_id(hass, entity_id: str) -> str | None:
     return value.rsplit(" | ", 1)[-1] if isinstance(value, str) and " | " in value else None
 
 
-async def refresh_dashboard_choices(hass, workflow, trend_workflow, controls, logger=None) -> None:
+def _future_end(value: str, now: datetime) -> bool:
+    try:
+        end = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return end.tzinfo is not None and end > now
+    except ValueError:
+        return False
+
+
+def _active_assessments(hass, workflow, trend_workflow, external_service: bool) -> list[dict[str, str]]:
+    if not external_service:
+        return [item for item in (*workflow.dump_state(), *trend_workflow.dump_state())
+                if item.get("source") == "matter" and item.get("incident_id") and
+                item.get("status") in ACTIVE_STATUSES]
+    state = hass.states.get("sensor.bapsim_output_state")
+    if state is None or state.state == "expired":
+        return []
+    attributes = state.attributes
+    if attributes.get("source") != "matter" or attributes.get("schema_version") != "0.1.0":
+        return []
+    try:
+        valid_until = datetime.fromisoformat(str(attributes["valid_until"]).replace("Z", "+00:00"))
+        if valid_until.tzinfo is None or valid_until <= datetime.now(timezone.utc):
+            return []
+    except (KeyError, TypeError, ValueError):
+        return []
+    assessments = attributes.get("assessments")
+    if not isinstance(assessments, list):
+        return []
+    return [{"incident_id": item["assessment_id"], "device_id": str(item.get("type", "밥솥")),
+             "status": item["status"], "source": "matter"}
+            for item in assessments if isinstance(item, dict) and
+            isinstance(item.get("assessment_id"), str) and item["assessment_id"] and
+            item.get("status") in {"watch", "notified"}]
+
+
+def _active_pauses(hass, controls, external_service: bool) -> Mapping[str, object]:
+    if not external_service:
+        return controls.pauses
+    state = hass.states.get("sensor.bapsim_notification_controls")
+    pauses = state.attributes.get("pauses") if state is not None else None
+    return pauses if isinstance(pauses, dict) else {}
+
+
+async def refresh_dashboard_choices(hass, workflow, trend_workflow, controls, logger=None,
+                                    *, external_service: bool = False) -> None:
     if not hass.services.has_service("input_select", "set_options"):
         return
-    assessments = [item for item in (*workflow.dump_state(), *trend_workflow.dump_state())
-                   if item.get("incident_id") and item["status"] in ACTIVE_STATUSES]
+    assessments = _active_assessments(hass, workflow, trend_workflow, external_service)
     choices = ["선택"] + [
         f"{item['device_id']} · {item['status']} | {item['incident_id']}"
         for item in assessments
@@ -39,8 +82,9 @@ async def refresh_dashboard_choices(hass, workflow, trend_workflow, controls, lo
     now = datetime.now(timezone.utc)
     pauses = ["선택"] + [
         f"{pause_id} (종료 {item['ends_at']}) | {pause_id}"
-        for pause_id, item in controls.pauses.items()
-        if datetime.fromisoformat(item["ends_at"].replace("Z", "+00:00")) > now
+        for pause_id, item in _active_pauses(hass, controls, external_service).items()
+        if isinstance(item, dict) and isinstance(item.get("ends_at"), str) and
+        _future_end(item["ends_at"], now)
     ]
     for entity_id, options in (("input_select.bapsim_active_assessment", choices),
                                ("input_select.bapsim_active_pause", pauses)):
@@ -76,11 +120,8 @@ def bind_caregiver_commands(
         selected_incident = None
         if source is None and device_id is None:
             selected = _selected_id(hass, "input_select.bapsim_active_assessment")
-            active = [
-                item for item in (*workflow.dump_state(), *trend_workflow.dump_state())
-                if item["status"] in ACTIVE_STATUSES and
-                (selected is None or item.get("incident_id") == selected)
-            ]
+            active = [item for item in _active_assessments(hass, workflow, trend_workflow, False)
+                      if selected is None or item.get("incident_id") == selected]
             if len(active) != 1:
                 _LOGGER.warning("Caregiver response needs exactly one active incident or an explicit source and device_id")
                 return
@@ -141,7 +182,8 @@ def bind_caregiver_commands(
                 raise
         show("notification_controls", controls.revision, controls.dump_state())
         show("notification_control_result", result["status"], result)
-        await refresh_dashboard_choices(hass, workflow, trend_workflow, controls, _LOGGER)
+        await refresh_dashboard_choices(hass, workflow, trend_workflow, controls, _LOGGER,
+                                        external_service=external_service)
         if hass.services.has_service("mqtt", "publish"):
             hass.async_create_task(send_controls())
         if command.get("action") == "acknowledge":
@@ -181,19 +223,13 @@ def bind_caregiver_commands(
                 raise ValueError("Notification end time must be in the future")
             command["ends_at"] = until.isoformat()
         if action == "acknowledge":
-            active = [item for item in (*workflow.dump_state(), *trend_workflow.dump_state())
-                      if item["incident_id"] and item["status"] in {"check_required", "notified", "checking"}]
+            active = _active_assessments(hass, workflow, trend_workflow, external_service)
             requested = call.data.get("assessment_id") or _selected_id(
                 hass, "input_select.bapsim_active_assessment")
-            if external_service:
-                entity = hass.states.get("sensor.bapsim_output_state")
-                active = [item for item in (entity.attributes.get("assessments", []) if entity else [])
-                          if item.get("status") in {"watch", "notified"}]
             if requested is not None:
-                active = [item for item in active if
-                          item.get("assessment_id", item.get("incident_id")) == requested]
+                active = [item for item in active if item["incident_id"] == requested]
             if len(active) == 1:
-                command["assessment_id"] = active[0].get("assessment_id", active[0].get("incident_id"))
+                command["assessment_id"] = active[0]["incident_id"]
             if len(active) != 1:
                 raise ValueError("Acknowledge requires exactly one active assessment")
         elif action == "pause_lifestyle":

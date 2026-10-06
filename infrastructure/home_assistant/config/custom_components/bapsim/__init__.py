@@ -329,7 +329,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         # A timeout or unknown service error may have occurred after HA accepted the call.
         return "failed" if isinstance(exc, ConnectionError) else "uncertain"
 
-    dashboard = HADashboard(hass, usage_model, routine_updated_at, async_track_point_in_utc_time)
+    @callback
+    def schedule_dashboard_choices() -> None:
+        if hass.services.has_service("input_select", "set_options"):
+            hass.async_create_task(refresh_dashboard_choices(
+                hass, workflow, trend_workflow, controls, _LOGGER,
+                external_service=external_service))
+
+    dashboard = HADashboard(hass, usage_model, routine_updated_at,
+                            async_track_point_in_utc_time, schedule_dashboard_choices)
     show = dashboard.show
     show_output = dashboard.show_output
     show_initial_routines = dashboard.show_initial_routines
@@ -395,9 +403,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             show("decline_status", update.status, payload)
         else:
             show("workflow_status", update.status, payload)
-        if hass.services.has_service("input_select", "set_options"):
-            hass.async_create_task(refresh_dashboard_choices(hass, workflow, trend_workflow,
-                                                              controls, _LOGGER))
+        schedule_dashboard_choices()
         save_later()
 
     create_notification, retry_mobile_notifications = make_notification_handlers(
@@ -560,9 +566,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             if recorder is not None and not adapter.available(now):
                 journal_io.archive_contract(recorder.offline(now))
         periodic_callback(now)
-        if hass.services.has_service("input_select", "set_options"):
-            hass.async_create_task(refresh_dashboard_choices(
-                hass, workflow, trend_workflow, controls, _LOGGER))
+        schedule_dashboard_choices()
 
     unsubscribe_tick = async_track_time_interval(hass, on_hourly_tick, timedelta(seconds=60))
 
@@ -780,9 +784,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     caregiver = bind_caregiver_commands(
         callback, hass, workflow, trend_workflow, controls, usage_model, analysis_mode,
         output, external_service, show, send_controls, publish_workflow, save_now, save_later, _LOGGER)
-    if hass.services.has_service("input_select", "set_options"):
-        hass.async_create_task(refresh_dashboard_choices(hass, workflow, trend_workflow,
-                                                          controls, _LOGGER))
+    schedule_dashboard_choices()
     service_registry.register("respond", caregiver.respond)
     service_registry.register("set_notification_control", caregiver.set_notification_control)
     service_registry.register("dashboard_control", caregiver.dashboard_control)
@@ -793,7 +795,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 
     stop_mqtt_subscriptions = bind_mqtt_subscriptions(
-        hass, output, set_notification_control, show, _LOGGER, external_service, show_output)
+        hass, output, set_notification_control, show, _LOGGER, external_service, show_output,
+        schedule_dashboard_choices)
 
     async def record_simulated_activity(call) -> None:
         device_id = call.data.get("device_id")
