@@ -560,6 +560,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             if recorder is not None and not adapter.available(now):
                 journal_io.archive_contract(recorder.offline(now))
         periodic_callback(now)
+        if hass.services.has_service("input_select", "set_options"):
+            hass.async_create_task(refresh_dashboard_choices(
+                hass, workflow, trend_workflow, controls, _LOGGER))
 
     unsubscribe_tick = async_track_time_interval(hass, on_hourly_tick, timedelta(seconds=60))
 
