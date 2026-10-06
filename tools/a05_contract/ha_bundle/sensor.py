@@ -93,6 +93,35 @@ HEADER = struct.Struct("<4sHBIIQIBh5B7BBHB")
 MAGIC = b"BS05"
 MAX_SIZE = HEADER.size + 64
 PATH = "1/4294048769/4293984260"
+HISTORY_PATH = "1/4294048769/4293984261"
+HISTORY_CAPACITY = 8
+
+
+def decode_history(payload):
+    """Atomic bounded journal, oldest first. Never silently sort or fill holes."""
+    if isinstance(payload, str):
+        payload = base64.b64decode(payload, validate=True)
+    if not isinstance(payload, bytes) or not 4 <= len(payload) <= 892:
+        raise ValueError("Invalid history size/type")
+    if payload[:3] != b"BH\x01" or not 1 <= payload[3] <= HISTORY_CAPACITY:
+        raise ValueError("Invalid history header/count")
+    rows, origin, pos = [], None, 4
+    for _ in range(payload[3]):
+        if pos >= len(payload):
+            raise ValueError("Truncated history")
+        size = payload[pos]; pos += 1
+        row, test = decode(payload[pos:pos+size]); pos += size
+        if origin is not None and test != origin:
+            raise ValueError("Mixed history origins")
+        if rows and (row["BootId"] != rows[-1]["BootId"] or
+                     row["ReportCounter"] != rows[-1]["ReportCounter"]+1 or
+                     row["ObservationSequence"] != rows[-1]["ObservationSequence"]+1 or
+                     row["UptimeMs"] < rows[-1]["UptimeMs"]):
+            raise ValueError("Nonconsecutive history")
+        rows.append(row); origin = test
+    if pos != len(payload):
+        raise ValueError("Trailing history data")
+    return rows, origin
 
 
 def encode(snapshot, *, test_input):
@@ -177,6 +206,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     # Retain A04 configuration compatibility; A05 reads the fixed versioned path.
     vol.Optional("attribute_path"): cv.string,
     vol.Optional("name"): cv.string,
+    vol.Optional("snapshot_history", default=False): cv.boolean,
 })
 
 
@@ -197,6 +227,8 @@ class SnapshotCoordinator(DataUpdateCoordinator):
         self.last_counter_key = None
         self.last_advance = None
         self.discontinuity = "baseline"
+        self.last_gap = None
+        self.history_enabled = config.get("snapshot_history", False)
 
     async def _async_update_data(self):
         try:
@@ -205,20 +237,44 @@ class SnapshotCoordinator(DataUpdateCoordinator):
             if runtime is None:
                 raise ValueError("Matter integration is not ready")
             async with asyncio.timeout(10):
-                values = await runtime.adapter.matter_client.read_attribute(self.node_id, PATH)
-            snapshot, test_input = decode(values.get(PATH))
-            continuity = self.tracker.accept(snapshot)
-            if continuity not in ("continuous", "duplicate"):
-                self.discontinuity = continuity
+                path = HISTORY_PATH if self.history_enabled else PATH
+                values = await runtime.adapter.matter_client.read_attribute(self.node_id, path)
+            if self.history_enabled:
+                reports, test_input = decode_history(values.get(path))
+                snapshot = reports[-1]
+            else:
+                snapshot, test_input = decode(values.get(path))
+                reports = [snapshot]
+            prior = self.tracker.previous
+            unseen = [snapshot]
+            if self.history_enabled and prior is not None and snapshot["BootId"] == prior["BootId"]:
+                if snapshot["ReportCounter"] >= prior["ReportCounter"]:
+                    unseen = [r for r in reports if r["ReportCounter"] > prior["ReportCounter"]]
+            continuity = "duplicate"
+            for report in unseen:
+                before = self.tracker.previous
+                if (before is not None and report["BootId"] == before["BootId"] and
+                        report["ReportCounter"] > before["ReportCounter"] + 1):
+                    self.last_gap = dict(boot_id=report["BootId"],
+                        first_missing=before["ReportCounter"] + 1,
+                        last_missing=report["ReportCounter"] - 1,
+                        count=report["ReportCounter"] - before["ReportCounter"] - 1)
+                continuity = self.tracker.accept(report)
+                if continuity not in ("continuous", "duplicate"):
+                    self.discontinuity = continuity
             key = (snapshot["BootId"], snapshot["ReportCounter"])
             now = time.monotonic()
             if self.last_counter_key != key:
                 self.last_counter_key, self.last_advance = key, now
             elif self.last_advance is not None and now - self.last_advance > 180:
                 raise ValueError("Board report counter is stale")
-            return dict(snapshot=snapshot, test_input=test_input, continuity=continuity)
+            return dict(snapshot=snapshot, test_input=test_input, continuity=continuity,
+                        reports=reports)
         except Exception as err:
-            self.tracker.reset()
+            # Keep the last validated cursor across a failed read. Availability
+            # still fails closed, but reconnect must detect retained vs lost
+            # reports and reboot instead of silently treating it as first use.
+            self.discontinuity = "read_error"
             raise UpdateFailed(f"Snapshot read/validation failed: {err}") from err
 
 
@@ -250,14 +306,19 @@ class SnapshotSensor(CoordinatorEntity, SensorEntity):
             input_kind="test" if data["test_input"] else "live",
             transport="matter", matter_entry_id=self.coordinator.entry_id,
             node_id=self.coordinator.node_id, attribute_path=PATH,
-            read_method="explicit_read_5s", schema_version=snapshot["SchemaVersion"],
+            read_method="buffered_read_5s" if self.coordinator.history_enabled else "explicit_read_5s",
+            schema_version=snapshot["SchemaVersion"],
             boot_id=snapshot["BootId"], observation_sequence=snapshot["ObservationSequence"],
             report_counter=snapshot["ReportCounter"], continuity=data["continuity"],
             last_discontinuity=self.coordinator.discontinuity,
+            last_gap=self.coordinator.last_gap,
         )
         if self.field in SIGNALS:
             attributes["quality"] = ("unknown", "good", "error", "unsupported")[snapshot["SignalQuality"][self.field]]
             attributes["raw_value"] = snapshot[self.field]
         if self.field == "ReportCounter":
             attributes["raw_snapshot"] = snapshot
+            if self.coordinator.history_enabled:
+                attributes["history_path"] = HISTORY_PATH
+                attributes["raw_history"] = data["reports"]
         return attributes

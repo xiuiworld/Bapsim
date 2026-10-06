@@ -4,7 +4,7 @@ import asyncio
 import importlib.util
 import json
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -126,36 +126,47 @@ class A05HAIntegrationTests(TestCase):
                         "new_state": hass.states.get(entity_id),
                     })
 
-                change(1, 1, False, "test")
-                self.assertFalse([event for name, event in hass.bus.events
-                                  if name == module.RAW_EVENT and event["device_id"] == "cooker"])
-                change(2, 2, False, "live")
-                change(3, 3, True, "live")
-                events = [(event["event_type"], event["value"])
-                          for name, event in hass.bus.events
-                          if name == module.RAW_EVENT and event["device_id"] == "cooker"]
-                self.assertEqual(events, [("availability", "online"),
-                                          ("lid_state", "closed"),
-                                          ("lid_state", "open")])
-                change(5, 5, False, "live")
-                events = [(event["event_type"], event["value"])
-                          for name, event in hass.bus.events
-                          if name == module.RAW_EVENT and event["device_id"] == "cooker"]
-                self.assertEqual(events[-3:], [("availability", "offline"),
-                                               ("availability", "online"),
-                                               ("lid_state", "closed")])
-                gap_offline = [event for name, event in hass.bus.events
-                               if name == module.RAW_EVENT and event["device_id"] == "cooker"
-                               and event["event_type"] == "availability"
-                               and event["value"] == "offline"][-1]
-                model_state = hass.data["bapsim"]["usage_model"]._device("matter", "cooker")
-                self.assertEqual(model_state["coverage"][-1][1].isoformat(),
-                                 gap_offline["observed_at"])
-                change(6, 6, True, "test")
-                events = [(event["event_type"], event["value"])
-                          for name, event in hass.bus.events
-                          if name == module.RAW_EVENT and event["device_id"] == "cooker"]
-                self.assertEqual(events[-1], ("availability", "offline"))
+                class ReportClock:
+                    tick = 0
+
+                    def now(self, tz):
+                        # A05 reads arrive on a five-second poll. A controlled
+                        # clock keeps the strict last >= now rejection meaningful.
+                        at = datetime(2026, 10, 5, tzinfo=timezone.utc)
+                        self.tick += 1
+                        return (at + timedelta(seconds=5 * self.tick)).astimezone(tz)
+
+                with patch.object(module, "datetime", ReportClock()):
+                    change(1, 1, False, "test")
+                    self.assertFalse([event for name, event in hass.bus.events
+                                      if name == module.RAW_EVENT and event["device_id"] == "cooker"])
+                    change(2, 2, False, "live")
+                    change(3, 3, True, "live")
+                    events = [(event["event_type"], event["value"])
+                              for name, event in hass.bus.events
+                              if name == module.RAW_EVENT and event["device_id"] == "cooker"]
+                    self.assertEqual(events, [("availability", "online"),
+                                              ("lid_state", "closed"),
+                                              ("lid_state", "open")])
+                    change(5, 5, False, "live")
+                    events = [(event["event_type"], event["value"])
+                              for name, event in hass.bus.events
+                              if name == module.RAW_EVENT and event["device_id"] == "cooker"]
+                    self.assertEqual(events[-3:], [("availability", "offline"),
+                                                   ("availability", "online"),
+                                                   ("lid_state", "closed")])
+                    gap_offline = [event for name, event in hass.bus.events
+                                   if name == module.RAW_EVENT and event["device_id"] == "cooker"
+                                   and event["event_type"] == "availability"
+                                   and event["value"] == "offline"][-1]
+                    model_state = hass.data["bapsim"]["usage_model"]._device("matter", "cooker")
+                    self.assertEqual(model_state["coverage"][-1][1].isoformat(),
+                                     gap_offline["observed_at"])
+                    change(6, 6, True, "test")
+                    events = [(event["event_type"], event["value"])
+                              for name, event in hass.bus.events
+                              if name == module.RAW_EVENT and event["device_id"] == "cooker"]
+                    self.assertEqual(events[-1], ("availability", "offline"))
                 if hass.tasks:
                     await asyncio.gather(*hass.tasks)
 
