@@ -71,6 +71,7 @@ void SensorThread(void *,void *,void *)
                 sSensors.read_status[0],sSensors.read_status[1],sSensors.read_status[2],sSensors.read_status[3],sSensors.read_status[4]);
             LOG_INF("A08 ADC mv=%d,%d,%d,%d,%d",sSensors.millivolts[0],sSensors.millivolts[1],
                 sSensors.millivolts[2],sSensors.millivolts[3],sSensors.millivolts[4]);
+            LOG_INF("A08 SUPPLY raw=%d mv=%d temperature_enabled=%u",sSensors.supply_raw,sSensors.supply_mv,a08::TEMPERATURE_ENABLED);
         }
         k_mutex_lock(&sPipelineMutex,K_FOREVER);
         const bool report=sPipeline.push(sample);

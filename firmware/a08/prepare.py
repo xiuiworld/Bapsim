@@ -24,7 +24,7 @@ def prepare(app, model_path):
     if model.get('live_qualified') is not False:
         raise ValueError('Commissioning build expects a non-live candidate')
     out=app/'src/a08'; out.mkdir(exist_ok=True)
-    for name in ('config.hpp','pipeline.hpp','sensors.hpp','selftest.hpp'):
+    for name in ('config.hpp','pipeline.hpp','sensors.hpp','selftest.hpp','temperature.hpp'):
         shutil.copyfile(here/name,out/name)
     a07=app/'src/a07'; a07.mkdir(exist_ok=True)
     for name in ('preprocess.hpp','a07_snapshot.hpp'):
@@ -47,8 +47,8 @@ def prepare(app, model_path):
     overlay=app/'boards/nrf54lm20dk_nrf54lm20b_cpuapp.overlay'
     overlay.write_text(overlay.read_text(encoding='utf-8')+'\n'+(here/'sensors.overlay').read_text(),encoding='utf-8')
     with (app/'prj.conf').open('a') as f: f.write('\n# A08 real acquisition, commissioning gate closed\nCONFIG_ADC=y\n')
-    (app/'VERSION').write_text('VERSION_MAJOR = 3\nVERSION_MINOR = 4\nPATCHLEVEL = 1\nVERSION_TWEAK = 8\nEXTRAVERSION = a08-adc-range-2\n')
-    manifest={'firmware':'a08-adc-range-2','origin':'test','calibration_config':(here/'config.hpp').read_text(),
+    (app/'VERSION').write_text('VERSION_MAJOR = 3\nVERSION_MINOR = 4\nPATCHLEVEL = 1\nVERSION_TWEAK = 9\nEXTRAVERSION = a08-temperature-3\n')
+    manifest={'firmware':'a08-temperature-3','origin':'test','calibration_config':(here/'config.hpp').read_text(),
               'model':model['version'],'source_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest()
               for p in here.iterdir() if p.is_file()}}
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
