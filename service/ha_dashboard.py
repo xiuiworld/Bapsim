@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 LABELS = {
     "detection_status": "밥솥 단독 판정", "workflow_status": "보호자 확인 상태",
     "baseline": "개인 기준", "features": "현재 특징",
+    "usage_context": "최근 개방의 보드 맥락",
     "initial_routine": "초기 밥솥 사용 시간 설정",
     "notification_delivery": "알림 전달 단계", "matter_input": "실물 밥솥 입력 준비",
     "observation_issue_status": "연결 문제 상태",
