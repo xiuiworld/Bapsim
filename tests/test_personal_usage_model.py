@@ -21,6 +21,29 @@ def event(day: int, hour: int, minute: int = 0, kind: str = "lid_opened") -> dic
 
 
 class PersonalUsageModelTests(TestCase):
+    def test_disconnect_starts_new_usage_group_and_survives_restore(self):
+        model = PersonalUsageModel()
+        model.observe(event(0, 8, kind="device_online"))
+        model.observe(event(0, 8, 5))
+        model.observe(event(0, 8, 10, kind="device_offline"))
+        model.observe(event(0, 8, 20, kind="device_online"))
+        model.observe(event(0, 8, 30))
+        expected = tuple(datetime.fromisoformat(at(0, 8, minute)).astimezone(timezone.utc).isoformat()
+                         for minute in (5, 30))
+        self.assertEqual(model.grouped_open_times("matter", "cooker_01"), expected)
+        restored = PersonalUsageModel()
+        restored.load_state(model.dump_state())
+        self.assertEqual(restored.grouped_open_times("matter", "cooker_01"), expected)
+
+    def test_connected_days_without_opening_are_not_personalized(self):
+        model = PersonalUsageModel()
+        model.observe(event(0, 0, kind="device_online"))
+        model.availability("matter", "cooker_01", True, at(8, 12))
+        profile = model.profile("matter", "cooker_01", at(8, 12))
+        self.assertGreaterEqual(profile["windows"][0]["covered_days"], 7)
+        self.assertEqual(profile["windows"][0]["positive_days"], 0)
+        self.assertFalse(profile["ready"])
+
     def test_operating_model_uses_validated_drift_gate(self):
         model = operating_usage_model()
         self.assertEqual(model.window_history_days, 10)
@@ -380,7 +403,7 @@ class PersonalUsageModelTests(TestCase):
         alerts = [model.evaluate_trend("matter", "cooker_01", at(day, 0, 1), online=True)
                   for day in range(19, 23)]
         self.assertEqual(sum(item is not None and item["routine_status"] == "check_required"
-                             for item in alerts), 1)
+                             for item in alerts), 2)
         candidate = next(item for item in alerts if item is not None and item["routine_status"] == "check_required")
         self.assertEqual(DetectionStateManager(min_consecutive=1).ingest(candidate)[0].action,
                          "notify_requested")
@@ -388,6 +411,32 @@ class PersonalUsageModelTests(TestCase):
         restored = PersonalUsageModel()
         restored.load_state(model.dump_state())
         self.assertEqual(restored.evaluate_trend("matter", "cooker_01", at(22, 2), online=True), None)
+
+    def test_persistent_decline_reaches_seven_day_reminder_without_daily_duplicates(self):
+        model = PersonalUsageModel()
+        workflow = DetectionStateManager(min_consecutive=1,
+                                         reminder_cadence=timedelta(days=7),
+                                         resumption_alerts=False)
+        model.observe(event(0, 0, kind="device_online"))
+        requests = []
+        for day in range(42):
+            model.observe(event(day, 8))
+            if day < 21:
+                model.observe(event(day, 19))
+            decision = model.evaluate_trend("matter", "cooker_01", at(day + 1, 0, 1),
+                                            online=True)
+            if decision is None:
+                continue
+            for update in workflow.ingest(decision):
+                if update.action in {"notify_requested", "reminder_requested"}:
+                    requests.append((day + 1, update.action))
+                    workflow.mark_notified("matter", "cooker_01", decision["as_of"])
+            self.assertIsNone(model.evaluate_trend(
+                "matter", "cooker_01", at(day + 1, 0, 2), online=True))
+        self.assertGreaterEqual(len(requests), 2)
+        self.assertEqual(requests[0][1], "notify_requested")
+        self.assertEqual(requests[1][1], "reminder_requested")
+        self.assertGreaterEqual(requests[1][0] - requests[0][0], 7)
 
     def test_decline_does_not_count_missing_coverage_as_zero_use(self):
         model = PersonalUsageModel()

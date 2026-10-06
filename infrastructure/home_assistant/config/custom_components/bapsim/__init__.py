@@ -44,7 +44,7 @@ if (Path(__file__).resolve().parent / "runtime" / "domain").is_dir():
     from .runtime.service.ha_periodic import PeriodicState, bind_periodic
     from .runtime.service.ha_mqtt_subscriptions import bind_mqtt_subscriptions
     from .runtime.service.ha_service_registry import HAServiceRegistry
-    from .runtime.service.ha_caregiver_commands import bind_caregiver_commands
+    from .runtime.service.ha_caregiver_commands import bind_caregiver_commands, refresh_dashboard_choices
 else:
     from domain.events.normalizer import CookerEventNormalizer, NormalizedCookerEvent
     from domain.baseline import PersonalBaselineEngine
@@ -75,7 +75,7 @@ else:
     from service.ha_periodic import PeriodicState, bind_periodic
     from service.ha_mqtt_subscriptions import bind_mqtt_subscriptions
     from service.ha_service_registry import HAServiceRegistry
-    from service.ha_caregiver_commands import bind_caregiver_commands
+    from service.ha_caregiver_commands import bind_caregiver_commands, refresh_dashboard_choices
 
 DOMAIN = "bapsim"
 RAW_EVENT = "bapsim_raw_event"
@@ -381,6 +381,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             show("decline_status", update.status, payload)
         else:
             show("workflow_status", update.status, payload)
+        if hass.services.has_service("input_select", "set_options"):
+            hass.async_create_task(refresh_dashboard_choices(hass, workflow, trend_workflow,
+                                                              controls, _LOGGER))
         save_later()
 
     create_notification, retry_mobile_notifications = make_notification_handlers(
@@ -740,6 +743,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     caregiver = bind_caregiver_commands(
         callback, hass, workflow, trend_workflow, controls, usage_model, analysis_mode,
         output, external_service, show, send_controls, publish_workflow, save_now, save_later, _LOGGER)
+    if hass.services.has_service("input_select", "set_options"):
+        hass.async_create_task(refresh_dashboard_choices(hass, workflow, trend_workflow,
+                                                          controls, _LOGGER))
     service_registry.register("respond", caregiver.respond)
     service_registry.register("set_notification_control", caregiver.set_notification_control)
     service_registry.register("dashboard_control", caregiver.dashboard_control)
@@ -750,7 +756,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 
     stop_mqtt_subscriptions = bind_mqtt_subscriptions(
-        hass, output, set_notification_control, show, _LOGGER, external_service)
+        hass, output, set_notification_control, show, _LOGGER, external_service, show_output)
 
     async def record_simulated_activity(call) -> None:
         device_id = call.data.get("device_id")

@@ -752,6 +752,59 @@ class HAServiceIntegrationTests(TestCase):
         asyncio.run(scenario(False))
         asyncio.run(scenario(True))
 
+    def test_dashboard_can_select_one_of_two_incidents_and_cancel_pause(self):
+        seed = {"workflow": [{"source": "matter", "device_id": "cooker_01",
+                             "status": "notified", "incident_id": "gap-1",
+                             "reason_codes": ["EXPECTED_USE_MISSING"]}],
+                "trend_workflow": [{"source": "matter", "device_id": "cooker_01",
+                                    "status": "notified", "incident_id": "trend-1",
+                                    "reason_codes": ["DECLINING_USAGE"]}]}
+
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules(seed)):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_choices_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+
+                async def set_options(call):
+                    entity_id = call.data["entity_id"]
+                    options = call.data["options"]
+                    hass.states.async_set(entity_id, options[0], {"options": options})
+
+                hass.services.async_register("input_select", "set_options", set_options)
+                hass.states.async_set("input_select.bapsim_active_assessment", "선택", {})
+                hass.states.async_set("input_select.bapsim_active_pause", "선택", {})
+                self.assertTrue(await module.async_setup(hass, {}))
+                await asyncio.gather(*hass.tasks)
+                hass.tasks.clear()
+                options = hass.states.get("input_select.bapsim_active_assessment").attributes["options"]
+                self.assertEqual(len(options), 3)
+                choice = next(item for item in options if item.endswith(" | trend-1"))
+                hass.states.async_set("input_select.bapsim_active_assessment", choice, {"options": options})
+                local_end = datetime.now(timezone(timedelta(hours=9))) + timedelta(hours=2)
+                hass.states.async_set("input_datetime.bapsim_control_until",
+                                      local_end.strftime("%Y-%m-%d %H:%M:%S"), {})
+                await hass.services.async_call("bapsim", "dashboard_control", {"action": "acknowledge"})
+                self.assertEqual(hass.data["bapsim"]["trend_workflow"].dump_state()[0]["status"],
+                                 "checking")
+                self.assertEqual(hass.data["bapsim"]["workflow"].dump_state()[0]["status"],
+                                 "notified")
+
+                now = datetime.now(timezone.utc)
+                await hass.services.async_call("bapsim", "set_notification_control", {
+                    "command_id": "pause-choice", "action": "pause_lifestyle", "pause_id": "trip-1",
+                    "starts_at": now.isoformat(), "ends_at": (now + timedelta(hours=2)).isoformat(),
+                })
+                options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
+                hass.states.async_set("input_select.bapsim_active_pause", options[1], {"options": options})
+                await hass.services.async_call("bapsim", "dashboard_control", {"action": "cancel_pause"})
+                self.assertNotIn("trip-1", hass.data["bapsim"]["notification_controls"].pauses)
+                if hass.tasks:
+                    await asyncio.gather(*hass.tasks)
+
+        asyncio.run(scenario())
+
     def test_acknowledge_requires_active_assessment_and_records_expiry(self):
         seed = {"workflow": [{"source": "matter", "device_id": "cooker_01", "status": "notified",
                               "incident_id": "case-1", "reason_codes": ["EXPECTED_USE_MISSING"]}]}
