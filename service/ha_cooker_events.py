@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+from domain.personal_model import usage_group_id
+
 
 def bind_cooker_events(
         hass, callback, cooker_event, session_event, feature_event, observations,
@@ -62,6 +64,7 @@ def bind_cooker_events(
                 archive_service_record("usage_group", {
                     "source": source, "device_id": device_id, "group_started_at": opening,
                     **({"board_usage_context": context} if context is not None else {}),
+                    "record_id": usage_group_id(source, device_id, opening),
                 }, opening)
         try:
             updates = sessions.ingest(event.data)

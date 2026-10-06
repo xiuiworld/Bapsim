@@ -1,8 +1,12 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest import TestCase
 
-from domain.personal_model import PersonalUsageModel, operating_usage_model
+from domain.personal_model import PersonalUsageModel, operating_usage_model, usage_group_id
 from workflow import DetectionStateManager
+from service.output import StatusOutput
+from service.ha_cooker_events import bind_cooker_events
+from test_ha_service_integration import FakeHass
 
 
 KST = timezone(timedelta(hours=9))
@@ -71,7 +75,63 @@ class PersonalUsageModelTests(TestCase):
         self.assertEqual(len(missing), 1)
         self.assertEqual(missing[0]["routine_status"], "check_required")
         self.assertEqual(missing[0]["reason_codes"], ["EXPECTED_USE_MISSING"])
+        self.assertEqual(set(missing[0]["evidence"]["evidence_ids"]), {
+            usage_group_id("matter", "cooker_01", at(day, 15, 30)) for day in range(7)
+        })
         self.assertEqual(model.evaluate("matter", "cooker_01", at(7, 18, 30), online=True), [])
+
+    def test_group_evidence_uses_group_start_even_when_window_contains_later_open(self):
+        self.assertEqual(usage_group_id("matter", "cooker_01", at(0, 7, 55)),
+                         usage_group_id("matter", "cooker_01", datetime.fromisoformat(
+                             at(0, 7, 55)).astimezone(timezone.utc).isoformat()))
+        self.assertNotEqual(usage_group_id("matter", "cooker_01", at(0, 7, 55)),
+                            usage_group_id("simulator", "cooker_01", at(0, 7, 55)))
+        model = PersonalUsageModel()
+        model.observe(event(0, 0, kind="device_online"))
+        model.observe(event(0, 7, 55))
+        model.observe(event(0, 8, 5))
+        model.availability("matter", "cooker_01", True, at(1, 12))
+        profile = model.profile("matter", "cooker_01", at(1, 12))
+        evidence = profile["windows"][0]["evidence_ids"]
+        self.assertEqual(evidence, [usage_group_id("matter", "cooker_01", at(0, 7, 55))])
+        self.assertEqual(model.grouped_open_times("matter", "cooker_01"), (
+            datetime.fromisoformat(at(0, 7, 55)).astimezone(timezone.utc).isoformat(),))
+
+    def test_model_evidence_reaches_output_after_workflow_restore(self):
+        model = self._trained()
+        decisions = model.evaluate("matter", "cooker_01", at(7, 18), online=True)
+        missed = next(item for item in decisions if item["routine_status"] == "check_required")
+        workflow = DetectionStateManager(min_consecutive=1)
+        workflow.ingest(missed)
+        restored = DetectionStateManager(min_consecutive=1)
+        restored.load_state(workflow.dump_state())
+        result = StatusOutput("home_01").build(
+            at(7, 18), model.profile("matter", "cooker_01", at(7, 18)),
+            "available", restored.current_state("matter", "cooker_01"), None)
+        self.assertEqual(result["assessments"][0]["evidence_ids"],
+                         missed["evidence"]["evidence_ids"])
+        self.assertTrue(result["assessments"][0]["evidence_ids"])
+
+    def test_ha_usage_group_record_id_matches_model_evidence(self):
+        model = PersonalUsageModel()
+        model.observe(event(0, 0, kind="device_online"))
+        archived = []
+        hass = FakeHass()
+        bind_cooker_events(
+            hass, lambda function: function, "canonical", "session", "feature", None,
+            lambda payload: None, False, set(), lambda: None, None, lambda *args: None,
+            model, {}, SimpleNamespace(ingest_lid_opening=lambda *args: []),
+            lambda update: None,
+            lambda category, payload, at: archived.append((category, payload, at)),
+            SimpleNamespace(ingest=lambda data: []), None, {}, lambda *args: None,
+            SimpleNamespace(warning=lambda *args: None),
+        )
+        hass.bus.async_fire("canonical", event(0, 8))
+        self.assertEqual(len(archived), 1)
+        category, record, _ = archived[0]
+        self.assertEqual(category, "usage_group")
+        self.assertEqual(record["record_id"],
+                         usage_group_id("matter", "cooker_01", record["group_started_at"]))
 
     def test_recent_window_follows_a_changed_use_time(self):
         current = PersonalUsageModel()
