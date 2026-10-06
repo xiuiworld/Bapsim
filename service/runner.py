@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 import paho.mqtt.client as mqtt
 
 from service.standalone import AnalysisService
+from service.ha_notification_transport import DETAIL_PATH
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -92,7 +93,9 @@ def main() -> None:
         if local_result != "ha_accepted":
             return local_result
         if mobile:
-            return ha_call("notify", mobile, {"title": title, "message": message})
+            return ha_call("notify", mobile, {"title": title, "message": message,
+                                              "data": {"url": DETAIL_PATH,
+                                                       "clickAction": DETAIL_PATH}})
         return "ha_accepted"
 
     service = AnalysisService(household, Path(os.environ.get("BAPSIM_STATE_FILE", "/data/state.json")),

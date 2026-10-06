@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from copy import deepcopy
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -18,9 +20,10 @@ class CaregiverHandlers(NamedTuple):
 
 def bind_caregiver_commands(
         callback, hass, workflow, trend_workflow, controls, usage_model, analysis_mode,
-        output, external_service, show, send_controls, publish_workflow, save_later, logger
+        output, external_service, show, send_controls, publish_workflow, save_now, save_later, logger
 ) -> CaregiverHandlers:
     _LOGGER = logger
+    control_lock = asyncio.Lock()
 
     async def respond(call) -> None:
         response = call.data["response"]
@@ -77,7 +80,17 @@ def bind_caregiver_commands(
             if len(active) != 1:
                 raise ValueError("acknowledge requires one active incident_id")
         now = datetime.now(timezone.utc).isoformat()
-        result = controls.apply(command, now)
+        async with control_lock:
+            before = deepcopy(controls.dump_state())
+            result = controls.apply(command, now)
+            show("notification_control_result", "applying", {"command_id": result["command_id"]})
+            try:
+                await save_now()
+            except Exception:
+                controls.load_state(before)
+                show("notification_control_result", "failed", {
+                    "command_id": result["command_id"], "reason": "storage_failed"})
+                raise
         show("notification_controls", controls.revision, controls.dump_state())
         show("notification_control_result", result["status"], result)
         if hass.services.has_service("mqtt", "publish"):
