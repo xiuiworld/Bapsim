@@ -6,6 +6,14 @@ input_datetime:
     has_time: true
 
 input_select:
+  bapsim_active_assessment:
+    name: 확인할 밥솥 안내
+    options: [선택]
+    icon: mdi:format-list-checks
+  bapsim_active_pause:
+    name: 취소할 알림 쉬기
+    options: [선택]
+    icon: mdi:bell-cancel
   bapsim_lid_state:
     name: 밥솥 뚜껑 원시 상태
     options: [unknown, open, closed]

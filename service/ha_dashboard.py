@@ -45,9 +45,11 @@ class HADashboard:
 
     def show_output(self, source: str, payload: dict[str, object]) -> None:
         entity = "output_state" if source == "matter" else "simulation_output_state"
+        revision = int(payload["revision"])
+        if revision <= self.output_revisions.get(entity, -1):
+            return
         if entity in self.output_timers:
             self.output_timers.pop(entity)()
-        revision = int(payload["revision"])
         self.output_revisions[entity] = revision
         expires = datetime.fromisoformat(str(payload["valid_until"]).replace("Z", "+00:00"))
         if expires.tzinfo is None:

@@ -94,7 +94,7 @@ class PersonalUsageModel:
 
     def _device(self, source: str, device_id: str) -> dict[str, object]:
         return self._devices.setdefault((source, device_id), {
-            "opens": [], "raw_opens": [], "coverage": [], "online_since": None,
+            "opens": [], "raw_opens": [], "group_breaks": [], "coverage": [], "online_since": None,
             "last_seen": None, "last_open_at": None,
             "evaluations": {}, "trend_evaluations": {},
             "decline_streak": 0, "recovery_streak": 0, "trend_active": False,
@@ -154,6 +154,7 @@ class PersonalUsageModel:
                 "source": source, "device_id": device_id,
                 "opens": [at.isoformat() for at in state["opens"]],
                 "raw_opens": [at.isoformat() for at in state["raw_opens"]],
+                "group_breaks": [at.isoformat() for at in state["group_breaks"]],
                 "coverage": [[start.isoformat(), end.isoformat()] for start, end in state["coverage"]],
                 "online_since": state["online_since"].isoformat() if state["online_since"] else None,
                 "last_seen": state["last_seen"].isoformat() if state["last_seen"] else None,
@@ -179,7 +180,8 @@ class PersonalUsageModel:
             # Older snapshots only stored group starts. Treat those as the
             # available observations without inventing the missing raw opens.
             state["raw_opens"] = sorted(_time(at) for at in item.get("raw_opens", item.get("opens", [])))
-            state["opens"] = self._group_opens(state["raw_opens"])
+            state["group_breaks"] = sorted(_time(at) for at in item.get(
+                "group_breaks", [end for _, end in item.get("coverage", [])]))
             latest_open = item.get("last_open_at")
             state["last_open_at"] = max(
                 [*state["raw_opens"], *([_time(latest_open)] if latest_open else [])],
@@ -195,10 +197,13 @@ class PersonalUsageModel:
             # last actual heartbeat; never span an unobserved downtime.
             start = item.get("online_since")
             end = item.get("last_seen")
-            if start and end and _time(end) > _time(start):
-                state["coverage"].append((_time(start), _time(end)))
+            if start and end:
+                if _time(end) > _time(start):
+                    state["coverage"].append((_time(start), _time(end)))
+                state["group_breaks"].append(_time(end))
             state["online_since"] = None
             state["last_seen"] = _time(end) if end else None
+            state["opens"] = self._group_opens(state["raw_opens"], state["group_breaks"])
         self._away_intervals = [(_time(start), _time(end)) for start, end in stored.get("away_intervals", [])]
         self._away_since = None
         if stored.get("away_since"):
@@ -235,6 +240,7 @@ class PersonalUsageModel:
         elif start is not None:
             if moment > start:
                 state["coverage"].append((start, moment))
+                state["group_breaks"].append(moment)
             state["online_since"] = None
             state["clock_cache"].clear()
         self._prune(state, moment)
@@ -263,24 +269,26 @@ class PersonalUsageModel:
         raw_opens = state["raw_opens"]
         state["last_open_at"] = moment
         raw_opens.append(moment)
-        state["opens"] = self._group_opens(raw_opens)
+        state["opens"] = self._group_opens(raw_opens, state["group_breaks"])
         state["centers_cache"].clear()
         state["clock_cache"].clear()
         self._prune(state, moment)
         return True
 
     @staticmethod
-    def _group_opens(raw_opens: list[datetime]) -> list[datetime]:
+    def _group_opens(raw_opens: list[datetime], breaks: list[datetime] = ()) -> list[datetime]:
         starts: list[datetime] = []
         for moment in raw_opens:
-            if not starts or moment >= starts[-1] + USAGE_GROUP:
+            if (not starts or moment >= starts[-1] + USAGE_GROUP or
+                    any(starts[-1] < boundary <= moment for boundary in breaks)):
                 starts.append(moment)
         return starts
 
     def _prune(self, state: dict[str, object], now: datetime) -> None:
         cutoff = now - timedelta(days=self.history_days + 3)
         state["raw_opens"] = [at for at in state["raw_opens"] if at >= cutoff]
-        state["opens"] = self._group_opens(state["raw_opens"])
+        state["group_breaks"] = [at for at in state["group_breaks"] if at >= cutoff]
+        state["opens"] = self._group_opens(state["raw_opens"], state["group_breaks"])
         state["coverage"] = [(start, end) for start, end in state["coverage"] if end >= cutoff]
         state["evaluations"] = {
             key: status for key, status in state["evaluations"].items()
@@ -399,7 +407,7 @@ class PersonalUsageModel:
         # episode; these counts are observed activity, not meal counts.
         daily_opens = [opening for opening in state["raw_opens"]
                        if start <= opening < end]
-        return len(self._group_opens(daily_opens))
+        return len(self._group_opens(daily_opens, state["group_breaks"]))
 
     def _cadence_supports_missing_window(self, state: dict[str, object],
                                          decision_at: datetime) -> bool:
@@ -453,6 +461,7 @@ class PersonalUsageModel:
             ).isoformat(),
             "probability": round(probability, 4),
             "covered_days": covered_days,
+            "positive_days": positive_days,
             "personal_weight": round(count / (2 + count), 4),
             "initial_ready": bool(expected_today and 3 <= covered_days < self.min_covered_days
                                   and positive_days >= 2),
@@ -542,7 +551,8 @@ class PersonalUsageModel:
             "windows": windows,
             "lid_open_count_24h": len(recent_opens),
             "last_lid_open_at": previous_opens[-1].isoformat() if previous_opens else None,
-            "ready": any(window["covered_days"] >= self.min_covered_days or window["initial_ready"]
+            "ready": any((window["covered_days"] >= self.min_covered_days and
+                          window["positive_days"] >= 2) or window["initial_ready"]
                          for window in windows),
         }
 
@@ -649,6 +659,11 @@ class PersonalUsageModel:
         state["recovery_streak"] = 0 if decline else state["recovery_streak"] + 1
         if decline and state["decline_streak"] >= 3 and not state["trend_active"]:
             state["trend_active"] = True
+            status, reason = "check_required", "DECLINING_USAGE"
+        elif decline and state["trend_active"]:
+            # Keep supplying a fresh daily assessment to the workflow. Its
+            # seven-day cadence, controls and quiet-hours policy decide whether
+            # a reminder may actually be sent.
             status, reason = "check_required", "DECLINING_USAGE"
         elif not decline and state["recovery_streak"] >= 3 and state["trend_active"]:
             state["trend_active"] = False
