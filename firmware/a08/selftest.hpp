@@ -18,6 +18,16 @@ inline unsigned selftest(Pipeline &p) {
     for(int j=30;j<34;j++) failures+=p.frame[j]!=0;
     only_temp.ms=2000; only_temp.sequence=40; only_temp.adc[4]=NAN;
     failures+=!p.push(only_temp) || p.frame[28]!=0 || p.frame[29]!=128 || p.frame[36]!=2;
+    // A confirmed contact must publish with uncalibrated light channels.
+    p.reset(cal); only_temp.adc[4]=2047.5;
+    for(unsigned i=0;i<5;i++) {
+        only_temp.ms=i*50; only_temp.sequence=i; only_temp.lid=i<3 ? 0 : 1;
+        const bool emitted=p.push(only_temp);
+        if(i==1) failures+=!emitted || p.frame[27]!=0;
+        if(i==4) failures+=!emitted || p.frame[27]!=1;
+    }
+    only_temp.ms=250; only_temp.sequence=5; only_temp.lid=-1;
+    failures+=!p.push(only_temp) || p.frame[27]!=255;
     p.reset(cal);
     a07::Sample s{}; s.boot=42; s.lid=0;
     for(int j=0;j<4;j++) s.adc[j]=500;
