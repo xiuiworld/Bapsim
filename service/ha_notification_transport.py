@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+DETAIL_PATH = "/bapsim-lab/status"
+
 
 def notification_copy(action: str, reason_codes: tuple[str, ...]) -> tuple[str, str]:
     issue = action == "observation_issue_requested"
@@ -37,5 +39,6 @@ async def send_mobile(hass: object, target: str, title: str, message: str,
                       action: str, source: str, device_id: str, incident_id: str) -> None:
     await hass.services.async_call("notify", target, {
         "title": title, "message": message,
-        "data": {"actions": mobile_actions(action, source, device_id, incident_id)},
+        "data": {"url": DETAIL_PATH, "clickAction": DETAIL_PATH,
+                 "actions": mobile_actions(action, source, device_id, incident_id)},
     }, blocking=True)
