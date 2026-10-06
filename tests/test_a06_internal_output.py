@@ -6,10 +6,12 @@ import importlib.util
 import json
 import sys
 from types import SimpleNamespace
+import types
 from unittest import TestCase
 from unittest.mock import patch
 
 from service.ha_dashboard import HADashboard
+from service.ha_mqtt_subscriptions import bind_mqtt_subscriptions, valid_worker_state
 from service.ha_mqtt_output import HAMQTTOutput
 from service.output import StatusOutput
 from test_ha_service_integration import COMPONENT, FakeHass, ha_modules
@@ -72,12 +74,78 @@ class A06InternalOutputTests(TestCase):
         dashboard.show_output("simulator", first)
         dashboard.show_output("simulator", second)
         self.assertTrue(scheduled[0]["cancelled"])
+        dashboard.show_output("simulator", first)
+        self.assertEqual(len(scheduled), 2)
         scheduled[0]["callback"](scheduled[0]["at"])
         self.assertEqual(hass.states.get("sensor.bapsim_simulation_output_state").state, "new")
         scheduled[1]["callback"](scheduled[1]["at"])
         expired = hass.states.get("sensor.bapsim_simulation_output_state")
         self.assertEqual(expired.state, "expired")
         self.assertNotIn("summary", expired.attributes)
+
+    def test_worker_state_rejects_expired_retained_and_wrong_schema(self):
+        now = datetime.now(timezone.utc)
+        output = StatusOutput("household_a_test")
+        fresh = output.build(now.isoformat(), {"ready": False}, "available", None, None)
+        self.assertTrue(valid_worker_state(fresh, "household_a_test", now))
+        self.assertFalse(valid_worker_state({**fresh, "revision": True}, "household_a_test", now))
+        self.assertFalse(valid_worker_state({**fresh, "schema_version": "old"},
+                                            "household_a_test", now))
+        self.assertFalse(valid_worker_state(fresh, "other_household", now))
+        self.assertFalse(valid_worker_state(fresh, "household_a_test",
+                                            now + timedelta(seconds=181)))
+
+    def test_worker_subscription_uses_dashboard_expiry_and_revision_guard(self):
+        async def scenario():
+            handlers = {}
+            components = types.ModuleType("homeassistant.components")
+            components.__path__ = []
+            mqtt = types.ModuleType("homeassistant.components.mqtt")
+
+            async def wait_for_client(_hass):
+                return True
+
+            async def subscribe(_hass, topic, handler, qos):
+                handlers[topic] = handler
+                return lambda: handlers.pop(topic, None)
+
+            mqtt.async_wait_for_mqtt_client = wait_for_client
+            mqtt.async_subscribe = subscribe
+            components.mqtt = mqtt
+            with patch.dict(sys.modules, {"homeassistant.components": components,
+                                          "homeassistant.components.mqtt": mqtt}):
+                hass = FakeHass()
+                hass.config = SimpleNamespace()
+                timers = []
+
+                def schedule(_hass, callback, at):
+                    timers.append((callback, at))
+                    return lambda: None
+
+                dashboard = HADashboard(hass, None, {}, schedule)
+                output = StatusOutput("household_a_test")
+                stop = bind_mqtt_subscriptions(
+                    hass, output, None, dashboard.show, None, True, dashboard.show_output)
+                await asyncio.gather(*hass.tasks)
+                handler = handlers[output.topic("matter", "state")]
+                now = datetime.now(timezone.utc)
+                expired = output.build((now - timedelta(minutes=4)).isoformat(),
+                                       {}, "available", None, None)
+                handler(SimpleNamespace(payload=json.dumps(expired)))
+                self.assertIsNone(hass.states.get("sensor.bapsim_output_state"))
+                fresh = output.build(now.isoformat(), {}, "available", None, None)
+                handler(SimpleNamespace(payload=json.dumps(fresh)))
+                self.assertEqual(hass.states.get("sensor.bapsim_output_state").state,
+                                 fresh["summary"])
+                self.assertEqual(len(timers), 1)
+                handler(SimpleNamespace(payload=json.dumps(expired)))
+                self.assertEqual(hass.states.get("sensor.bapsim_output_state").attributes["revision"],
+                                 fresh["revision"])
+                timers[0][0](timers[0][1])
+                self.assertEqual(hass.states.get("sensor.bapsim_output_state").state, "expired")
+                stop()
+
+        asyncio.run(scenario())
 
     def test_mqtt_discovery_and_expiry_cover_simulation_separately(self):
         async def scenario():

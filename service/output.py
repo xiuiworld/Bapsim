@@ -5,6 +5,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Mapping
 
+REASON_CODES = {
+    "EXPECTED_USE_MISSING": "expected_window_missed",
+    "UNUSUAL_USE_GAP": "unusual_gap",
+    "DECLINING_USAGE": "declining_frequency",
+    "COOKER_DATA_UNAVAILABLE": "observation_gap",
+    "USAGE_RESUMED": "usage_resumed",
+}
+
 
 class StatusOutput:
     def __init__(self, household_id: str, revision: int = 0) -> None:
@@ -28,12 +36,18 @@ class StatusOutput:
         for kind, item in (("usage_gap", gap), ("declining_usage", decline)):
             if item is None or item.get("incident_id") is None:
                 continue
+            active = item["status"] in {"check_required", "notified", "checking"}
             assessments.append({
                 "assessment_id": item["incident_id"], "type": kind,
                 "status": "notified" if item["status"] in {"notified", "checking"} else
                           "resolved" if item["status"] == "resolved" else "watch",
-                "reason_codes": list(item.get("reason_codes", [])),
-                "evidence_ids": [], "next_evaluate_at": None,
+                "reason_codes": [REASON_CODES[code] for code in item.get("reason_codes", [])
+                                 if code in REASON_CODES],
+                "evidence_ids": list(item.get("evidence_ids") or ()),
+                # The workflow only knows a scheduled policy eligibility for
+                # interval and trend reminders. Other assessments have no
+                # exact next evaluation time to promise.
+                "next_evaluate_at": item.get("next_reminder_at") if active else None,
             })
         if observation != "available":
             summary = "밥솥 관측 상태를 확인해 주세요."
@@ -46,8 +60,10 @@ class StatusOutput:
             "revision": self.revision, "generated_at": now.isoformat(),
             "valid_until": (now + timedelta(seconds=180)).isoformat(),
             "last_usage_at": profile.get("last_lid_open_at"),
-            "learning": "personalized" if profile.get("ready") else "collecting",
-            "observation": observation, "sensor_issues": [],
+            "learning": ("personalized" if profile.get("ready") else
+                         "insufficient" if not profile.get("last_lid_open_at") else "collecting"),
+            "observation": observation,
+            "sensor_issues": (["cooker_data_unavailable"] if observation == "unavailable" else []),
             "assessments": assessments, "summary": summary,
             "policy_version": "0.1.0", "model_version": str(profile.get("model", "personal_usage_v1")),
         }

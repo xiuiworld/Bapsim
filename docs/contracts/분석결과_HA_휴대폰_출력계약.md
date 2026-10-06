@@ -33,6 +33,8 @@ UTF-8 JSON `schema_version=0.1.0`. 한 가정에 대한 현재 상태를 한 객
 
 assessment 필수 필드: `assessment_id`(string), `type`(`usage_gap` 또는 `declining_usage`), `status`(`watch`/`deferred`/`notified`/`resolved`), `reason_codes`(string 배열), `evidence_ids`(관측/행동 ID 배열), `next_evaluate_at`(UTC 또는 null).
 
+현재 개인 사용 모델의 `evidence_ids`는 해당 판단의 기준 계산에 실제 들어간 **유효한 사용 묶음**의 안정적인 `usage_group:<hash>` ID를 최근 64개까지 담는다. HA 내부 모드의 `usage_group` 서비스 기록에도 같은 `record_id`를 보존하고, 독립 작업자 모드에서는 영속 모델의 묶음 시작 시각에서 같은 ID를 재생성한다. 64개 제한 때문에 이 배열은 모든 근거의 완전한 목록이 아니다. 초기 설정값이나 관측 범위만으로 판단해 연결할 사용 묶음이 없으면 빈 배열이 맞으며, 없는 관측을 만들어 넣지 않는다. `sensor_issues`는 밥솥 관측이 끊기면 `cooker_data_unavailable`을 담는다. `next_evaluate_at`은 상태 관리자가 알고 있는 다음 알림 정책 검토 가능 시각(간격 공백 또는 장기 감소의 재안내)만 담는다. 일반 창 평가의 다음 정확한 시각을 모를 때와 해소된 판단은 null이다. 이 값은 실제 폰 발송 예약이나 보장을 뜻하지 않는다.
+
 reason_codes의 첫 목록은 `expected_window_missed`, `unusual_gap`, `declining_frequency`, `auxiliary_activity`, `quiet_hours`, `observation_gap`, `usage_resumed`다. 상태 모델은 각 판단별로 관리하고 learning/observation을 하나의 상태 enum으로 합치지 않는다. 목록에 없는 코드를 임의로 의미 추정하지 않는다.
 
 결과 만료는 **게시 주기 60초, 유효 180초**를 시작값으로 제안한다. 변화가 없어도 게시 시각과 만료를 갱신한다. 계산 프로세스가 멈췄는데 오래된 ‘정상’이 그대로 보이는 것을 방지하려는 서비스 기준이며 센서 보고 주기와 다르다.
@@ -82,7 +84,7 @@ B의 로컬 저장소에는 정규화 관측 90일, 사용 묶음·개인 기준
 
 이번 HA 내부 개발 구성에서 요구하는 격리는 **출처별 모델 키·화면 엔티티·MQTT prefix·실제 모바일 발송 차단**이다. 시험과 실물의 물리적 저장소 분리는 공통 계약의 필수 조건으로 채택하지 않았다. `.storage/bapsim.pipeline`과 HA 아래 journal 루트는 공유된다. 따라서 HA 전체 백업에는 두 출처가 함께 들어가며, 파일 단위로 시험 기록만 독립 복원·삭제할 수 있다고 보장하지 않는다. 운영상 시험 데이터의 독립 삭제·접근 권한·백업이 필요해지면 B가 별도 저장소 설계와 마이그레이션을 제공한 뒤 사용한다.
 
-A05 `input_kind=test`는 현재 B의 live 수집 경로에서 거부된다. 시험 보드→B 분석→시험 폰의 전 구간 검증 경로는 아직 제공하지 않는다. 별도 검증 출처·저장·시험 폰 대상 경로를 B가 구현해 검증하거나, 지원되는 `input_kind=live` 생산자가 준비된 후 live 통합 시험을 수행한다. 수동 HA 폰 알림과 오프라인 시나리오는 이 전 구간의 성공 증거로 취급하지 않는다.
+A05 `input_kind=test`는 B의 live 수집·개인 학습·운영 알림 경로에서 계속 거부된다. 별도로 명시적 실행 ID, 제한 시간과 1회 폰 발송을 가진 개발용 연결 시험 경로를 제공하며, A의 실제 버튼→B 계약 기록·시험 결과→지정 폰 수신·A05 시험 화면 이동을 확인했다([A06 실기 기록](../hardware/A06_HA_OS_배포_검증.md)). 이는 운영 live 분석이나 개인 학습 성능의 검증이 아니다. 일반 시뮬레이터의 모바일 차단도 유지한다.
 
 A: 로컬 브로커, HA 연결, 폰 등록·외부 접근. B: 결과 형식·discovery·화면 설정·발송 코드·중복 방지·저장. 계정 비밀은 예시 파일이나 공유 로그에 넣지 않는다. 가족 식별자는 익명 ID로 공유한다.
 

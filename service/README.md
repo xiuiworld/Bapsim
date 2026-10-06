@@ -4,6 +4,7 @@
 
 - `observations.py`: 관측 90일, 서비스 기록 180일 파티션 보존. HA 설정 디렉터리의 `bapsim_observations/`, `bapsim_records/` 사용.
 - `output.py`: 버전·revision·180초 유효기간이 있는 결과 상태. 실물과 시뮬레이션 MQTT 토픽 분리.
+- 개인 모델의 유효한 사용 묶음에는 재시작 후에도 같은 `usage_group:<hash>` ID를 부여한다. HA 서비스 기록의 `record_id`와 결과 판단의 `evidence_ids`가 이 ID로 연결된다. 연결 단절은 `sensor_issues`에 표시하고, `next_evaluate_at`은 정책이 계산한 다음 재안내 검토 가능 시각이 있을 때만 채운다. 출력 계약의 제한을 따른다.
 - `auxiliary.py`: 가상 보조 활동이 있을 때 시뮬레이션 안내 후보를 30분씩, 최대 2시간 보류. 실물 Matter 판단에는 적용하지 않음.
 - `analysis_policy.py`: HA 내부 모드와 독립 작업자가 창·간격·장기 변화 평가를 같은 순서로 실행하는 공통 진입점.
 

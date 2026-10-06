@@ -84,6 +84,28 @@ class DetectionStateManagerTests(unittest.TestCase):
         self.assertEqual([item.action for item in trend.ingest(detection(60 * 24 * 7 + 2, "normal"))],
                          ["auto_resolved"])
 
+    def test_evidence_and_next_policy_review_survive_restore(self) -> None:
+        manager = DetectionStateManager(min_consecutive=1,
+                                        reminder_cadence=timedelta(days=7))
+        evidence = {**detection(0, "check_required"),
+                    "evidence": {"evidence_ids": ["usage_group:one", "usage_group:one", "usage_group:two"]}}
+        manager.ingest(evidence)
+        manager.mark_notified("simulator", "cooker_01", detection(1, "normal")["as_of"])
+        restored = DetectionStateManager(min_consecutive=1,
+                                         reminder_cadence=timedelta(days=7))
+        restored.load_state(manager.dump_state())
+        state = restored.current_state("simulator", "cooker_01")
+        self.assertEqual(state["evidence_ids"], ("usage_group:one", "usage_group:two"))
+        self.assertEqual(state["next_reminder_at"],
+                         (START + timedelta(days=7, minutes=1)).isoformat())
+        legacy = manager.dump_state()
+        legacy[0].pop("next_reminder_at")
+        migrated = DetectionStateManager(min_consecutive=1,
+                                         reminder_cadence=timedelta(days=7))
+        migrated.load_state(legacy)
+        self.assertEqual(migrated.current_state("simulator", "cooker_01")["next_reminder_at"],
+                         state["next_reminder_at"])
+
     def test_consecutive_alert_and_responses_do_not_repeat(self) -> None:
         manager = DetectionStateManager()
         self.assertEqual(manager.ingest(detection(0, "check_required")), [])

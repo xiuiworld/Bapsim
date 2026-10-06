@@ -1,6 +1,7 @@
 """Local, per-cooker usage-pattern learning."""
 
 from .engine import PersonalUsageModel
+from .evidence import usage_group_id
 
 OPERATING_WINDOW_SETTINGS = {
     "window_history_days": 10,
@@ -13,4 +14,4 @@ def operating_usage_model() -> PersonalUsageModel:
     return PersonalUsageModel(**OPERATING_WINDOW_SETTINGS)
 
 
-__all__ = ["PersonalUsageModel", "OPERATING_WINDOW_SETTINGS", "operating_usage_model"]
+__all__ = ["PersonalUsageModel", "OPERATING_WINDOW_SETTINGS", "operating_usage_model", "usage_group_id"]
