@@ -8,6 +8,7 @@ from io import StringIO
 import json
 from pathlib import Path
 import subprocess
+import sys
 import unittest
 
 from ai.demo_usage_records import EVALUATION_START, generate
@@ -15,6 +16,9 @@ from ai.usage_record_pipeline import evaluate
 
 
 ROOT = Path(__file__).resolve().parents[1]
+TESTS = ROOT / "tests"
+if str(TESTS) not in sys.path:
+    sys.path.insert(0, str(TESTS))
 SCENARIOS = {
     "T08": ("tests.test_personal_usage_model.PersonalUsageModelTests.test_fixed_sixty_minute_group_does_not_extend_with_later_openings",),
     "T09": ("tests.test_standalone_policy.PolicyTests.test_overnight_alert_is_sent_only_if_still_active",
@@ -45,11 +49,15 @@ def run(output: Path) -> dict[str, object]:
 
     observations, labels = generate()
     comparison = evaluate(observations, labels, EVALUATION_START)
-    metrics = {name: comparison[name] for name in ("personal", "notification_request", "fixed_24h")}
-    checks.append({"id": "T17", "status": "passed" if comparison["personal"]["eligible_days"] else "failed",
+    metrics = {name: comparison[name] for name in (
+        "personal", "notification_request", "fixed_24h", "fixed_24h_notification_request")}
+    eligible = comparison["notification_request"]["eligible_days"]
+    matched = eligible > 0 and eligible == comparison["fixed_24h_notification_request"]["eligible_days"]
+    checks.append({"id": "T17", "status": "passed" if matched else "failed",
                    "input_type": "synthetic", "evaluation_start": EVALUATION_START.isoformat(),
                    "households": 2, "metrics": metrics,
-                   "limitations": "Scripted labels measure cooker-use review candidates, not meals, health, or phone delivery."})
+                   "comparison_stage": "first workflow notification request on the same eligible household-days",
+                   "limitations": "Scripted labels, four daily checkpoints, no quiet-hours release, caregiver controls or phone delivery; no product accuracy approval."})
 
     commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, text=True).strip()
     dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip())

@@ -107,31 +107,31 @@ views:
         content: |
           ## 생활 루틴 확인
           밥솥 사용의 변화를 보여줍니다. 식사 여부나 건강 상태를 확정하지 않습니다.
+          {% set issue = states('sensor.bapsim_observation_issue_status') %}
+          {% set output = states('sensor.bapsim_output_state') %}
+          {% if issue not in ['normal', 'resolved', 'unknown', 'unavailable', 'none'] %}
+          **관측 상태를 먼저 확인하세요:** {{ issue }}. 관측이 부족하면 생활 변화로 단정하지 않습니다.
+          {% endif %}
+          - 현재 실물 결과: **{{ output }}**
+          {% set incident_options = state_attr('input_select.bapsim_active_assessment', 'options') or [] %}
+          {% set pause_options = state_attr('input_select.bapsim_active_pause', 'options') or [] %}
+          - 진행 중인 안내: **{{ [incident_options | length - 1, 0] | max }}건**
+          - 취소 가능한 알림 쉬기: **{{ [pause_options | length - 1, 0] | max }}건**
       - type: entities
-        title: 판정 및 기준
+        title: 보호자 요약 및 조작
         entities:
-          - sensor.bapsim_detection_status
           - sensor.bapsim_workflow_status
           - sensor.bapsim_decline_status
-          - sensor.bapsim_decline_detection
-          - sensor.bapsim_interval_detection
           - sensor.bapsim_baseline
-          - sensor.bapsim_features
           - sensor.bapsim_usage_context
           - sensor.bapsim_notification_delivery
           - sensor.bapsim_observation_issue_status
           - sensor.bapsim_notification_controls
           - sensor.bapsim_notification_control_result
           - sensor.bapsim_output_state
-          - sensor.bapsim_simulation_output_state
-          - sensor.bapsim_mqtt_output
-          - sensor.bapsim_auxiliary_deferral
-          - sensor.bapsim_matter_input
-          - sensor.bapsim_away
           - input_datetime.bapsim_control_until
           - input_select.bapsim_active_assessment
           - input_select.bapsim_active_pause
-          - input_select.bapsim_availability
       - type: markdown
         content: |
           알림이 둘 이상이면 **확인할 밥솥 안내**에서 사건을 고르세요. 종료 시각을 정한 뒤 확인하거나 알림 쉬기를 누릅니다. 이미 설정한 알림 쉬기는 **취소할 알림 쉬기**에서 골라 취소할 수 있습니다. 적용 결과는 위 **알림 조작 결과**에 표시됩니다.
@@ -159,7 +159,6 @@ views:
           {% else %}
           - 검증된 실물 개방 맥락 없음
           {% endif %}
-          - 시뮬레이션 최근 뚜껑 열림: **{{ as_timestamp(state_attr('sensor.bapsim_simulation_output_state', 'last_usage_at')) | timestamp_custom('%Y-%m-%d %H:%M', true) if state_attr('sensor.bapsim_simulation_output_state', 'last_usage_at') else '미관측' }}**
           - 판정 근거: **{{ (d.get('reason_codes') or []) | join(', ') if d.get('reason_codes') else '없음' }}**
           - 밥솥 판정: **{{ states('sensor.bapsim_detection_status') }}**
       - type: grid
@@ -214,3 +213,23 @@ views:
           - sensor.bapsim_detection_status
           - sensor.bapsim_workflow_status
           - sensor.bapsim_decline_status
+  - title: 진단
+    path: diagnostics
+    icon: mdi:stethoscope
+    cards:
+      - type: markdown
+        content: |
+          ## 내부 진단
+          실물 입력과 처리 단계를 확인하는 개발용 화면입니다. 시뮬레이션은 Simulator 탭에서 확인합니다.
+      - type: entities
+        title: 실물 입력·판정 내부 상태
+        entities:
+          - sensor.bapsim_detection_status
+          - sensor.bapsim_decline_detection
+          - sensor.bapsim_interval_detection
+          - sensor.bapsim_features
+          - sensor.bapsim_mqtt_output
+          - sensor.bapsim_auxiliary_deferral
+          - sensor.bapsim_matter_input
+          - sensor.bapsim_away
+          - input_select.bapsim_availability

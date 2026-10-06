@@ -36,15 +36,26 @@ async def refresh_dashboard_choices(hass, workflow, trend_workflow, controls, lo
         f"{item['device_id']} · {item['status']} | {item['incident_id']}"
         for item in assessments
     ]
-    pauses = ["선택"] + [f"{pause_id} | {pause_id}" for pause_id in controls.pauses]
+    now = datetime.now(timezone.utc)
+    pauses = ["선택"] + [
+        f"{pause_id} (종료 {item['ends_at']}) | {pause_id}"
+        for pause_id, item in controls.pauses.items()
+        if datetime.fromisoformat(item["ends_at"].replace("Z", "+00:00")) > now
+    ]
     for entity_id, options in (("input_select.bapsim_active_assessment", choices),
                                ("input_select.bapsim_active_pause", pauses)):
-        if hass.states.get(entity_id) is None:
+        current = hass.states.get(entity_id)
+        if current is None or current.attributes.get("options") == options:
             continue
         try:
             await hass.services.async_call("input_select", "set_options", {
                 "entity_id": entity_id, "options": options,
             }, blocking=True)
+            if (current.state in options and current.state != "선택" and
+                    hass.services.has_service("input_select", "select_option")):
+                await hass.services.async_call("input_select", "select_option", {
+                    "entity_id": entity_id, "option": current.state,
+                }, blocking=True)
         except Exception as exc:
             if logger is not None:
                 logger.warning("Could not refresh caregiver choice %s: %s", entity_id,
