@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
+from domain.personal_model import usage_group_id
 from test_a05_snapshot_input import report
 from test_ha_service_integration import COMPONENT, FakeHass, ha_modules
 
@@ -148,9 +149,14 @@ class A05HAIntegrationTests(TestCase):
                 rows = [json.loads(line) for path in files
                         for line in path.read_text(encoding="utf-8").splitlines()]
                 episode = next(row for row in rows if row["category"] == "usage_episode")
+                group = next(row for row in rows if row["category"] == "usage_group")
                 self.assertEqual(episode["classification"], "warming_possible_use")
                 self.assertEqual(episode["phase_quality"], "good")
                 self.assertTrue(episode["lid_record_id"])
+                self.assertEqual(group["record_id"], usage_group_id(
+                    "matter", "cooker", group["group_started_at"]))
+                self.assertEqual(group["board_usage_context"]["lid_record_id"],
+                                 episode["lid_record_id"])
 
         with TemporaryDirectory() as root:
             asyncio.run(scenario(root))
