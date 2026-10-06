@@ -50,6 +50,7 @@ void SensorThread(void *,void *,void *)
     LOG_INF("A08 ADC config gain=1/4 reference_mv=%u resolution=12",adc_ref_internal(DEVICE_DT_GET(DT_NODELABEL(adc))));
     LOG_INF("A08 START preprocess=%s model=%s calibration=%s confirmed=%u cal_valid=%u driver_errors=%d",
         a07::PREPROCESS_VERSION,A07_MODEL_VERSION,a08::CAL_VERSION,a08::SENSORS_CONFIRMED,calibrated,errors);
+    LOG_INF("A08 CONTACT enabled=%u high_is_open=%u pin=P1.10",a08::CONTACT_ENABLED,a08::HIGH_IS_OPEN);
     uint64_t sequence=0;
     uint64_t previous=0, min_period=UINT64_MAX, max_period=0;
     unsigned gaps=0;

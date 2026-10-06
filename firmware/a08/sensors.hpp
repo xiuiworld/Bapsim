@@ -71,7 +71,7 @@ public:
                 s.adc[j]=static_cast<double>(raw_codes[j])/supply_raw*4095.0;
         }
         const int v=contact_ready ? gpio_pin_get_raw(gpio,10) : -1;
-        s.lid=SENSORS_CONFIRMED && v>=0 ? static_cast<int8_t>((v!=0)==HIGH_IS_OPEN) : -1;
+        s.lid=(SENSORS_CONFIRMED || CONTACT_ENABLED) && v>=0 ? static_cast<int8_t>((v!=0)==HIGH_IS_OPEN) : -1;
     }
 };
 }

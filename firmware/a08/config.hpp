@@ -3,9 +3,11 @@
 namespace a08 {
 // Enable only after voltage, wiring, polarity and each calibration are measured.
 constexpr bool SENSORS_CONFIRMED = false;
-// Only the NTC channel has been commissioned for nominal temperature readings.
+// The NTC channel is enabled for nominal temperature readings.
 // Accuracy has not been checked against a reference thermometer.
 constexpr bool TEMPERATURE_ENABLED = true;
+// P1.10 verified LOW with magnet attached, HIGH with magnet removed.
+constexpr bool CONTACT_ENABLED = true;
 // Zero selects the measured internal VDD for the supplied VDD:IO wiring.
 constexpr double SUPPLY_MV = 0;
 constexpr bool HIGH_IS_OPEN = true;

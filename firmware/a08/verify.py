@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import re
 
-def verify(path, temperature=False):
+def verify(path, temperature=False, contact=False):
     raw=Path(path).read_bytes(); text=raw.decode('utf-8',errors='replace')
     assert re.findall(r'A08 INTEGRATION END failures=(\d+)',text)==['0'], 'integration failed/missing/duplicate'
     # Capture begins before flashing; disregard reports from the previous image.
@@ -16,7 +16,17 @@ def verify(path, temperature=False):
     reports=re.findall(r'A08 R c=(\d+) p=(\d+) h=(\d+) l=(\d+) f=(\d+) t=(-?\d+) led=(\d+),(\d+),(\d+),(\d+)',text)
     assert len(reports)>=3, 'insufficient reports'
     if temperature:
-        assert all(r[1:5]==('0','0','255','0') and r[6:]==('0','0','0','0') for r in reports), 'unconfirmed light/contact became valid or publish failed'
+        assert all(r[1:3]==('0','0') and r[4]=='0' and r[6:]==('0','0','0','0') for r in reports), 'unconfirmed light became valid or publish failed'
+        if contact:
+            assert 'A08 CONTACT enabled=1 high_is_open=1 pin=P1.10' in text, 'contact configuration missing'
+            assert all(r[3] in ('0','1','255') for r in reports), 'invalid contact code'
+            unknown=[i for i,r in enumerate(reports[1:],1) if r[3]=='255']
+            gaps=sum(map(int,re.findall(r'A08 TIMING samples=200 min_ms=\d+ max_ms=\d+ gaps=(\d+)',text)))
+            assert len(unknown)<=gaps, 'unknown contact without an acquisition gap'
+            assert all(any(r[3] in ('0','1') for r in reports[i+1:i+3]) for i in unknown), 'contact did not recover after a gap'
+            assert reports[-1][3] in ('0','1'), 'contact not valid at capture end'
+        else:
+            assert all(r[3]=='255' for r in reports), 'unconfirmed contact became valid'
         assert all(-2000<=int(r[5])<=12000 for r in reports), 'temperature missing/out of supported range'
         supply=re.findall(r'A08 SUPPLY raw=(\d+) mv=(\d+) temperature_enabled=1',text)
         assert supply and all(1700<=int(mv)<=3600 and abs(int(mv)-int(raw)*3600/4096)<=1 for raw,mv in supply), 'supply measurement invalid'
@@ -46,12 +56,13 @@ def verify(path, temperature=False):
             'unknown_reports':sum(int(r[5])==-32768 for r in reports),
             'adc_read_checks':len(adc),'clean_timing_windows':best,'timing':timing,
             'adc_gain':'1/4','adc_reference_mv':900,'voltage_checks':len(voltage_pairs),
-            'origin':'test','temperature_enabled':temperature,'physical_sensors_verified':False,
+            'origin':'test','temperature_enabled':temperature,'contact_enabled':contact,'contact_states':sorted({int(r[3]) for r in reports}),'contact_unknown_reports':sum(r[3]=='255' for r in reports),'physical_sensors_verified':False,
             'sha256':hashlib.sha256(raw).hexdigest()}
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(); parser.add_argument('log'); parser.add_argument('--output',required=True)
     parser.add_argument('--temperature',action='store_true')
-    args=parser.parse_args(); result=verify(args.log,args.temperature)
+    parser.add_argument('--contact',action='store_true')
+    args=parser.parse_args(); result=verify(args.log,args.temperature,args.contact)
     with open(args.output,'x',encoding='utf-8') as f: json.dump(result,f,indent=2)
     print(json.dumps(result,indent=2))

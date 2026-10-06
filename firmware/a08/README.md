@@ -116,3 +116,24 @@ Matter endpoint 2 TemperatureMeasurement에 온도를 발행한다. 60초 모델
 실기 결과: 통합/드라이버 오류 0, 80초 연속 48~52ms 취득 및 환산 검사 통과,
 온도 보고 45회 모두 유효(30.59~31.06°C), SnapshotPacked/이력 발행 결과 모두 성공.
 이는 기준 온도계와 비교한 정확도 보증이나 HA 화면의 별도 수신 확인은 아니다.
+
+
+## 개폐센서 독립 활성화 — 2026-10-06
+
+`3.4.1-a08-contact-1+10`은 `CONTACT_ENABLED=true`로 P1.10 접점을 독립 활성화한다.
+광센서 보정용 전역 `SENSORS_CONFIRMED=false`와 온도 활성화는 유지한다.
+사용자가 배선을 바로잡은 뒤 실제 GPIO에서 자석 부착 LOW, 분리 HIGH를 확인했다.
+닫힘은 SnapshotPacked의 lid=0, 열림은 lid=1이며, 시작 시 50ms 안정화 전에는 unknown이다.
+기존 50ms 안정화 및 상태 변화 즉시 보고를 유지하고 endpoint 1 BooleanState에도 반영한다.
+통합 자체 검사에 광센서가 미확인인 상태의 닫힘/열림 보고와 접점 무효 시 unknown 전환을 추가했다.
+
+설치 자료는 `local-data/deployments/2026-10-06-contact/`에 보관한다.
+부팅 검사는 `python -m firmware.a08.verify <log> --temperature --contact --output <new-json>`로 실행한다.
+물리 접점 양방향 확인, 설치 후 펌웨어 보고, HA 화면 수신 확인은 서로 구분한다.
+
+
+설치 후 실제 자석 분리 상태 lid=1 및 부착 상태 lid=0의 SnapshotPacked/이력 발행 성공을 확인했다.
+부팅 자체 검사 및 센서 드라이버 오류는 0이다. 다만 수집 간격이 40~60ms를 벗어날 때
+기존 파이프라인이 접점을 잠깐 unknown으로 무효화한 뒤 회복하는 현상이 관찰됐다.
+따라서 활성화 및 양방향 물리 보고는 확인했지만, 이번 연속 20Hz 안정성 검사는 통과로 기록하지 않는다.
+HA 화면의 수신 상태는 별도 확인하지 않았다.
