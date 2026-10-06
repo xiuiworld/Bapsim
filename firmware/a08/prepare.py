@@ -47,8 +47,8 @@ def prepare(app, model_path):
     overlay=app/'boards/nrf54lm20dk_nrf54lm20b_cpuapp.overlay'
     overlay.write_text(overlay.read_text(encoding='utf-8')+'\n'+(here/'sensors.overlay').read_text(),encoding='utf-8')
     with (app/'prj.conf').open('a') as f: f.write('\n# A08 real acquisition, commissioning gate closed\nCONFIG_ADC=y\n')
-    (app/'VERSION').write_text('VERSION_MAJOR = 3\nVERSION_MINOR = 4\nPATCHLEVEL = 1\nVERSION_TWEAK = 7\nEXTRAVERSION = a08-integrated-1\n')
-    manifest={'firmware':'a08-integrated-1','origin':'test','calibration_config':(here/'config.hpp').read_text(),
+    (app/'VERSION').write_text('VERSION_MAJOR = 3\nVERSION_MINOR = 4\nPATCHLEVEL = 1\nVERSION_TWEAK = 8\nEXTRAVERSION = a08-adc-range-2\n')
+    manifest={'firmware':'a08-adc-range-2','origin':'test','calibration_config':(here/'config.hpp').read_text(),
               'model':model['version'],'source_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest()
               for p in here.iterdir() if p.is_file()}}
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
