@@ -119,7 +119,7 @@ A의 보드 학습용 합성 데이터 생성기는 B의 생활 패턴 시뮬레
 
 - [x] B 배포 PR #10의 HA 내부 분석 모드·이미지·설정/볼륨·기동/중지/복원 안내 확인. HA VM과 Docker 동시 실행 확인(가용 메모리 약 1.07 GiB, 장시간 시험은 별도).
 - [x] Windows Docker의 인증 Mosquitto와 기존 HA MQTT 통합 연결 확인. 선택한 HA 내부 분석 모드는 B 작업자 컨테이너를 사용하지 않는다. B 통합 설치/출력은 별도 검증한다.
-- [x] 실제 HA 주소·A05 시험 신호 매핑·논리 household_id/device_id·Asia/Seoul 시간대·폰 알림 대상 서비스와 로컬 접근 설정 준비. B 대상 저장은 `mobile_app_nothing_phone_4a` 형식으로 호출 성공. 저장된 대상의 재시작 후 유지 조회는 별도이며 계정 비밀은 Git·공유 로그에 넣지 않는다.
+- [x] 실제 HA 주소·A05 시험 신호 매핑·논리 household_id/device_id·Asia/Seoul 시간대·폰 알림 대상 서비스와 로컬 접근 설정 준비. 초기 버전에서는 `mobile_app_nothing_phone_4a` 형식으로 호출했고, `c7a5354` 설치 후 전체 이름 `notify.mobile_app_nothing_phone_4a`도 실제 HA에서 오류 없이 수용됐다. 저장된 대상의 재시작 후 유지 조회는 별도이며 계정 비밀은 Git·공유 로그에 넣지 않는다.
 - [x] B discovery/화면/결과 만료 설치. c7a5354에서 시험 MQTT discovery 센서의 결과 수신과 180초 후 unavailable, 내부 시험 카드 expired 확인. 실물 카드는 awaiting_matter 유지. 이전 끊김 표시 시험과 구분해 기록하며 실제 live 만료는 지원되는 입력이 준비되면 재시험한다.
 - [x] c7a5354 개정 계약에 따른 출처별 논리 격리 확인: 모델 키·화면·topic prefix 분리, simulator 모바일 발송 차단. HA 상태 파일/journal 루트는 공유하며 물리 격리·시험 데이터만 독립 삭제/복원을 보장하지 않는다. A05 test는 live 수집 거부 상태를 유지한다.
 - [x] 영속 볼륨·로그·백업/복원 경로 구성 및 B 관측90일/서비스 기록180일 보존 기본값 적용. HA 설정·기록 복원과 broker 백업 사본 격리 기동 확인. 장기 경과 삭제·broker 복원 사본 메시지 대조·전체 Matter 앱 복원은 별도 미검증 범위다. 보존·삭제 코드는 B 담당이다.
