@@ -47,6 +47,7 @@ void SensorThread(void *,void *,void *)
     if(failures) { LOG_ERR("A08 acquisition blocked: selftest failed"); return; }
     const bool calibrated=sPipeline.reset(a08::CAL);
     const int errors=sSensors.init();
+    LOG_INF("A08 ADC config gain=1/4 reference_mv=%u resolution=12",adc_ref_internal(DEVICE_DT_GET(DT_NODELABEL(adc))));
     LOG_INF("A08 START preprocess=%s model=%s calibration=%s confirmed=%u cal_valid=%u driver_errors=%d",
         a07::PREPROCESS_VERSION,A07_MODEL_VERSION,a08::CAL_VERSION,a08::SENSORS_CONFIRMED,calibrated,errors);
     uint64_t sequence=0;
@@ -64,10 +65,13 @@ void SensorThread(void *,void *,void *)
         }
         previous=sample.ms;
         sSensors.read(sample);
-        if(sequence%200==1)
+        if(sequence%200==1) {
             LOG_INF("A08 ADC raw=%d,%d,%d,%d,%d status=%d,%d,%d,%d,%d",
                 sSensors.raw_codes[0],sSensors.raw_codes[1],sSensors.raw_codes[2],sSensors.raw_codes[3],sSensors.raw_codes[4],
                 sSensors.read_status[0],sSensors.read_status[1],sSensors.read_status[2],sSensors.read_status[3],sSensors.read_status[4]);
+            LOG_INF("A08 ADC mv=%d,%d,%d,%d,%d",sSensors.millivolts[0],sSensors.millivolts[1],
+                sSensors.millivolts[2],sSensors.millivolts[3],sSensors.millivolts[4]);
+        }
         k_mutex_lock(&sPipelineMutex,K_FOREVER);
         const bool report=sPipeline.push(sample);
         if(report && !sPublishQueued) {
