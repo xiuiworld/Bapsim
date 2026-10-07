@@ -1,0 +1,165 @@
+[
+  {
+    "key": "ch0",
+    "label": "잠금 표시",
+    "pin": "P1.03",
+    "sensor": [
+      "A10",
+      "A12"
+    ],
+    "resistors": [
+      [
+        "B12",
+        "B17"
+      ],
+      [
+        "C12",
+        "C22"
+      ]
+    ],
+    "supply": "B10",
+    "ground": "C17",
+    "output": "E22",
+    "sensor_id": 122,
+    "rids": [
+      129,
+      130
+    ],
+    "color": "#ca7916"
+  },
+  {
+    "key": "ch1",
+    "label": "보온 표시",
+    "pin": "P1.04",
+    "sensor": [
+      "A25",
+      "A27"
+    ],
+    "resistors": [
+      [
+        "B27",
+        "B32"
+      ],
+      [
+        "C27",
+        "C37"
+      ]
+    ],
+    "supply": "B25",
+    "ground": "C32",
+    "output": "E37",
+    "sensor_id": 137,
+    "rids": [
+      144,
+      145
+    ],
+    "color": "#147cba"
+  },
+  {
+    "key": "ch2",
+    "label": "백미 표시",
+    "pin": "P1.05",
+    "sensor": [
+      "J10",
+      "J12"
+    ],
+    "resistors": [
+      [
+        "I12",
+        "I17"
+      ],
+      [
+        "H12",
+        "H22"
+      ]
+    ],
+    "supply": "I10",
+    "ground": "H17",
+    "output": "F22",
+    "sensor_id": 153,
+    "rids": [
+      160,
+      161
+    ],
+    "color": "#8d55bd"
+  },
+  {
+    "key": "ch3",
+    "label": "시간 첫 표시",
+    "pin": "P1.06",
+    "sensor": [
+      "J25",
+      "J27"
+    ],
+    "resistors": [
+      [
+        "I27",
+        "I32"
+      ],
+      [
+        "H27",
+        "H37"
+      ]
+    ],
+    "supply": "I25",
+    "ground": "H32",
+    "output": "F37",
+    "sensor_id": 168,
+    "rids": [
+      175,
+      176
+    ],
+    "color": "#19856a"
+  },
+  {
+    "key": "ch4",
+    "label": "외부 온도",
+    "pin": "P1.29",
+    "sensor": [
+      "A48",
+      "A53"
+    ],
+    "resistors": [
+      [
+        "B43",
+        "B48"
+      ],
+      [
+        "C48",
+        "C58"
+      ]
+    ],
+    "supply": "A43",
+    "ground": "B53",
+    "output": "E58",
+    "sensor_id": 184,
+    "rids": [
+      191,
+      192
+    ],
+    "color": "#c34f8c"
+  },
+  {
+    "key": "ch5",
+    "label": "뚜껑 개폐",
+    "pin": "P1.10",
+    "sensor": [
+      "J48",
+      "J53"
+    ],
+    "resistors": [
+      [
+        "I43",
+        "I48"
+      ]
+    ],
+    "supply": "J43",
+    "ground": "I53",
+    "output": "F48",
+    "sensor_id": 200,
+    "rids": [
+      207
+    ],
+    "color": "#63790f"
+  }
+]

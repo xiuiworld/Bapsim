@@ -1,0 +1,15 @@
+{
+  "result": "PASS",
+  "checks": [
+    "No VDD/GND short",
+    "All 6 output nets distinct",
+    "All resistor terminals on distinct nets",
+    "Divider and pull-up topology correct",
+    "All 6 midpoint and upper/lower rail jumpers present",
+    "No breadboard socket occupied twice"
+  ],
+  "resistors": 11,
+  "sensors": 6,
+  "wire_segments": 95,
+  "scope": "Static connection graph only; not hardware, voltage, calibration or simulation validation."
+}
