@@ -39,6 +39,8 @@ class StatusOutput:
             active = item["status"] in {"check_required", "notified", "checking"}
             assessments.append({
                 "assessment_id": item["incident_id"], "type": kind,
+                "source": item.get("source"), "device_id": item.get("device_id"),
+                "caregiver_status": item["status"] if item["status"] in {"checking", "resolved"} else None,
                 "status": "notified" if item["status"] in {"notified", "checking"} else
                           "resolved" if item["status"] == "resolved" else "watch",
                 "reason_codes": [REASON_CODES[code] for code in item.get("reason_codes", [])
@@ -62,6 +64,7 @@ class StatusOutput:
             "last_usage_at": profile.get("last_lid_open_at"),
             "learning": ("personalized" if profile.get("ready") else
                          "insufficient" if not profile.get("last_lid_open_at") else "collecting"),
+            "initial_basis": bool(profile.get("initial_ready")),
             "observation": observation,
             "sensor_issues": (["cooker_data_unavailable"] if observation == "unavailable" else []),
             "assessments": assessments, "summary": summary,

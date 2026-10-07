@@ -16,6 +16,9 @@ class UsageRecordPipelineTests(TestCase):
         self.assertEqual(result["personal"]["abstained_days"], 4)
         self.assertEqual(result["fixed_24h"]["eligible_days"], 24)
         self.assertEqual(result["notification_request"]["eligible_days"], 24)
+        self.assertEqual(result["fixed_24h_notification_request"]["eligible_days"], 24)
+        self.assertEqual(tuple(result["fixed_24h_notification_request"][key]
+                               for key in ("tp", "fp", "fn", "tn")), (4, 2, 2, 16))
         self.assertLess(result["notification_request"]["fp"], result["personal"]["fp"])
         self.assertLess(result["notification_request"]["tp"], result["personal"]["tp"])
         self.assertEqual({row["household_id"] for row in result["days"]},
@@ -28,8 +31,15 @@ class UsageRecordPipelineTests(TestCase):
                 self.assertIsNone(row["personal_candidate"])
                 self.assertIsNone(row["fixed_24h_candidate"])
                 self.assertIsNone(row["notification_request"])
+                self.assertIsNone(row["fixed_24h_notification_request"])
             elif row["notification_request"]:
                 self.assertTrue(row["personal_candidate"])
+            if row["abstain_reason"] is None:
+                self.assertEqual(row["notification_request"], bool(row["notification_request_at"]))
+                self.assertEqual(row["fixed_24h_notification_request"],
+                                 bool(row["fixed_24h_notification_request_at"]))
+                self.assertFalse(row["fixed_24h_notification_request"] and
+                                 not row["fixed_24h_candidate"])
 
     def test_missing_connection_evidence_abstains_instead_of_counting_normal(self):
         observations, labels = generate()
