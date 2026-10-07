@@ -55,8 +55,10 @@ def _active_assessments(hass, workflow, trend_workflow, external_service: bool) 
     assessments = attributes.get("assessments")
     if not isinstance(assessments, list):
         return []
-    return [{"incident_id": item["assessment_id"], "device_id": str(item.get("type", "밥솥")),
-             "status": item["status"], "source": "matter"}
+    return [{"incident_id": item["assessment_id"],
+             "device_id": str(item.get("device_id") or item.get("type", "밥솥")),
+             "status": "checking" if item.get("caregiver_status") == "checking" else item["status"],
+             "source": "matter"}
             for item in assessments if isinstance(item, dict) and
             isinstance(item.get("assessment_id"), str) and item["assessment_id"] and
             item.get("status") in {"watch", "notified"}]
@@ -117,6 +119,25 @@ def bind_caregiver_commands(
         response = call.data["response"]
         source = call.data.get("source")
         device_id = call.data.get("device_id")
+        if external_service:
+            if response not in {"checking", "resolved"}:
+                raise ValueError("unsupported caregiver response")
+            if source is not None and source != "matter":
+                raise ValueError("external caregiver response requires matter source")
+            requested = call.data.get("incident_id") or _selected_id(
+                hass, "input_select.bapsim_active_assessment")
+            active = [item for item in _active_assessments(hass, workflow, trend_workflow, True)
+                      if (requested is None or item["incident_id"] == requested) and
+                      (device_id is None or item["device_id"] == device_id)]
+            if len(active) != 1:
+                raise ValueError("Response requires exactly one current matter assessment")
+            state = hass.states.get("sensor.bapsim_output_state")
+            await set_notification_control(SimpleNamespace(data={
+                "command_id": str(uuid.uuid4()), "action": "caregiver_response",
+                "assessment_id": active[0]["incident_id"], "response": response,
+                "result_valid_until": state.attributes["valid_until"],
+            }))
+            return
         selected_incident = None
         if source is None and device_id is None:
             selected = _selected_id(hass, "input_select.bapsim_active_assessment")
@@ -161,6 +182,8 @@ def bind_caregiver_commands(
             }, blocking=True)
             show("notification_control_result", "submitted", {"command_id": command.get("command_id")})
             return
+        if command.get("action") == "caregiver_response":
+            raise ValueError("Use bapsim.respond for internal caregiver responses")
         if command.get("action") == "acknowledge":
             incident_id = command.get("assessment_id", command.get("incident_id"))
             active = [item for item in (*workflow.dump_state(), *trend_workflow.dump_state())

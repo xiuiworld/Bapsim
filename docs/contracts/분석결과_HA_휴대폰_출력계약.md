@@ -25,6 +25,7 @@ UTF-8 JSON `schema_version=0.1.0`. 한 가정에 대한 현재 상태를 한 객
 | valid_until | UTC string | 이 결과를 현재 판단으로 사용할 만료 시각 |
 | last_usage_at | UTC string 또는 null | 마지막 유효한 사용 묶음 시작 시각. 실제 식사 시각 아님 |
 | learning | `collecting` / `personalized` / `insufficient` | 개인 기준 상태 |
+| initial_basis | boolean | 입력한 초기 사용 시간과 짧은 유효 이력으로 판단 가능한 상태. 개인화 완료와 구분 |
 | observation | `available` / `partial` / `unavailable` | 관측 가능 범위 |
 | sensor_issues | string 배열 | 오류/미지원으로 판단을 제한하는 신호 |
 | assessments | 객체 배열 | 아래 판단 항목. 단기 공백과 장기 감소 동시 존재 허용 |
@@ -32,6 +33,8 @@ UTF-8 JSON `schema_version=0.1.0`. 한 가정에 대한 현재 상태를 한 객
 | policy_version / model_version | string | 정책·개인 패턴 모델 버전 |
 
 assessment 필수 필드: `assessment_id`(string), `type`(`usage_gap` 또는 `declining_usage`), `status`(`watch`/`deferred`/`notified`/`resolved`), `reason_codes`(string 배열), `evidence_ids`(관측/행동 ID 배열), `next_evaluate_at`(UTC 또는 null).
+
+assessment 추가 필드 `source`·`device_id`는 사건의 출처·장치이며, `caregiver_status`는 `checking`/`resolved` 또는 null이다. 기존 `status=notified`와 보호자가 확인 중인 상태를 구분한다. `learning=personalized` 표시는 [분석 알림 정책 3절](../planning/분석_알림_정책.md)의 정상 관측 7일 이상·유효 사용일 5일 이상을 따른다. 유효 사용 이력이 있지만 아직 이 기준에 못 미치면 `collecting`, 유효 사용이 없으면 `insufficient`다. 입력한 초기 시간으로 3일 관측·2일 사용 후 판단 가능한 기존 기능은 유지하고 `initial_basis=true`, `learning=collecting`으로 설명한다. 모델의 `ready`는 개인 기준 표시 준비, `decision_ready`는 기존 판단 가능 범위, `initial_ready`는 초기 기준 활용 가능 여부다. 충분한 개인 기준이라는 표시는 실제 성능 승인이나 모든 요일의 학습 완료를 뜻하지 않는다.
 
 현재 개인 사용 모델의 `evidence_ids`는 해당 판단의 기준 계산에 실제 들어간 **유효한 사용 묶음**의 안정적인 `usage_group:<hash>` ID를 최근 64개까지 담는다. HA 내부 모드의 `usage_group` 서비스 기록에도 같은 `record_id`를 보존하고, 독립 작업자 모드에서는 영속 모델의 묶음 시작 시각에서 같은 ID를 재생성한다. 64개 제한 때문에 이 배열은 모든 근거의 완전한 목록이 아니다. 초기 설정값이나 관측 범위만으로 판단해 연결할 사용 묶음이 없으면 빈 배열이 맞으며, 없는 관측을 만들어 넣지 않는다. `sensor_issues`는 밥솥 관측이 끊기면 `cooker_data_unavailable`을 담는다. `next_evaluate_at`은 상태 관리자가 알고 있는 다음 알림 정책 검토 가능 시각(간격 공백 또는 장기 감소의 재안내)만 담는다. 일반 창 평가의 다음 정확한 시각을 모를 때와 해소된 판단은 null이다. 이 값은 실제 폰 발송 예약이나 보장을 뜻하지 않는다.
 
@@ -94,13 +97,16 @@ A: 로컬 브로커, HA 연결, 폰 등록·외부 접근. B: 결과 형식·dis
 
 확인 버튼과 여행 기간 보류를 구현한다. 기존 결과 상태 JSON 0.1.0은 유지하며, 별도 조작 메시지 버전 0.1.0을 정의한다. 폰의 HA 화면/액션 → HA에서 검증한 명령 → B로 전달한다. MQTT 명령 topic은 `bapsim/v1/{household_id}/control`, retain=false다. 보호자 폰이 브로커에 직접 접속하는 구조가 아니다.
 
-필수 필드: `schema_version`, `command_id`, `household_id`, `action`, `created_at`, `assessment_id`, `starts_at`, `ends_at`, `pause_id`. 시각은 UTC, 해당 없는 ID/시각은 null이다.
+공통 필수 필드: `schema_version`, `command_id`, `household_id`, `action`, `created_at`. 아래 action별 필수 필드를 추가한다. 시각은 UTC이며 해당 없는 ID/시각은 생략 또는 null이다.
 
 | action | 필수 의미 |
 |---|---|
 | acknowledge | assessment_id와 ends_at 필수. 현재 안내를 확인하고 선택한 시각까지 같은 판단의 재안내 보류 |
 | pause_lifestyle | starts_at < ends_at, pause_id 필수. 여행 등 지정 기간의 생활 변화 알림 보류 |
 | cancel_pause | pause_id 필수. 해당 보류를 해제하고 최신 상태로 재평가 |
+| caregiver_response | 외부 작업자용. assessment_id, response(`checking`/`resolved`), result_valid_until 필수. 확인 중/완료 응답이며 기한 지정 알림 보류를 만들지 않음 |
+
+HA 내부 모드의 확인 중/완료는 기존 `bapsim.respond`가 처리한다. 외부 모드에서는 같은 서비스가 현재 유효한 실물 결과의 정확한 사건을 선택해 `caregiver_response` 명령을 만든다. 작업자는 180초 이내의 결과 만료 시각과 자신의 활성 Matter 사건을 다시 검사하고, 상태·명령 결과를 저장한 후 새 결과와 control_result를 게시한다. `resolved`는 대기 중인 해당 사건의 발송을 취소한다. 중복 command_id는 같은 요청만 재수락하며 재시작 후에도 다시 상태를 바꾸지 않는다. 저장 실패에는 상태를 되돌리고 rejected를 반환한다. 시뮬레이션 사건은 이 실물 제어 topic의 응답 대상이 아니다. 내부 모드의 시험 사건 조작은 source/device_id를 명시한 `bapsim.respond` 경로를 사용한다.
 
 ‘확인했어요’는 상세 화면에서 ‘오늘까지’ 또는 날짜·시각을 선택해 완료한다. 명령 저장이 확인되기 전에 적용됐다고 표시하지 않는다. B는 command_id별 결과를 저장해 중복 적용하지 않고 accepted/rejected와 사유를 돌려준다. 종료일이 지난 명령, 잘못된 가정/판단 ID는 거절한다. 인증된 HA 경로와 가정별 접근 범위를 확인한다.
 

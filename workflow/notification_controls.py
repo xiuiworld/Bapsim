@@ -43,7 +43,11 @@ class NotificationControls:
                 raise ValueError("command_id was already used for another command")
             return self.commands[command_id]
         action = command.get("action")
-        if action == "acknowledge":
+        if action == "caregiver_response":
+            if (not isinstance(command.get("assessment_id"), str) or not command["assessment_id"] or
+                    command.get("response") not in {"checking", "resolved"}):
+                raise ValueError("assessment_id and checking/resolved response are required")
+        elif action == "acknowledge":
             incident_id, ends_at = command.get("assessment_id", command.get("incident_id")), command.get("ends_at")
             if not isinstance(incident_id, str) or not incident_id or not isinstance(ends_at, str):
                 raise ValueError("incident_id and ends_at are required")
