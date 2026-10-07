@@ -66,6 +66,14 @@ void SensorThread(void *,void *,void *)
         }
         previous=sample.ms;
         sSensors.read(sample);
+        // Deferred UART logging: acquisition never waits for a diagnostic line.
+        // Record every 20 Hz sample for later replay without invented observations.
+        {
+            LOG_INF("A08 SAMPLE boot=%u seq=%u ms=%u raw=%d,%d,%d,%d,%d supply=%d lid=%d",
+                sBootId,unsigned(sample.sequence),unsigned(sample.ms),
+                sSensors.raw_codes[0],sSensors.raw_codes[1],sSensors.raw_codes[2],
+                sSensors.raw_codes[3],sSensors.raw_codes[4],sSensors.supply_raw,int(sample.lid));
+        }
         if(sequence%200==1) {
             LOG_INF("A08 ADC raw=%d,%d,%d,%d,%d status=%d,%d,%d,%d,%d",
                 sSensors.raw_codes[0],sSensors.raw_codes[1],sSensors.raw_codes[2],sSensors.raw_codes[3],sSensors.raw_codes[4],
