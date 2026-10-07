@@ -51,15 +51,32 @@ def main():
     last_flush = 0
     awake = bool(ctypes.windll.kernel32.SetThreadExecutionState(0x80000001))
     failure = None
+    status_warning_active = False
 
     def status(state, reason=None):
+        nonlocal status_warning_active
         payload = {"state": state, "utc": now().isoformat(), "pid": os.getpid(),
             "until": deadline.isoformat(), "samples": count, "uart_lines": lines,
             "reconnects": reconnects, "last_sample_utc": last_sample,
             "last_uart_utc": last_uart, "sleep_prevention": awake, "reason": reason}
         temp = root / "status.tmp"
-        temp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        temp.replace(root / "status.json")
+        for attempt in range(5):
+            try:
+                temp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                temp.replace(root / "status.json")
+                status_warning_active = False
+                return
+            except PermissionError as exc:
+                # Windows readers can briefly prevent an atomic rename. A locked
+                # monitoring file must not interrupt the sensor data stream.
+                if attempt < 4:
+                    time.sleep(0.05)
+                    continue
+                if events and not events.closed and not status_warning_active:
+                    events.write(json.dumps({"utc": now().isoformat(),
+                        "event": "status_update_blocked", "reason": str(exc)}) + "\n")
+                    events.flush()
+                status_warning_active = True
 
     try:
         status("connecting")
