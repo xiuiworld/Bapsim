@@ -571,9 +571,14 @@ class PersonalUsageModel:
             "windows": windows,
             "lid_open_count_24h": len(recent_opens),
             "last_lid_open_at": previous_opens[-1].isoformat() if previous_opens else None,
-            "ready": any((window["covered_days"] >= self.min_covered_days and
-                          window["positive_days"] >= 2) or window["initial_ready"]
-                         for window in windows),
+            # Policy section 3: label personal history only after 7 covered
+            # days and 5 valid usage days. Early configured decisions remain enabled.
+            "ready": any(window["covered_days"] >= self.min_covered_days and
+                         window["positive_days"] >= 5 for window in windows),
+            "initial_ready": any(window["initial_ready"] for window in windows),
+            "decision_ready": any((window["covered_days"] >= self.min_covered_days and
+                                   window["positive_days"] >= 2) or window["initial_ready"]
+                                  for window in windows),
         }
 
     def evaluate_interval(self, source: str, device_id: str, as_of: str, *, online: bool,

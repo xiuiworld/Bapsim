@@ -29,15 +29,21 @@ class A06InternalOutputTests(TestCase):
         template = Environment().from_string("\n".join(
             line.removeprefix("          ") for line in content[start:end].splitlines()))
 
-        def render(issue):
+        def render(issue, attributes=None):
             return template.render(states=lambda entity: issue if entity ==
                                    "sensor.bapsim_observation_issue_status" else "waiting",
-                                   state_attr=lambda *args: None)
+                                   state_attr=lambda entity, name: (attributes or {}).get(name)
+                                   if entity == "sensor.bapsim_output_state" else None)
 
         self.assertNotIn("관측 상태를 먼저 확인하세요", render("available"))
         self.assertNotIn("관측 확인 전", render("available"))
         self.assertIn("관측 상태를 먼저 확인하세요", render("disconnected"))
         self.assertIn("관측 확인 전", render("unknown"))
+        initial = render("available", {"learning": "collecting", "initial_basis": True})
+        self.assertIn("개인 기록 수집 중", initial)
+        self.assertIn("입력한 초기 사용 시간으로 판단 중", initial)
+        self.assertNotIn("입력한 초기 사용 시간으로 판단 중",
+                         render("available", {"learning": "personalized", "initial_basis": False}))
 
     def test_simulator_updates_only_simulation_card_and_expires(self):
         async def scenario():

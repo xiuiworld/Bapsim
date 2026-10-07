@@ -115,6 +115,14 @@ views:
           **관측 확인 전:** 새 실물 기록을 기다리고 있습니다.
           {% endif %}
           - 현재 실물 결과: **{{ output }}**
+          {% set learning = state_attr('sensor.bapsim_output_state', 'learning') or 'insufficient' %}
+          - 개인 기준: **{{ {'collecting':'개인 기록 수집 중', 'insufficient':'개인 기록 부족', 'personalized':'개인 이력 기준 사용 중'}.get(learning, '개인 기록 확인 전') }}**
+          {% if state_attr('sensor.bapsim_output_state', 'initial_basis') %}
+          - **입력한 초기 사용 시간으로 판단 중입니다. 개인 학습 완료 상태가 아닙니다.**
+          {% endif %}
+          {% for a in state_attr('sensor.bapsim_output_state', 'assessments') or [] %}
+          - {{ {'usage_gap':'사용 공백 안내', 'declining_usage':'사용 감소 안내'}.get(a.type, '밥솥 안내') }}: **{{ {'checking':'보호자 확인 중', 'resolved':'보호자 확인 완료'}.get(a.get('caregiver_status'), {'watch':'확인 필요', 'notified':'안내 요청됨', 'resolved':'해소됨'}.get(a.status, '상태 확인 전')) }}**
+          {% endfor %}
           {% set incident_options = state_attr('input_select.bapsim_active_assessment', 'options') or [] %}
           {% set pause_options = state_attr('input_select.bapsim_active_pause', 'options') or [] %}
           - 진행 중인 안내: **{{ [incident_options | length - 1, 0] | max }}건**
@@ -147,7 +155,7 @@ views:
           {% set cooks = f.get('cook_count_24h') %}
           {% set opens = p.get('lid_open_count_24h') %}
           ### 개인별 사용 패턴
-          - 모델 상태: **{{ states('sensor.bapsim_baseline') }}** (연결이 정상인 날의 기록이 최소 7일 쌓이면 개인 판정을 시작)
+          - 모델 상태: **{{ states('sensor.bapsim_baseline') }}** (개인 기준 표시는 정상 관측 7일 이상·유효 사용일 5일 이상에서 시작합니다. 초기 설정을 활용한 판단은 그 전에도 가능합니다.)
           {% for w in windows %}
           - 예상 사용 구간 {{ loop.index }}: **{{ as_timestamp(w.expected_time) | timestamp_custom('%H:%M', true) }} 전후** · 관측 확률 {{ (w.probability * 100) | round(0) }}% · 학습일 {{ w.covered_days }}일
           {% endfor %}

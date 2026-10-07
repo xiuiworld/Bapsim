@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Mapping
@@ -99,6 +100,10 @@ class AnalysisService:
             current = datetime.fromisoformat(now.replace("Z", "+00:00"))
             if created.tzinfo is None or abs((current - created).total_seconds()) > 600:
                 raise ValueError("stale control")
+            if command.get("action") == "caregiver_response":
+                response = self._caregiver_response(command, now)
+                self.publish(self.output.topic("matter", "control_result"), json.dumps(response), False)
+                return response
             if command.get("action") == "acknowledge":
                 incident_id = command.get("assessment_id", command.get("incident_id"))
                 active = [item for item in (*self.gap.dump_state(), *self.decline.dump_state())
@@ -124,6 +129,51 @@ class AnalysisService:
             response = {"command_id": command_id, "status": "rejected", "reason": str(exc)}
         self.publish(self.output.topic("matter", "control_result"), json.dumps(response), False)
         return response
+
+    def _caregiver_response(self, command: Mapping[str, object], now: str) -> dict[str, object]:
+        if command.get("command_id") in self.controls.commands:
+            return self.controls.apply(command, now)
+        current = datetime.fromisoformat(now.replace("Z", "+00:00"))
+        expires = datetime.fromisoformat(str(command.get("result_valid_until")).replace("Z", "+00:00"))
+        if expires.tzinfo is None or not timedelta(0) < expires - current <= timedelta(seconds=180):
+            raise ValueError("caregiver response needs an unexpired result")
+        incident_id = command.get("assessment_id")
+        active = [(manager, item) for manager in (self.gap, self.decline)
+                  for item in manager.dump_state() if item["source"] == "matter" and
+                  item["incident_id"] == incident_id and
+                  item["status"] in {"check_required", "notified", "checking"}]
+        if len(active) != 1:
+            raise ValueError("caregiver response requires one active matter assessment")
+        manager, item = active[0]
+        response = command.get("response")
+        if response not in {"checking", "resolved"} or (response == "checking" and item["status"] != "notified"):
+            raise ValueError("caregiver response is invalid for the current assessment")
+        before = deepcopy((self.controls.dump_state(), self.gap.dump_state(), self.decline.dump_state(),
+                           self.delivery.dump_state(), self.pending_quiet, self.output.revision))
+        result = self.controls.apply(command, now)
+        update = manager.caregiver_response(item["source"], item["device_id"], str(response), now, incident_id)
+        self._handle([update], manager, now)
+        payload = self._state_payload(item["source"], item["device_id"], now)
+        try:
+            self.save()
+        except OSError as exc:
+            controls, gap, decline, delivery, pending, revision = before
+            self.controls.load_state(controls)
+            self.gap.load_state(gap)
+            self.decline.load_state(decline)
+            self.delivery.load_state(delivery)
+            self.pending_quiet = pending
+            self.output.revision = revision
+            raise ValueError("caregiver response storage_failed") from exc
+        self._emit_controls()
+        self.publish(self.output.topic("matter", "state"), json.dumps(payload, ensure_ascii=False), True)
+        return result
+
+    def _state_payload(self, source: str, device_id: str, now: str) -> dict[str, object]:
+        return self.output.build(now, self.model.profile(source, device_id, now),
+                                 "available" if self.availability.get((source, device_id), False) else "unavailable",
+                                 self.gap.current_state(source, device_id),
+                                 self.decline.current_state(source, device_id))
 
     def process_routine_config(self, payload: Mapping[str, object]) -> None:
         if (payload.get("schema_version") != "0.1.0" or
@@ -296,10 +346,7 @@ class AnalysisService:
         if trend:
             manager, updates = route_personal_decision("trend", trend, self.gap, self.decline)
             self._handle(updates, manager, now)
-        profile = self.model.profile(source, device_id, now)
-        gap = self.gap.current_state(source, device_id)
-        decline = self.decline.current_state(source, device_id)
-        state = self.output.build(now, profile, "available" if online else "unavailable", gap, decline)
+        state = self._state_payload(source, device_id, now)
         self.publish(self.output.topic(source, "state"), json.dumps(state, ensure_ascii=False), True)
         self.publish(self.output.topic(source, "availability"), "online" if online else "offline", True)
         self.save()
