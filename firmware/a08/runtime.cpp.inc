@@ -47,8 +47,10 @@ void SensorThread(void *,void *,void *)
     if(failures) { LOG_ERR("A08 acquisition blocked: selftest failed"); return; }
     const bool calibrated=sPipeline.reset(a08::CAL);
     const int errors=sSensors.init();
+    LOG_INF("A08 ADC config gain=1/4 reference_mv=%u resolution=12",adc_ref_internal(DEVICE_DT_GET(DT_NODELABEL(adc))));
     LOG_INF("A08 START preprocess=%s model=%s calibration=%s confirmed=%u cal_valid=%u driver_errors=%d",
         a07::PREPROCESS_VERSION,A07_MODEL_VERSION,a08::CAL_VERSION,a08::SENSORS_CONFIRMED,calibrated,errors);
+    LOG_INF("A08 CONTACT enabled=%u high_is_open=%u pin=P1.10",a08::CONTACT_ENABLED,a08::HIGH_IS_OPEN);
     uint64_t sequence=0;
     uint64_t previous=0, min_period=UINT64_MAX, max_period=0;
     unsigned gaps=0;
@@ -64,10 +66,22 @@ void SensorThread(void *,void *,void *)
         }
         previous=sample.ms;
         sSensors.read(sample);
-        if(sequence%200==1)
+        // Deferred UART logging: acquisition never waits for a diagnostic line.
+        // Record every 20 Hz sample for later replay without invented observations.
+        {
+            LOG_INF("A08 SAMPLE boot=%u seq=%u ms=%u raw=%d,%d,%d,%d,%d supply=%d lid=%d",
+                sBootId,unsigned(sample.sequence),unsigned(sample.ms),
+                sSensors.raw_codes[0],sSensors.raw_codes[1],sSensors.raw_codes[2],
+                sSensors.raw_codes[3],sSensors.raw_codes[4],sSensors.supply_raw,int(sample.lid));
+        }
+        if(sequence%200==1) {
             LOG_INF("A08 ADC raw=%d,%d,%d,%d,%d status=%d,%d,%d,%d,%d",
                 sSensors.raw_codes[0],sSensors.raw_codes[1],sSensors.raw_codes[2],sSensors.raw_codes[3],sSensors.raw_codes[4],
                 sSensors.read_status[0],sSensors.read_status[1],sSensors.read_status[2],sSensors.read_status[3],sSensors.read_status[4]);
+            LOG_INF("A08 ADC mv=%d,%d,%d,%d,%d",sSensors.millivolts[0],sSensors.millivolts[1],
+                sSensors.millivolts[2],sSensors.millivolts[3],sSensors.millivolts[4]);
+            LOG_INF("A08 SUPPLY raw=%d mv=%d temperature_enabled=%u",sSensors.supply_raw,sSensors.supply_mv,a08::TEMPERATURE_ENABLED);
+        }
         k_mutex_lock(&sPipelineMutex,K_FOREVER);
         const bool report=sPipeline.push(sample);
         if(report && !sPublishQueued) {

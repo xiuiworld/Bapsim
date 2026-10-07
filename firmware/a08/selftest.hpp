@@ -4,6 +4,30 @@ namespace a08 {
 inline unsigned selftest(Pipeline &p) {
     unsigned failures=0;
     const a07::Calibration cal={{500,500,500,500},{3000,3000,3000},4095,10000,10000,3950,0,true};
+    // Temperature must publish without light/contact or a 60-second AI window.
+    failures+=std::fabs(temperature_c(2047.5,cal)-25.0)>0.001;
+    failures+=std::isfinite(temperature_c(0,cal)) || std::isfinite(temperature_c(4095,cal));
+    failures+=std::isfinite(temperature_c(NAN,cal));
+    failures+=temperature_c(1500,cal)<=temperature_c(2047.5,cal);
+    p.reset(cal);
+    a07::Sample only_temp{}; only_temp.boot=1; only_temp.lid=-1;
+    for(int j=0;j<4;j++) only_temp.adc[j]=NAN;
+    only_temp.adc[4]=2047.5;
+    failures+=!p.push(only_temp) || p.frame[28]!=0xc4 || p.frame[29]!=0x09 || p.frame[36]!=1;
+    failures+=p.frame[27]!=255 || p.frame[34]!=0;
+    for(int j=30;j<34;j++) failures+=p.frame[j]!=0;
+    only_temp.ms=2000; only_temp.sequence=40; only_temp.adc[4]=NAN;
+    failures+=!p.push(only_temp) || p.frame[28]!=0 || p.frame[29]!=128 || p.frame[36]!=2;
+    // A confirmed contact must publish with uncalibrated light channels.
+    p.reset(cal); only_temp.adc[4]=2047.5;
+    for(unsigned i=0;i<5;i++) {
+        only_temp.ms=i*50; only_temp.sequence=i; only_temp.lid=i<3 ? 0 : 1;
+        const bool emitted=p.push(only_temp);
+        if(i==1) failures+=!emitted || p.frame[27]!=0;
+        if(i==4) failures+=!emitted || p.frame[27]!=1;
+    }
+    only_temp.ms=250; only_temp.sequence=5; only_temp.lid=-1;
+    failures+=!p.push(only_temp) || p.frame[27]!=255;
     p.reset(cal);
     a07::Sample s{}; s.boot=42; s.lid=0;
     for(int j=0;j<4;j++) s.adc[j]=500;
