@@ -21,6 +21,17 @@ class UsageRecordPipelineTests(TestCase):
                                for key in ("tp", "fp", "fn", "tn")), (4, 2, 2, 16))
         self.assertLess(result["notification_request"]["fp"], result["personal"]["fp"])
         self.assertLess(result["notification_request"]["tp"], result["personal"]["tp"])
+        personal_episodes = result["first_request_episodes"]["personal"]
+        fixed_episodes = result["first_request_episodes"]["fixed_24h"]
+        self.assertEqual(personal_episodes["episodes"], 4)
+        self.assertEqual(fixed_episodes["episodes"], 4)
+        self.assertEqual(personal_episodes["captured"] + personal_episodes["missed"], 4)
+        self.assertEqual(fixed_episodes["captured"] + fixed_episodes["missed"], 4)
+        self.assertEqual([item["start_date"] for item in personal_episodes["details"]],
+                         [item["start_date"] for item in fixed_episodes["details"]])
+        self.assertTrue(all(item["delay_from_label_midnight_hours"] >= 0
+                            for item in personal_episodes["details"]
+                            if item["first_request_at"] is not None))
         self.assertEqual({row["household_id"] for row in result["days"]},
                          {"demo_morning", "demo_twice"})
         self.assertEqual({row["abstain_reason"] for row in result["days"] if row["review"] == "unknown"},
@@ -62,4 +73,10 @@ class UsageRecordPipelineTests(TestCase):
             validate_observation({**observations[0], "observed_at": "2026-01-05T00:00:00"})
         with self.assertRaisesRegex(ValueError, "earlier calendar days"):
             evaluate(observations, labels, EVALUATION_START - timedelta(days=1))
+        activity = {key: observations[0][key] for key in
+                    ("schema_version", "mode", "household_id", "device_id", "source")}
+        activity.update({"observed_at": observations[0]["observed_at"], "signal": "motion_detected"})
+        with self.assertRaisesRegex(ValueError, "matching simulation household"):
+            evaluate(observations, labels, EVALUATION_START,
+                     simulated_activity=[{**activity, "mode": "live", "source": "matter"}])
         self.assertIsInstance(date.fromisoformat(labels[0]["local_date"]), date)
