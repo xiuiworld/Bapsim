@@ -47,6 +47,50 @@ class PersonalUsageModelTests(TestCase):
         self.assertGreaterEqual(profile["windows"][0]["covered_days"], 7)
         self.assertEqual(profile["windows"][0]["positive_days"], 0)
         self.assertFalse(profile["ready"])
+        self.assertEqual(StatusOutput("home").build(at(8, 12), profile, "available", None, None)
+                         ["learning"], "insufficient")
+        restored = PersonalUsageModel()
+        restored.load_state(model.dump_state())
+        self.assertFalse(restored.profile("matter", "cooker_01", at(8, 12))["ready"])
+
+    def test_initial_basis_is_collecting_and_personalization_requires_policy_history(self):
+        model = PersonalUsageModel()
+        model.configure_initial_routine("matter", "cooker_01", [
+            {"time": "07:00", "weekdays": list(range(7))}])
+        model.observe(event(0, 0, kind="device_online"))
+        for day in (0, 1):
+            model.observe(event(day, 7))
+        model.availability("matter", "cooker_01", True, at(3, 0))
+        profile = model.profile("matter", "cooker_01", at(3, 9))
+        self.assertTrue(any(w["initial_ready"] for w in profile["windows"]))
+        self.assertFalse(profile["ready"])
+        output = StatusOutput("home").build(at(3, 9), profile, "available", None, None)
+        self.assertEqual(output["learning"], "collecting")
+        self.assertTrue(output["initial_basis"])
+        restored = PersonalUsageModel()
+        restored.load_state(model.dump_state())
+        self.assertEqual(restored.profile("matter", "cooker_01", at(3, 9)), profile)
+        restored.observe(event(3, 0, kind="device_online"))
+        self.assertTrue(any(d["routine_status"] == "check_required" for d in
+                            restored.evaluate("matter", "cooker_01", at(3, 9, 30), online=True)))
+
+        # The policy's 7 covered days + 5 valid usage days are a presentation gate;
+        # keep the existing early configured-window decision behavior.
+        sparse = PersonalUsageModel()
+        sparse.observe(event(0, 0, kind="device_online"))
+        for day in (0, 1):
+            sparse.observe(event(day, 7))
+        sparse.availability("matter", "cooker_01", True, at(8, 12))
+        self.assertFalse(sparse.profile("matter", "cooker_01", at(8, 12))["ready"])
+        for day in (2, 3, 4):
+            model.observe(event(day, 7))
+        model.availability("matter", "cooker_01", True, at(8, 12))
+        profile = model.profile("matter", "cooker_01", at(8, 12))
+        self.assertTrue(profile["ready"])
+        self.assertEqual(StatusOutput("home").build(at(8, 12), profile, "available", None, None)
+                         ["learning"], "personalized")
+        restored.load_state(model.dump_state())
+        self.assertEqual(restored.profile("matter", "cooker_01", at(8, 12)), profile)
 
     def test_operating_model_uses_validated_drift_gate(self):
         model = operating_usage_model()

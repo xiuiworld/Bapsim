@@ -16,7 +16,9 @@ from domain.baseline import PersonalBaselineEngine
 from domain.events.normalizer import CookerEventNormalizer
 from domain.personal_model import PersonalUsageModel
 from service.standalone import AnalysisService
-from workflow import DeliveryLedger
+from service.ha_caregiver_commands import refresh_dashboard_choices
+from service.output import StatusOutput
+from workflow import DeliveryLedger, NotificationControls
 
 
 COMPONENT = Path(__file__).resolve().parents[1] / "infrastructure/home_assistant/config/custom_components/bapsim/__init__.py"
@@ -155,6 +157,56 @@ async def confirm_matter_connection(hass, device_id):
 
 
 class HAServiceIntegrationTests(TestCase):
+    def test_dashboard_choices_exclude_ended_pauses_and_cover_empty_and_multiple_states(self):
+        async def scenario():
+            hass = FakeHass()
+
+            async def set_options(call):
+                hass.states.async_set(call.data["entity_id"], call.data["options"][0],
+                                      {"options": call.data["options"]})
+
+            async def select_option(call):
+                options = hass.states.get(call.data["entity_id"]).attributes["options"]
+                hass.states.async_set(call.data["entity_id"], call.data["option"],
+                                      {"options": options})
+
+            hass.services.async_register("input_select", "set_options", set_options)
+            hass.services.async_register("input_select", "select_option", select_option)
+            hass.states.async_set("input_select.bapsim_active_assessment", "선택", {})
+            hass.states.async_set("input_select.bapsim_active_pause", "선택", {})
+            controls = NotificationControls()
+            now = datetime.now(timezone.utc)
+            controls.pauses = {
+                "ended": {"starts_at": (now - timedelta(hours=3)).isoformat(),
+                          "ends_at": (now - timedelta(hours=1)).isoformat()},
+                "trip-a": {"starts_at": now.isoformat(),
+                           "ends_at": (now + timedelta(hours=2)).isoformat()},
+                "trip-b": {"starts_at": (now + timedelta(minutes=30)).isoformat(),
+                           "ends_at": (now + timedelta(hours=3)).isoformat()},
+            }
+            empty = types.SimpleNamespace(dump_state=lambda: [])
+            simulation = types.SimpleNamespace(dump_state=lambda: [{
+                "source": "simulator", "device_id": "cooker_demo", "status": "notified",
+                "incident_id": "sim-only"}])
+            await refresh_dashboard_choices(hass, simulation, empty, controls)
+            self.assertEqual(hass.states.get("input_select.bapsim_active_assessment").attributes["options"],
+                             ["선택"])
+            options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
+            self.assertEqual(len(options), 3)
+            self.assertTrue(any(item.endswith(" | trip-a") for item in options))
+            self.assertTrue(any(item.endswith(" | trip-b") for item in options))
+            self.assertFalse(any("ended" in item for item in options))
+            self.assertIn("ended", controls.pauses)  # Retain the historical control record.
+            selected = next(item for item in options if item.endswith(" | trip-b"))
+            hass.states.async_set("input_select.bapsim_active_pause", selected, {"options": options})
+            await refresh_dashboard_choices(hass, empty, empty, controls)
+            self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state, selected)
+            controls.pauses.pop("trip-a")
+            await refresh_dashboard_choices(hass, empty, empty, controls)
+            self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state, selected)
+
+        asyncio.run(scenario())
+
     def test_ha_ignores_old_lid_opening_before_current_incident(self):
         incident_at = datetime.now(timezone.utc) - timedelta(minutes=30)
         incident_id = f"matter:cooker_01:{incident_at.isoformat()}"
@@ -389,6 +441,116 @@ class HAServiceIntegrationTests(TestCase):
                 self.assertEqual(payload["source"], "simulator")
                 self.assertEqual(payload["signal"], "door_opened")
                 self.assertFalse(published[0][2]["retain"])
+
+        asyncio.run(scenario())
+
+    def test_external_worker_choices_follow_mqtt_state_controls_and_expiry(self):
+        async def scenario():
+            handlers = {}
+            timers = []
+            modules = ha_modules({})
+            components = types.ModuleType("homeassistant.components")
+            components.__path__ = []
+            mqtt = types.ModuleType("homeassistant.components.mqtt")
+
+            async def wait_for_client(_hass):
+                return True
+
+            async def subscribe(_hass, topic, handler, qos):
+                handlers[topic] = handler
+                return lambda: handlers.pop(topic, None)
+
+            def schedule(_hass, handler, at):
+                timers.append((handler, at))
+                return lambda: None
+
+            mqtt.async_wait_for_mqtt_client = wait_for_client
+            mqtt.async_subscribe = subscribe
+            components.mqtt = mqtt
+            modules["homeassistant.components"] = components
+            modules["homeassistant.components.mqtt"] = mqtt
+            modules["homeassistant.helpers.event"].async_track_point_in_utc_time = schedule
+            with patch.dict(sys.modules, modules):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_external_choices", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                temporary = TemporaryDirectory()
+                self.addCleanup(temporary.cleanup)
+                hass.config = types.SimpleNamespace(
+                    path=lambda name: str(Path(temporary.name) / name))
+
+                async def set_options(call):
+                    hass.states.async_set(call.data["entity_id"], call.data["options"][0],
+                                          {"options": call.data["options"]})
+
+                async def publish(_call):
+                    return None
+
+                hass.services.async_register("input_select", "set_options", set_options)
+                hass.services.async_register("mqtt", "publish", publish)
+                hass.states.async_set("input_select.bapsim_active_assessment", "선택", {})
+                hass.states.async_set("input_select.bapsim_active_pause", "선택", {})
+                self.assertTrue(await module.async_setup(hass, {"bapsim": {
+                    "external_service": True, "household_id": "home"}}))
+                processed = 0
+
+                async def drain():
+                    nonlocal processed
+                    while processed < len(hass.tasks):
+                        batch = hass.tasks[processed:]
+                        processed = len(hass.tasks)
+                        await asyncio.gather(*batch)
+
+                await drain()
+                output = StatusOutput("home")
+                now = datetime.now(timezone.utc)
+                state = output.build(now.isoformat(), {"ready": True}, "available",
+                                     {"incident_id": "gap-a", "status": "notified",
+                                      "reason_codes": ["EXPECTED_USE_MISSING"]},
+                                     {"incident_id": "trend-b", "status": "check_required",
+                                      "reason_codes": ["DECLINING_USAGE"]})
+                handlers[output.topic("matter", "state")](
+                    types.SimpleNamespace(payload=json.dumps(state)))
+                await drain()
+                choices = hass.states.get("input_select.bapsim_active_assessment").attributes["options"]
+                self.assertEqual(len(choices), 3)
+                self.assertTrue(any(item.endswith(" | gap-a") for item in choices))
+                selected = next(item for item in choices if item.endswith(" | trend-b"))
+                hass.states.async_set("input_select.bapsim_active_assessment", selected,
+                                      {"options": choices})
+                local_end = now.astimezone(timezone(timedelta(hours=9))) + timedelta(hours=2)
+                hass.states.async_set("input_datetime.bapsim_control_until",
+                                      local_end.strftime("%Y-%m-%d %H:%M:%S"), {})
+                await hass.services.async_call("bapsim", "dashboard_control", {"action": "acknowledge"})
+                published = [json.loads(data["payload"]) for domain, name, data in hass.services.calls
+                             if (domain, name) == ("mqtt", "publish") and data["topic"].endswith("/control")]
+                self.assertEqual(published[-1]["assessment_id"], "trend-b")
+
+                controls = {"schema_version": "0.1.0", "household_id": "home", "revision": 1,
+                            "pauses": {"trip-a": {"starts_at": now.isoformat(),
+                                                  "ends_at": (now + timedelta(hours=2)).isoformat()},
+                                       "past": {"starts_at": (now - timedelta(hours=3)).isoformat(),
+                                                "ends_at": (now - timedelta(hours=1)).isoformat()}}}
+                handlers[output.topic("matter", "notification_controls")](
+                    types.SimpleNamespace(payload=json.dumps(controls)))
+                await drain()
+                pause_options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
+                self.assertEqual(len(pause_options), 2)
+                hass.states.async_set("input_select.bapsim_active_pause", pause_options[1],
+                                      {"options": pause_options})
+                await hass.services.async_call("bapsim", "dashboard_control", {"action": "cancel_pause"})
+                published = [json.loads(data["payload"]) for domain, name, data in hass.services.calls
+                             if (domain, name) == ("mqtt", "publish") and data["topic"].endswith("/control")]
+                self.assertEqual(published[-1]["pause_id"], "trip-a")
+
+                self.assertTrue(timers)
+                timers[-1][0](timers[-1][1])
+                await drain()
+                self.assertEqual(hass.states.get("input_select.bapsim_active_assessment")
+                                 .attributes["options"], ["선택"])
+                with self.assertRaisesRegex(ValueError, "exactly one active"):
+                    await hass.services.async_call("bapsim", "dashboard_control", {"action": "acknowledge"})
 
         asyncio.run(scenario())
 
@@ -812,6 +974,35 @@ class HAServiceIntegrationTests(TestCase):
 
         asyncio.run(scenario())
 
+    def test_dashboard_one_incident_rejects_past_end_and_accepts_future_end(self):
+        seed = {"workflow": [{"source": "matter", "device_id": "cooker_01",
+                             "status": "notified", "incident_id": "gap-one",
+                             "reason_codes": ["EXPECTED_USE_MISSING"]}]}
+
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules(seed)):
+                spec = importlib.util.spec_from_file_location("bapsim_ha_one_choice", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                self.assertTrue(await module.async_setup(hass, {}))
+                past = datetime.now(timezone(timedelta(hours=9))) - timedelta(minutes=1)
+                hass.states.async_set("input_datetime.bapsim_control_until",
+                                      past.strftime("%Y-%m-%d %H:%M:%S"), {})
+                with self.assertRaisesRegex(ValueError, "future"):
+                    await hass.services.async_call("bapsim", "dashboard_control", {"action": "acknowledge"})
+                self.assertFalse(hass.data["bapsim"]["notification_controls"].acknowledgements)
+
+                future = datetime.now(timezone(timedelta(hours=9))) + timedelta(hours=2)
+                hass.states.async_set("input_datetime.bapsim_control_until",
+                                      future.strftime("%Y-%m-%d %H:%M:%S"), {})
+                await hass.services.async_call("bapsim", "dashboard_control", {"action": "acknowledge"})
+                self.assertIn("gap-one", hass.data["bapsim"]["notification_controls"].acknowledgements)
+                if hass.tasks:
+                    await asyncio.gather(*hass.tasks)
+
+        asyncio.run(scenario())
+
     def test_acknowledge_requires_active_assessment_and_records_expiry(self):
         seed = {"workflow": [{"source": "matter", "device_id": "cooker_01", "status": "notified",
                               "incident_id": "case-1", "reason_codes": ["EXPECTED_USE_MISSING"]}]}
@@ -1005,9 +1196,11 @@ class HAServiceIntegrationTests(TestCase):
                                  if (domain, name) == ("persistent_notification", "create")]
                 self.assertEqual(len(notifications), 2)
                 self.assertNotEqual(notifications[0]["notification_id"], notifications[1]["notification_id"])
-                await hass.services.async_call("bapsim", "respond", {"response": "checking"})
+                await hass.services.async_call("bapsim", "respond", {
+                    "response": "checking", "source": "simulator", "device_id": "cooker_01"})
                 self.assertEqual(hass.states.values["sensor.bapsim_simulation_workflow_status"].state, "checking")
-                await hass.services.async_call("bapsim", "respond", {"response": "resolved"})
+                await hass.services.async_call("bapsim", "respond", {
+                    "response": "resolved", "source": "simulator", "device_id": "cooker_01"})
                 self.assertEqual(hass.states.values["sensor.bapsim_simulation_workflow_status"].state, "resolved")
 
         asyncio.run(scenario())
@@ -1017,6 +1210,10 @@ class HAServiceIntegrationTests(TestCase):
             "source": "matter", "device_id": "cooker_matter",
             "status": "notified", "incident_id": "matter:incident_1",
             "reason_codes": ["COOK_OPEN_MISMATCH"],
+        }, {
+            "source": "simulator", "device_id": "cooker_demo",
+            "status": "notified", "incident_id": "simulator:incident_1",
+            "reason_codes": ["EXPECTED_USE_MISSING"],
         }]}
 
         async def scenario():
@@ -1025,10 +1222,24 @@ class HAServiceIntegrationTests(TestCase):
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
                 hass = FakeHass()
+                async def set_options(call):
+                    hass.states.async_set(call.data["entity_id"], call.data["options"][0],
+                                          {"options": call.data["options"]})
+                hass.services.async_register("input_select", "set_options", set_options)
+                hass.states.async_set("input_select.bapsim_active_assessment", "선택", {})
                 self.assertTrue(await module.async_setup(hass, {}))
+                await asyncio.gather(*hass.tasks)
+                processed = len(hass.tasks)
+                options = hass.states.get("input_select.bapsim_active_assessment").attributes["options"]
+                self.assertEqual(len(options), 2)
+                self.assertTrue(options[1].endswith(" | matter:incident_1"))
                 await hass.services.async_call("bapsim", "respond", {"response": "checking"})
                 self.assertEqual(hass.states.values["sensor.bapsim_workflow_status"].state, "checking")
                 self.assertEqual(hass.states.values["sensor.bapsim_workflow_status"].attributes["source"], "matter")
+                states = hass.data["bapsim"]["workflow"].dump_state()
+                self.assertEqual(next(item["status"] for item in states
+                                      if item["source"] == "simulator"), "notified")
+                await asyncio.gather(*hass.tasks[processed:])
 
         asyncio.run(scenario())
 

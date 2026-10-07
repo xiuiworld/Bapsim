@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 
-from domain.personal_model import usage_group_id
+if __package__ == "service":
+    from domain.personal_model import usage_group_id
+else:
+    from ..domain.personal_model import usage_group_id
 
 
 def bind_cooker_events(

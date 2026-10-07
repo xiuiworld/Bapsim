@@ -23,11 +23,13 @@ SOURCE_SCOPED = frozenset({
 
 
 class HADashboard:
-    def __init__(self, hass, usage_model, routine_updated_at: dict[str, str], schedule_expiry=None) -> None:
+    def __init__(self, hass, usage_model, routine_updated_at: dict[str, str], schedule_expiry=None,
+                 on_output_change=None) -> None:
         self.hass = hass
         self.usage_model = usage_model
         self.routine_updated_at = routine_updated_at
         self.schedule_expiry = schedule_expiry
+        self.on_output_change = on_output_change
         self.output_timers: dict[str, object] = {}
         self.output_revisions: dict[str, int] = {}
 
@@ -60,11 +62,15 @@ class HADashboard:
             if self.output_revisions.get(entity) == revision:
                 self.show(entity, "expired", {"source": source, "valid_until": payload["valid_until"]})
                 self.output_timers.pop(entity, None)
+                if source == "matter" and self.on_output_change is not None:
+                    self.on_output_change()
 
         if expires <= datetime.now(timezone.utc):
             expire(expires)
             return
         self.show(entity, payload["summary"], {**payload, "source": source})
+        if source == "matter" and self.on_output_change is not None:
+            self.on_output_change()
         if self.schedule_expiry is not None:
             self.output_timers[entity] = self.schedule_expiry(self.hass, expire, expires)
 

@@ -1,6 +1,6 @@
 respond:
   name: Record caregiver response
-  description: Record checking or resolved. With no source/device ID, use the only active incident; supply both if multiple are active.
+  description: Record checking or resolved for the selected current Matter incident or the only active one. External mode sends the response to the worker. Internal simulation responses require explicit source and device_id.
   fields:
     response:
       required: true
@@ -13,6 +13,10 @@ respond:
       selector:
         text:
     device_id:
+      selector:
+        text:
+    incident_id:
+      description: Exact incident to respond to; otherwise use the dashboard selection.
       selector:
         text:
 register_matter_contact:
