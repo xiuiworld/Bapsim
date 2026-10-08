@@ -902,6 +902,25 @@ class HAServiceIntegrationTests(TestCase):
 
         asyncio.run(scenario())
 
+    def test_restart_restores_pause_and_exposes_neutral_control_result(self):
+        async def scenario():
+            now = datetime.now(timezone.utc)
+            controls = NotificationControls()
+            controls.apply({"command_id": "saved-pause", "action": "pause_lifestyle",
+                            "pause_id": "saved", "starts_at": now.isoformat(),
+                            "ends_at": (now + timedelta(hours=2)).isoformat()}, now.isoformat())
+            with patch.dict(sys.modules, ha_modules({"notification_controls": controls.dump_state()})):
+                spec = importlib.util.spec_from_file_location("bapsim_restart_result", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                self.assertTrue(await module.async_setup(hass, {}))
+                self.assertTrue(hass.data["bapsim"]["notification_controls"].is_paused(now.isoformat()))
+                result = hass.states.get("sensor.bapsim_notification_control_result")
+                self.assertEqual(result.state, "waiting")
+                self.assertNotIn("command_id", result.attributes)
+        asyncio.run(scenario())
+
     def test_control_is_not_accepted_before_storage_commits(self):
         async def scenario(fail):
             modules = ha_modules({})

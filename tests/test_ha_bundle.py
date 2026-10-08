@@ -6,6 +6,7 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 from zipfile import ZipFile
 
 from test_ha_service_integration import FakeBus, FakeServices, FakeStates, FakeHass, ha_modules
@@ -52,3 +53,15 @@ print("bundle import and async_setup passed")
             result = subprocess.run([sys.executable, "-I", "-S", "-c", probe, str(root)],
                                     cwd=root, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+    def test_bundle_is_identical_for_lf_and_crlf_sources(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch("tools.build_ha_bundle.bundle_members", return_value=[("example.py", b"a\nb\n")]):
+                first = build(root / "lf.zip").read_bytes()
+            with patch("tools.build_ha_bundle.bundle_members", return_value=[("example.py", b"a\r\nb\r\n")]):
+                second = build(root / "crlf.zip").read_bytes()
+            self.assertEqual(first, second)
+            with ZipFile(root / "lf.zip") as archive:
+                self.assertEqual(archive.getinfo("example.py").create_system, 3)
