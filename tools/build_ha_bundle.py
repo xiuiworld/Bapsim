@@ -45,9 +45,10 @@ def build(output: Path = DEFAULT_OUTPUT) -> Path:
     with ZipFile(output, "w") as archive:
         for name, data in bundle_members():
             entry = ZipInfo(name, date_time=(2026, 10, 2, 0, 0, 0))
+            entry.create_system = 3
             entry.compress_type = ZIP_DEFLATED
             entry.external_attr = 0o644 << 16
-            archive.writestr(entry, data)
+            archive.writestr(entry, data.replace(b"\r\n", b"\n"))
     return output
 
 
