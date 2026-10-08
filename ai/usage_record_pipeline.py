@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Iterable
 
 from domain.personal_model import operating_usage_model
+from service.auxiliary import AuxiliaryDeferral
 from workflow import DetectionStateManager
 
 
@@ -161,6 +162,49 @@ def _metrics(rows: list[dict[str, object]], field: str) -> dict[str, int | float
             "eligible_days": len(eligible), "abstained_days": len(rows) - len(eligible)}
 
 
+def _episode_request_metrics(rows: list[dict[str, object]], field: str) -> dict[str, object]:
+    """Measure first requests in contiguous, independently labeled positive days.
+
+    The synthetic/real label only names a local date, so delay starts at that
+    date's midnight; it is not a measured onset of need.
+    """
+    grouped: dict[tuple[str, str, str], list[dict[str, object]]] = defaultdict(list)
+    for row in rows:
+        grouped[(str(row["mode"]), str(row["household_id"]), str(row["device_id"]))].append(row)
+    episodes: list[dict[str, object]] = []
+    for key, group in grouped.items():
+        positive: list[dict[str, object]] = []
+
+        def finish() -> None:
+            if not positive:
+                return
+            start_day = date.fromisoformat(str(positive[0]["local_date"]))
+            start = datetime.combine(start_day, time.min, KST).astimezone(timezone.utc)
+            requests = [moment(value) for item in positive for value in item[field]]
+            first = min(requests) if requests else None
+            episodes.append({"mode": key[0], "household_id": key[1], "device_id": key[2],
+                             "start_date": start_day.isoformat(),
+                             "end_date": str(positive[-1]["local_date"]),
+                             "first_request_at": first.isoformat() if first else None,
+                             "delay_from_label_midnight_hours":
+                             round((first - start).total_seconds() / 3600, 3) if first else None})
+            positive.clear()
+
+        for row in sorted(group, key=lambda item: str(item["local_date"])):
+            day = date.fromisoformat(str(row["local_date"]))
+            if (row["abstain_reason"] is None and row["review"] == "check_needed" and
+                    (not positive or day == date.fromisoformat(str(positive[-1]["local_date"])) + timedelta(days=1))):
+                positive.append(row)
+            else:
+                finish()
+                if row["abstain_reason"] is None and row["review"] == "check_needed":
+                    positive.append(row)
+        finish()
+    captured = [item for item in episodes if item["first_request_at"] is not None]
+    return {"episodes": len(episodes), "captured": len(captured),
+            "missed": len(episodes) - len(captured), "details": episodes}
+
+
 def _workflow_input(source: str, device: str, at: datetime, status: str,
                     reasons: list[str] | None = None) -> dict[str, object]:
     return {"source": source, "device_id": device, "as_of": at.isoformat(),
@@ -169,7 +213,8 @@ def _workflow_input(source: str, device: str, at: datetime, status: str,
 
 def evaluate(observations: Iterable[dict[str, object]], labels: Iterable[dict[str, object]],
              evaluation_start: date, *, history_days: int = 21,
-             max_heartbeat_age: timedelta = timedelta(minutes=90)) -> dict[str, object]:
+             max_heartbeat_age: timedelta = timedelta(minutes=90),
+             simulated_activity: Iterable[dict[str, object]] = ()) -> dict[str, object]:
     if history_days < 7 or max_heartbeat_age <= timedelta(0):
         raise ValueError("history_days must be >=7 and max_heartbeat_age positive")
     grouped: dict[tuple[str, str, str, str], list[dict[str, object]]] = defaultdict(list)
@@ -179,6 +224,18 @@ def evaluate(observations: Iterable[dict[str, object]], labels: Iterable[dict[st
     if not grouped:
         raise ValueError("no observations")
     for events in grouped.values():
+        events.sort(key=lambda row: moment(row["observed_at"]))
+    grouped_activity: dict[tuple[str, str, str, str], list[dict[str, object]]] = defaultdict(list)
+    activity_count = 0
+    for row in simulated_activity:
+        key = _identity(row)
+        if key[0] != "simulation" or key not in grouped or row.get("signal") not in {
+                "door_opened", "motion_detected", "appliance_used"}:
+            raise ValueError("simulated activity needs a matching simulation household and supported signal")
+        moment(row.get("observed_at"))
+        grouped_activity[key].append(row)
+        activity_count += 1
+    for events in grouped_activity.values():
         events.sort(key=lambda row: moment(row["observed_at"]))
     seen: set[tuple[tuple[str, str, str, str], str]] = set()
     grouped_labels: dict[tuple[str, str, str, str], list[dict[str, object]]] = defaultdict(list)
@@ -199,6 +256,9 @@ def evaluate(observations: Iterable[dict[str, object]], labels: Iterable[dict[st
     for key, day_labels in grouped_labels.items():
         mode, household, device, source = key
         events = grouped[key]
+        activity = grouped_activity[key]
+        auxiliary = AuxiliaryDeferral()
+        activity_cursor = 0
         first_day = moment(events[0]["observed_at"]).astimezone(KST).date()
         if evaluation_start < first_day + timedelta(days=history_days):
             raise ValueError(f"{household}/{device}: evaluation_start needs {history_days} earlier calendar days")
@@ -219,12 +279,25 @@ def evaluate(observations: Iterable[dict[str, object]], labels: Iterable[dict[st
         while day <= last_day:
             checks = [datetime.combine(day, time(hour, minute), KST).astimezone(timezone.utc)
                       for hour, minute in CHECKS]
-            checks.append(datetime.combine(day, time(23, 59), KST).astimezone(timezone.utc))
+            assessment_times = set(checks)
+            checks.append(datetime.combine(day, time(23, 59, 59, 999999), KST).astimezone(timezone.utc))
+            end = checks[-1]
+            scheduled = list(checks)
             candidates: list[str] = []
             requests: list[str] = []
             request_times: list[str] = []
             fixed_requests: list[str] = []
-            for checkpoint in checks:
+            while scheduled:
+                # Replay pending timers at their deadlines, even between model checks
+                # or across midnight. Consume observations/activity up to that time.
+                due_times = [moment(item["due_at"]) for item in auxiliary.pending]
+                checkpoint = min([scheduled[0], *due_times])
+                if checkpoint == scheduled[0]:
+                    scheduled.pop(0)
+                while activity_cursor < len(activity) and moment(activity[activity_cursor]["observed_at"]) <= checkpoint:
+                    item = activity[activity_cursor]
+                    auxiliary.record(device, str(item["observed_at"]), str(item["signal"]))
+                    activity_cursor += 1
                 while cursor < len(events) and moment(events[cursor]["observed_at"]) <= checkpoint:
                     event = events[cursor]
                     at = moment(event["observed_at"])
@@ -233,6 +306,7 @@ def evaluate(observations: Iterable[dict[str, object]], labels: Iterable[dict[st
                         away = bool(event["away"])
                         model.set_away(away, at.isoformat())
                         if away:
+                            auxiliary.clear()
                             for manager in (gap, fixed_gap, decline):
                                 manager.ingest(_workflow_input(source, device, at, "away"))
                     else:
@@ -240,6 +314,7 @@ def evaluate(observations: Iterable[dict[str, object]], labels: Iterable[dict[st
                         if kind == "device_online":
                             online, last_heartbeat = True, at
                         elif kind == "device_offline":
+                            auxiliary.clear()
                             online = False
                             for manager in (gap, fixed_gap, decline):
                                 manager.ingest(_workflow_input(source, device, at, "data_unavailable"))
@@ -255,7 +330,17 @@ def evaluate(observations: Iterable[dict[str, object]], labels: Iterable[dict[st
                     online = False
                     for manager in (gap, fixed_gap, decline):
                         manager.ingest(_workflow_input(source, device, checkpoint, "data_unavailable"))
-                if checkpoint == checks[-1]:
+                if away or not fresh:
+                    auxiliary.clear()
+                else:
+                    for decision in auxiliary.due(checkpoint.isoformat()):
+                        if last_open is not None and last_open > moment(decision["deferred_from"]):
+                            continue
+                        for update in gap.ingest(decision):
+                            if update.action == "notify_requested":
+                                requests.extend(update.reason_codes)
+                                request_times.append(checkpoint.isoformat())
+                if checkpoint not in assessment_times:
                     continue
                 fixed_due = bool(last_open is not None and
                                  checkpoint - last_open > timedelta(hours=24))
@@ -273,7 +358,13 @@ def evaluate(observations: Iterable[dict[str, object]], labels: Iterable[dict[st
                     if decision["routine_status"] == "check_required":
                         candidates.extend(decision["reason_codes"])
                 for decision in decisions:
-                    for update in gap.ingest(decision):
+                    # The model can return a historical window deadline. Deferral
+                    # begins when this replay actually discovers the candidate;
+                    # scheduling from that historical deadline would rewind time.
+                    observed_decision = {**decision, "as_of": checkpoint.isoformat(),
+                                         "candidate_as_of": decision["as_of"]}
+                    updates = [] if auxiliary.defer(observed_decision) else gap.ingest(decision)
+                    for update in updates:
                         if update.action == "notify_requested":
                             requests.extend(update.reason_codes)
                             request_times.append(checkpoint.isoformat())
@@ -309,11 +400,15 @@ def evaluate(observations: Iterable[dict[str, object]], labels: Iterable[dict[st
             day += timedelta(days=1)
     report_rows.sort(key=lambda row: (row["mode"], row["household_id"], row["device_id"], row["local_date"]))
     return {"schema_version": SCHEMA, "scope": "Offline internal candidates; no meal or health inference or push delivery",
+            "simulated_activity_events": activity_count,
             "evaluation_start": evaluation_start.isoformat(), "history_days": history_days,
             "max_heartbeat_age_minutes": int(max_heartbeat_age.total_seconds() / 60),
             "personal": _metrics(report_rows, "personal_candidate"),
             "notification_request": _metrics(report_rows, "notification_request"),
             "fixed_24h_notification_request": _metrics(report_rows, "fixed_24h_notification_request"),
+            "first_request_episodes": {
+                "personal": _episode_request_metrics(report_rows, "notification_request_at"),
+                "fixed_24h": _episode_request_metrics(report_rows, "fixed_24h_notification_request_at")},
             "fixed_24h": _metrics(report_rows, "fixed_24h_candidate"), "days": report_rows}
 
 
