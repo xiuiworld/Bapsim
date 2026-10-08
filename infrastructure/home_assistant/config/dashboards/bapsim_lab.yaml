@@ -1,35 +1,254 @@
 title: 밥심 실험실
 views:
-  - title: A05 연결 시험
-    path: a05-test
-    icon: mdi:test-tube
+  - title: 보호자
+    path: status
     cards:
       - type: markdown
         content: |
-          ## 개발용 연결 시험
-          실제 A05 보드의 닫힘→열림을 확인하는 1회 시험입니다. 개인 학습·AI 판정 결과가 아닙니다.
-          실행 ID와 계약 기록 ID를 아래 카드에서 확인하세요. 휴대폰 수신 여부는 별도로 확인해야 합니다.
+          ## 생활 루틴 확인
+          {% set issue = states('sensor.bapsim_observation_issue_status') %}
+          {% set output = states('sensor.bapsim_output_state') %}
+          {% set observation = state_attr('sensor.bapsim_output_state', 'observation') %}
+          {% set valid_until = state_attr('sensor.bapsim_output_state', 'valid_until') %}
+          {% set current = output not in ['awaiting_matter', 'expired', 'unknown', 'unavailable', 'waiting'] and valid_until and as_timestamp(valid_until, 0) > as_timestamp(now()) %}
+          {% set usable = current and observation in ['available', 'partial'] and issue not in ['disconnected', 'alert_requested', 'unknown', 'unavailable', 'not_observed'] %}
+          {% if issue in ['disconnected', 'alert_requested'] %}
+          **관측 상태를 먼저 확인하세요:** 밥솥 연결이 끊겨 생활 변화를 판단할 수 없습니다.
+          {% elif issue in ['unknown', 'unavailable', 'not_observed'] %}
+          **관측 확인 전:** 새 실물 기록을 기다리고 있습니다. 아래의 '정상'은 안부가 확인됐다는 뜻이 아닙니다.
+          {% elif not usable %}
+          **아직 판단할 수 없습니다.** 유효한 실물 기록과 관측 상태를 확인해 주세요.
+          {% elif observation == 'partial' %}
+          **일부 관측만 가능합니다.** 아래 사용 기록만으로 생활 상태를 단정하지 마세요.
+          {% endif %}
+          {% set learning = state_attr('sensor.bapsim_output_state', 'learning') or 'insufficient' %}
+          {% set last_usage = state_attr('sensor.bapsim_output_state', 'last_usage_at') %}
+          {% set assessments = state_attr('sensor.bapsim_output_state', 'assessments') or [] %}
+          ### 최근 밥솥 사용 기록
+          {% if usable and last_usage %}
+          **{{ as_timestamp(last_usage) | timestamp_custom('%m월 %d일 %H:%M', true) }}**에 사용 관련 개방 기록이 있습니다. 실제 식사 시각은 아닙니다.
+          {% else %}
+          **표시할 수 있는 최근 실물 사용 기록이 없습니다.** 미사용이나 안전 상태로 해석하지 마세요.
+          {% endif %}
+          ### 평소와 비교
+          {% if not usable %}
+          **비교 불가:** 실물 기록 또는 관측 상태를 먼저 확인해야 합니다.
+          {% elif learning == 'insufficient' %}
+          **개인 기록 부족:** 평소 패턴과 아직 비교할 수 없습니다.
+          {% elif assessments %}
+          {% for a in assessments %}
+          - {{ {'usage_gap':'예상 시간대 사용 공백', 'declining_usage':'최근 사용 감소'}.get(a.type, '사용 변화') }}: **{{ {'checking':'보호자 확인 중', 'resolved':'확인 기록 완료'}.get(a.get('caregiver_status'), {'watch':'변화 관찰 중', 'notified':'안부 확인 요청됨', 'resolved':'해소됨'}.get(a.status, '상태 확인 전')) }}**
+          {% endfor %}
+          {% else %}
+          **현재 안내할 사용 변화가 없습니다.** 안부나 건강이 확인됐다는 뜻은 아닙니다.
+          {% endif %}
+          ### 지금 할 일
+          {% set incident_options = state_attr('input_select.bapsim_active_assessment', 'options') or [] %}
+          {% if not usable %}
+          실물 입력과 연결 상태를 확인해 주세요. 보호자 확인 버튼은 유효한 안내가 있을 때 사용합니다.
+          {% elif incident_options | length > 1 %}
+          아래에서 **확인할 안내를 선택**한 뒤 확인 중·완료를 기록하거나, 재알림 기한을 정할 수 있습니다.
+          {% else %}
+          지금 처리할 안부 확인 안내는 없습니다.
+          {% endif %}
+
+          개인 기준: **{{ {'collecting':'개인 기록 수집 중', 'insufficient':'개인 기록 부족', 'personalized':'개인 이력 기준 사용 중'}.get(learning, '개인 기록 확인 전') if usable else '판단 전' }}**
+          {% if usable and state_attr('sensor.bapsim_output_state', 'initial_basis') %}
+          - **입력한 초기 사용 시간으로 판단 중입니다. 개인 학습 완료 상태가 아닙니다.**
+          {% endif %}
+      - type: button
+        name: 평소 밥솥 사용 시간 설정
+        icon: mdi:calendar-clock
+        tap_action:
+          action: navigate
+          navigation_path: /bapsim-lab/routine
       - type: entities
-        title: 현재 시험 실행
+        title: 확인할 안내와 종료 시각
         entities:
-          - entity: sensor.bapsim_a05_connection_test
-            name: A05 보드→B→시험 폰
+          - input_select.bapsim_active_assessment
+          - input_datetime.bapsim_control_until
+          - input_select.bapsim_active_pause
       - type: markdown
         content: |
-          {% set a = states.sensor.bapsim_a05_connection_test.attributes if states.sensor.bapsim_a05_connection_test is defined else {} %}
-          - 단계: **{{ states('sensor.bapsim_a05_connection_test') }}**
-          - 실행 ID: `{{ a.get('test_run_id', '없음') }}`
-          - 보드: `{{ a.get('device_id', '없음') }}` / 입력: `{{ a.get('source_ref', '없음') }}`
-          - 닫힘 계약 기록: `{{ a.get('closed_record_id', '대기') }}`
-          {% set r = a.get('result') or {} %}
-          - 열림 계약 기록: `{{ r.get('opened_record_id', '대기') }}`
-          - 실행 시나리오: `{{ a.get('scenario', '대기') }}`
-          {% for item in a.get('phase_evidence', []) %}
-          - A07 {{ item.phase }}: `{{ item.record_id }}` · 보고 {{ item.report_counter }} · 품질 {{ item.quality }}
+          {% set until = states('input_datetime.bapsim_control_until') %}
+          {% if until in ['unknown', 'unavailable'] or as_timestamp(until, 0) <= as_timestamp(now()) %}
+          **종료 시각을 미래로 다시 설정해 주세요.** 지난 시각으로는 확인 기한이나 알림 쉬기를 적용할 수 없습니다.
+          {% endif %}
+          **확인했어요**는 선택한 안내의 *재알림을 지정 시각까지 보류*합니다. **확인 중/안부 확인 완료**는 실제 안부 확인의 진행 상태를 기록하며 재알림 기한을 만들지 않습니다.
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: input_select.bapsim_active_assessment
+            state_not: [선택, unknown, unavailable]
+          - condition: state
+            entity: sensor.bapsim_output_state
+            state_not: [awaiting_matter, expired, unknown, unavailable, waiting]
+          - condition: state
+            entity: sensor.bapsim_observation_issue_status
+            state_not: [disconnected, alert_requested, unknown, unavailable, not_observed]
+        card:
+          type: grid
+          title: 선택한 안내 처리
+          columns: 2
+          square: false
+          cards:
+            - type: button
+              name: 확인했어요 · 재알림 보류
+              icon: mdi:check-decagram
+              tap_action:
+                action: perform-action
+                perform_action: bapsim.dashboard_control
+                data: {action: acknowledge}
+            - type: button
+              name: 안부 확인 중
+              icon: mdi:account-search
+              tap_action:
+                action: perform-action
+                perform_action: bapsim.respond
+                data: {response: checking}
+            - type: button
+              name: 안부 확인 완료
+              icon: mdi:check-circle
+              tap_action:
+                action: perform-action
+                perform_action: bapsim.respond
+                data: {response: resolved}
+      - type: markdown
+        content: |
+          {% set result = states('sensor.bapsim_notification_control_result') %}
+          {% if result in ['accepted', 'rejected', 'failed', 'submitted', 'applying'] %}
+          ### 최근 알림 조작 결과
+          {% if result == 'accepted' %}
+          **적용됨** · {{ {'acknowledge':'선택한 안내 재알림 보류', 'pause_lifestyle':'생활 변화 알림 쉬기', 'cancel_pause':'알림 쉬기 취소'}.get(state_attr('sensor.bapsim_notification_control_result', 'action'), '알림 조작') }}
+          {% elif result == 'submitted' or result == 'applying' %}
+          **처리 중** · 저장 또는 적용 결과를 기다리고 있습니다.
+          {% else %}
+          **적용되지 않음** · {{ state_attr('sensor.bapsim_notification_control_result', 'reason') or '조작 조건을 다시 확인해 주세요.' }}
+          {% endif %}
+          {% set recorded_at = state_attr('sensor.bapsim_notification_control_result', 'recorded_at') %}
+          {% if recorded_at %}화면 갱신: {{ as_timestamp(recorded_at) | timestamp_custom('%m월 %d일 %H:%M', true) }}{% endif %}
+          {% else %}
+          알림 조작 이력이 없습니다.
+          {% endif %}
+      - type: markdown
+        content: |
+          ## 외출·여행 중 알림 쉬기
+          실제로 집을 비우는 기간에만 사용하세요. 이 조작은 **안전 확인이 아니며**, 생활 변화 안내를 종료 시각까지 쉬게 합니다. 위의 종료 시각을 먼저 정하세요.
+      - type: button
+        name: 종료 시각까지 생활 변화 알림 쉬기
+        icon: mdi:bell-sleep
+        tap_action:
+          action: perform-action
+          perform_action: bapsim.dashboard_control
+          data: {action: pause_lifestyle}
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: input_select.bapsim_active_pause
+            state_not: [선택, unknown, unavailable]
+        card:
+          type: button
+          name: 선택한 알림 쉬기 취소
+          icon: mdi:bell-cancel-outline
+          tap_action:
+            action: perform-action
+            perform_action: bapsim.dashboard_control
+            data: {action: cancel_pause}
+      - type: markdown
+        content: |
+          ## 자세한 관측 기록
+          아래는 밥솥 관측과 보드 추정의 근거입니다. **개방·취사 기록은 식사나 건강 상태를 확정하지 않습니다.**
+      - type: entities
+        title: 관측·학습 상태
+        entities:
+          - sensor.bapsim_output_state
+          - sensor.bapsim_observation_issue_status
+          - sensor.bapsim_baseline
+          - sensor.bapsim_usage_context
+      - type: markdown
+        content: |
+          {% set f = states.sensor.bapsim_features.attributes if states.sensor.bapsim_features is defined else {} %}
+          {% set p = states.sensor.bapsim_baseline.attributes if states.sensor.bapsim_baseline is defined else {} %}
+          {% set windows = state_attr('sensor.bapsim_baseline', 'windows') or [] %}
+          {% set d = states.sensor.bapsim_detection_status.attributes if states.sensor.bapsim_detection_status is defined else {} %}
+          {% set c = states.sensor.bapsim_usage_context.attributes if states.sensor.bapsim_usage_context is defined else {} %}
+          {% set cooks = f.get('cook_count_24h') %}
+          {% set opens = p.get('lid_open_count_24h') %}
+          ### 개인별 사용 패턴
+          - 모델 상태: **{{ states('sensor.bapsim_baseline') }}** (개인 기준 표시는 정상 관측 7일 이상·유효 사용일 5일 이상에서 시작합니다. 초기 설정을 활용한 판단은 그 전에도 가능합니다.)
+          {% for w in windows %}
+          - 예상 사용 구간 {{ loop.index }}: **{{ as_timestamp(w.expected_time) | timestamp_custom('%H:%M', true) }} 전후** · 관측 확률 {{ (w.probability * 100) | round(0) }}% · 학습일 {{ w.covered_days }}일
           {% endfor %}
-          - A07 모델 버전: `{{ r.get('model_version', '대기') }}`
-          - 알림 호출 시도: **{{ a.get('mobile_attempted', false) }}**
-          - HA 알림 서비스가 요청을 받았다는 상태는 실제 폰 수신 증거가 아닙니다.
+          ### 현재 관측
+          - 최근 24시간 취사 세션: **{{ cooks ~ '회' if cooks is not none else '미관측' }}** / 뚜껑 열림: **{{ opens ~ '회' if opens is not none else '미관측' }}**
+          ### 최근 실물 개방의 맥락
+          {% if c.get('source') == 'matter' and c.get('lid_record_id') %}
+          - 분류: **{{ {'warming_possible_use':'보온 중 사용 가능 행동', 'recent_cooking_possible_use':'최근 취사 뒤 사용 가능 행동', 'unclassified_open':'개방 확인·용도 불명'}.get(c.get('classification'), '용도 불명') }}** (식사 확정 아님)
+          - 보드 추정: **{{ c.get('phase') or '판단 불가' }}** · 품질 {{ c.get('phase_quality') }} · 모델 {{ c.get('model_version') or '없음' }}
+          - 표면 온도: **{{ c.get('temperature_c') ~ ' °C' if c.get('temperature_quality') == 'good' else '미확인' }}** · 근거 {{ c.get('lid_record_id') }}
+          {% else %}
+          - 검증된 실물 개방 맥락 없음
+          {% endif %}
+          - 판정 근거: **{{ (d.get('reason_codes') or []) | join(', ') if d.get('reason_codes') else '없음' }}**
+          - 밥솥 판정: **{{ states('sensor.bapsim_detection_status') }}**
+      - type: history-graph
+        title: 최근 7일 판정·응답 기록
+        hours_to_show: 168
+        entities:
+          - sensor.bapsim_detection_status
+          - sensor.bapsim_workflow_status
+          - sensor.bapsim_decline_status
+  - title: 사용 시간 설정
+    path: routine
+    icon: mdi:calendar-clock
+    subview: true
+    back_path: /bapsim-lab/status
+    cards:
+      - type: markdown
+        content: |
+          ## 평소 밥솥 사용 시간
+          실제로 집에서 밥솥을 사용하는 시간을 입력해 주세요. 식사 여부나 건강 상태를 확인하는 설정은 아닙니다.
+          사용하지 않는 시간대는 **사용 안 함**으로 두세요. 저장하면 이전 설정을 모두 바꿉니다. 실물 밥솥이 한 대 연결되어 있어야 합니다.
+          {% set routines = state_attr('sensor.bapsim_initial_routine', 'routines') or [] %}
+          {% if routines %}
+          현재 적용된 시간:
+          {% for item in routines %}
+          {% for w in item.windows %}
+          - {{ w.time }} · {{ '매일' if w.weekdays | length == 7 else '평일' if w.weekdays == [0,1,2,3,4] else '주말' if w.weekdays == [5,6] else '선택한 요일' }}
+          {% endfor %}
+          {% endfor %}
+          {% else %}
+          아직 적용된 사용 시간이 없습니다.
+          {% endif %}
+      - type: entities
+        title: 평소 시간과 요일
+        entities:
+          - input_datetime.bapsim_routine_time_1
+          - input_select.bapsim_routine_days_1
+          - input_datetime.bapsim_routine_time_2
+          - input_select.bapsim_routine_days_2
+          - input_datetime.bapsim_routine_time_3
+          - input_select.bapsim_routine_days_3
+          - input_datetime.bapsim_routine_time_4
+          - input_select.bapsim_routine_days_4
+      - type: button
+        name: 이 시간으로 적용
+        icon: mdi:content-save-check
+        tap_action:
+          action: perform-action
+          perform_action: bapsim.dashboard_initial_routine
+      - type: markdown
+        content: |
+          {% set result = states('sensor.bapsim_initial_routine_result') %}
+          {% if result == 'applied' %}
+          **적용됨** · 위의 '현재 적용된 시간'을 확인해 주세요.
+          {% elif result == 'failed' %}
+          **적용되지 않음** · {{ state_attr('sensor.bapsim_initial_routine_result', 'reason') or '입력을 확인해 주세요.' }}
+          {% else %}
+          적용 결과가 아직 없습니다.
+          {% endif %}
+          {% set recorded_at = state_attr('sensor.bapsim_initial_routine_result', 'recorded_at') %}
+          {% if recorded_at %}최근 조작: {{ as_timestamp(recorded_at) | timestamp_custom('%m월 %d일 %H:%M', true) }}{% endif %}
   - title: Simulator
     path: simulator
     icon: mdi:rice
@@ -99,130 +318,36 @@ views:
           - sensor.bapsim_simulation_detection_status
           - sensor.bapsim_simulation_workflow_status
           - sensor.bapsim_simulation_notification_delivery
-  - title: 밥심 상태
-    path: status
-    icon: mdi:heart-pulse
+  - title: A05 연결 시험
+    path: a05-test
+    icon: mdi:test-tube
     cards:
       - type: markdown
         content: |
-          ## 생활 루틴 확인
-          밥솥 사용의 변화를 보여줍니다. 식사 여부나 건강 상태를 확정하지 않습니다.
-          {% set issue = states('sensor.bapsim_observation_issue_status') %}
-          {% set output = states('sensor.bapsim_output_state') %}
-          {% if issue in ['disconnected', 'alert_requested'] %}
-          **관측 상태를 먼저 확인하세요:** 연결 기록이 부족합니다. 생활 변화로 단정하지 않습니다.
-          {% elif issue in ['unknown', 'unavailable', 'not_observed'] %}
-          **관측 확인 전:** 새 실물 기록을 기다리고 있습니다.
-          {% endif %}
-          - 현재 실물 결과: **{{ output }}**
-          {% set learning = state_attr('sensor.bapsim_output_state', 'learning') or 'insufficient' %}
-          - 개인 기준: **{{ {'collecting':'개인 기록 수집 중', 'insufficient':'개인 기록 부족', 'personalized':'개인 이력 기준 사용 중'}.get(learning, '개인 기록 확인 전') }}**
-          {% if state_attr('sensor.bapsim_output_state', 'initial_basis') %}
-          - **입력한 초기 사용 시간으로 판단 중입니다. 개인 학습 완료 상태가 아닙니다.**
-          {% endif %}
-          {% for a in state_attr('sensor.bapsim_output_state', 'assessments') or [] %}
-          - {{ {'usage_gap':'사용 공백 안내', 'declining_usage':'사용 감소 안내'}.get(a.type, '밥솥 안내') }}: **{{ {'checking':'보호자 확인 중', 'resolved':'보호자 확인 완료'}.get(a.get('caregiver_status'), {'watch':'확인 필요', 'notified':'안내 요청됨', 'resolved':'해소됨'}.get(a.status, '상태 확인 전')) }}**
-          {% endfor %}
-          {% set incident_options = state_attr('input_select.bapsim_active_assessment', 'options') or [] %}
-          {% set pause_options = state_attr('input_select.bapsim_active_pause', 'options') or [] %}
-          - 진행 중인 안내: **{{ [incident_options | length - 1, 0] | max }}건**
-          - 취소 가능한 알림 쉬기: **{{ [pause_options | length - 1, 0] | max }}건**
+          ## 개발용 연결 시험
+          실제 A05 보드의 닫힘→열림을 확인하는 1회 시험입니다. 개인 학습·AI 판정 결과가 아닙니다.
+          실행 ID와 계약 기록 ID를 아래 카드에서 확인하세요. 휴대폰 수신 여부는 별도로 확인해야 합니다.
       - type: entities
-        title: 보호자 요약 및 조작
+        title: 현재 시험 실행
         entities:
-          - sensor.bapsim_workflow_status
-          - sensor.bapsim_decline_status
-          - sensor.bapsim_baseline
-          - sensor.bapsim_usage_context
-          - sensor.bapsim_notification_delivery
-          - sensor.bapsim_observation_issue_status
-          - sensor.bapsim_notification_controls
-          - sensor.bapsim_notification_control_result
-          - sensor.bapsim_output_state
-          - input_datetime.bapsim_control_until
-          - input_select.bapsim_active_assessment
-          - input_select.bapsim_active_pause
+          - entity: sensor.bapsim_a05_connection_test
+            name: A05 보드→B→시험 폰
       - type: markdown
         content: |
-          알림이 둘 이상이면 **확인할 밥솥 안내**에서 사건을 고르세요. 종료 시각을 정한 뒤 확인하거나 알림 쉬기를 누릅니다. 이미 설정한 알림 쉬기는 **취소할 알림 쉬기**에서 골라 취소할 수 있습니다. 적용 결과는 위 **알림 조작 결과**에 표시됩니다.
-      - type: markdown
-        content: |
-          {% set f = states.sensor.bapsim_features.attributes if states.sensor.bapsim_features is defined else {} %}
-          {% set p = states.sensor.bapsim_baseline.attributes if states.sensor.bapsim_baseline is defined else {} %}
-          {% set windows = state_attr('sensor.bapsim_baseline', 'windows') or [] %}
-          {% set d = states.sensor.bapsim_detection_status.attributes if states.sensor.bapsim_detection_status is defined else {} %}
-          {% set c = states.sensor.bapsim_usage_context.attributes if states.sensor.bapsim_usage_context is defined else {} %}
-          {% set cooks = f.get('cook_count_24h') %}
-          {% set opens = p.get('lid_open_count_24h') %}
-          ### 개인별 사용 패턴
-          - 모델 상태: **{{ states('sensor.bapsim_baseline') }}** (개인 기준 표시는 정상 관측 7일 이상·유효 사용일 5일 이상에서 시작합니다. 초기 설정을 활용한 판단은 그 전에도 가능합니다.)
-          {% for w in windows %}
-          - 예상 사용 구간 {{ loop.index }}: **{{ as_timestamp(w.expected_time) | timestamp_custom('%H:%M', true) }} 전후** · 관측 확률 {{ (w.probability * 100) | round(0) }}% · 학습일 {{ w.covered_days }}일
+          {% set a = states.sensor.bapsim_a05_connection_test.attributes if states.sensor.bapsim_a05_connection_test is defined else {} %}
+          - 단계: **{{ states('sensor.bapsim_a05_connection_test') }}**
+          - 실행 ID: `{{ a.get('test_run_id', '없음') }}`
+          - 보드: `{{ a.get('device_id', '없음') }}` / 입력: `{{ a.get('source_ref', '없음') }}`
+          - 닫힘 계약 기록: `{{ a.get('closed_record_id', '대기') }}`
+          {% set r = a.get('result') or {} %}
+          - 열림 계약 기록: `{{ r.get('opened_record_id', '대기') }}`
+          - 실행 시나리오: `{{ a.get('scenario', '대기') }}`
+          {% for item in a.get('phase_evidence', []) %}
+          - A07 {{ item.phase }}: `{{ item.record_id }}` · 보고 {{ item.report_counter }} · 품질 {{ item.quality }}
           {% endfor %}
-          ### 현재 관측
-          - 최근 24시간 취사 세션: **{{ cooks ~ '회' if cooks is not none else '미관측' }}** / 뚜껑 열림: **{{ opens ~ '회' if opens is not none else '미관측' }}**
-          ### 최근 실물 개방의 맥락
-          {% if c.get('source') == 'matter' and c.get('lid_record_id') %}
-          - 분류: **{{ {'warming_possible_use':'보온 중 사용 가능 행동', 'recent_cooking_possible_use':'최근 취사 뒤 사용 가능 행동', 'unclassified_open':'개방 확인·용도 불명'}.get(c.get('classification'), '용도 불명') }}** (식사 확정 아님)
-          - 보드 추정: **{{ c.get('phase') or '판단 불가' }}** · 품질 {{ c.get('phase_quality') }} · 모델 {{ c.get('model_version') or '없음' }}
-          - 표면 온도: **{{ c.get('temperature_c') ~ ' °C' if c.get('temperature_quality') == 'good' else '미확인' }}** · 근거 {{ c.get('lid_record_id') }}
-          {% else %}
-          - 검증된 실물 개방 맥락 없음
-          {% endif %}
-          - 판정 근거: **{{ (d.get('reason_codes') or []) | join(', ') if d.get('reason_codes') else '없음' }}**
-          - 밥솥 판정: **{{ states('sensor.bapsim_detection_status') }}**
-      - type: grid
-        title: 보호자 알림 조작
-        columns: 2
-        square: false
-        cards:
-          - type: button
-            name: 확인했어요 (위 종료 시각까지)
-            icon: mdi:check-decagram
-            tap_action:
-              action: perform-action
-              perform_action: bapsim.dashboard_control
-              data: {action: acknowledge}
-          - type: button
-            name: 알림 쉬기 (위 종료 시각까지)
-            icon: mdi:bell-sleep
-            tap_action:
-              action: perform-action
-              perform_action: bapsim.dashboard_control
-              data: {action: pause_lifestyle}
-          - type: button
-            name: 선택한 알림 쉬기 취소
-            icon: mdi:bell-cancel-outline
-            tap_action:
-              action: perform-action
-              perform_action: bapsim.dashboard_control
-              data: {action: cancel_pause}
-      - type: grid
-        title: 보호자 확인 기록
-        columns: 2
-        square: false
-        cards:
-          - type: button
-            name: 확인 중
-            icon: mdi:account-search
-            tap_action:
-              action: perform-action
-              perform_action: bapsim.respond
-              data: {response: checking}
-          - type: button
-            name: 안부 확인 완료
-            icon: mdi:check-circle
-            tap_action:
-              action: perform-action
-              perform_action: bapsim.respond
-              data: {response: resolved}
-      - type: history-graph
-        title: 판정 및 응답 기록
-        hours_to_show: 168
-        entities:
-          - sensor.bapsim_detection_status
-          - sensor.bapsim_workflow_status
-          - sensor.bapsim_decline_status
+          - A07 모델 버전: `{{ r.get('model_version', '대기') }}`
+          - 알림 호출 시도: **{{ a.get('mobile_attempted', false) }}**
+          - HA 알림 서비스가 요청을 받았다는 상태는 실제 폰 수신 증거가 아닙니다.
   - title: 진단
     path: diagnostics
     icon: mdi:stethoscope
@@ -242,4 +367,9 @@ views:
           - sensor.bapsim_auxiliary_deferral
           - sensor.bapsim_matter_input
           - sensor.bapsim_away
+          - sensor.bapsim_workflow_status
+          - sensor.bapsim_decline_status
+          - sensor.bapsim_notification_delivery
+          - sensor.bapsim_notification_controls
+          - sensor.bapsim_notification_control_result
           - input_select.bapsim_availability

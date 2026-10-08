@@ -22,9 +22,18 @@ Extract this ZIP into the Home Assistant configuration directory. It contains
 `configuration.yaml` if it is not already present, then run Home Assistant's
 configuration check and restart Home Assistant.
 
-This bundle does not install Matter Server, commission the Nordic board, or
-include the local simulator/dashboard. Register real Matter entities only after
-checking their actual values and direction as described in the project guide.
+For the caregiver dashboard, copy the two files under optional_config into
+the same relative locations in the Home Assistant configuration directory:
+packages/bapsim_caregiver_routine.yaml and dashboards/bapsim_lab.yaml.
+Add 'homeassistant: packages: !include_dir_named packages' and a YAML Lovelace
+dashboard with URL path bapsim-lab pointing to dashboards/bapsim_lab.yaml if
+your configuration does not already have them. Check the configuration and
+restart Home Assistant. The dashboard includes a local simulator tab; its
+buttons require the separate simulator package and are not needed for real use.
+
+This bundle does not install Matter Server or commission the Nordic board.
+Register real Matter entities only after checking their actual values and
+direction as described in the project guide.
 """
 
 
@@ -35,6 +44,13 @@ def bundle_members() -> list[tuple[str, bytes]]:
     for package in ("domain", "inputs", "workflow", "service"):
         for path in sorted((PROJECT / package).rglob("*.py")):
             members.append((f"{ROOT}/runtime/{path.relative_to(PROJECT).as_posix()}", path.read_bytes()))
+    for source, target in (
+        ("infrastructure/home_assistant/config/packages/bapsim_caregiver_routine.yaml",
+         "optional_config/packages/bapsim_caregiver_routine.yaml"),
+        ("infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml",
+         "optional_config/dashboards/bapsim_lab.yaml"),
+    ):
+        members.append((target, (PROJECT / source).read_bytes()))
     members.append(("BAPSIM_INSTALL.md", INSTALL_NOTES.encode("utf-8")))
     return sorted(members)
 
