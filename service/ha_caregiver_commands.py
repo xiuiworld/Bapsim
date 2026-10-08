@@ -35,6 +35,15 @@ def _future_end(value: str, now: datetime) -> bool:
         return False
 
 
+def _assessment_label(item: Mapping[str, object]) -> str:
+    reasons = item.get("reason_codes") or []
+    if item.get("type") == "declining_usage" or "DECLINING_USAGE" in reasons:
+        return "최근 사용 감소"
+    if item.get("type") == "usage_gap" or "EXPECTED_USE_MISSING" in reasons:
+        return "예상 시간대 사용 공백"
+    return "밥솥 사용 안내"
+
+
 def _active_assessments(hass, workflow, trend_workflow, external_service: bool) -> list[dict[str, str]]:
     if not external_service:
         return [item for item in (*workflow.dump_state(), *trend_workflow.dump_state())
@@ -58,7 +67,7 @@ def _active_assessments(hass, workflow, trend_workflow, external_service: bool) 
     return [{"incident_id": item["assessment_id"],
              "device_id": str(item.get("device_id") or item.get("type", "밥솥")),
              "status": "checking" if item.get("caregiver_status") == "checking" else item["status"],
-             "source": "matter"}
+             "source": "matter", "type": item.get("type", "")}
             for item in assessments if isinstance(item, dict) and
             isinstance(item.get("assessment_id"), str) and item["assessment_id"] and
             item.get("status") in {"watch", "notified"}]
@@ -77,13 +86,15 @@ async def refresh_dashboard_choices(hass, workflow, trend_workflow, controls, lo
     if not hass.services.has_service("input_select", "set_options"):
         return
     assessments = _active_assessments(hass, workflow, trend_workflow, external_service)
+    status_labels = {"check_required": "확인 필요", "notified": "안내 발송",
+                     "checking": "확인 중", "watch": "변화 관찰 중"}
     choices = ["선택"] + [
-        f"{item['device_id']} · {item['status']} | {item['incident_id']}"
+        f"{_assessment_label(item)} · {status_labels.get(item['status'], '상태 확인')} | {item['incident_id']}"
         for item in assessments
     ]
     now = datetime.now(timezone.utc)
     pauses = ["선택"] + [
-        f"{pause_id} (종료 {item['ends_at']}) | {pause_id}"
+        f"알림 쉬기 · {datetime.fromisoformat(item['ends_at'].replace('Z', '+00:00')).astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M')} 종료 | {pause_id}"
         for pause_id, item in _active_pauses(hass, controls, external_service).items()
         if isinstance(item, dict) and isinstance(item.get("ends_at"), str) and
         _future_end(item["ends_at"], now)
@@ -180,7 +191,10 @@ def bind_caregiver_commands(
                 "payload": json.dumps(command, ensure_ascii=False),
                 "qos": 1, "retain": False,
             }, blocking=True)
-            show("notification_control_result", "submitted", {"command_id": command.get("command_id")})
+            show("notification_control_result", "submitted", {
+                "command_id": command.get("command_id"),
+                "action": command.get("action"), "recorded_at": command["created_at"],
+            })
             return
         if command.get("action") == "caregiver_response":
             raise ValueError("Use bapsim.respond for internal caregiver responses")
@@ -195,16 +209,22 @@ def bind_caregiver_commands(
         async with control_lock:
             before = deepcopy(controls.dump_state())
             result = controls.apply(command, now)
-            show("notification_control_result", "applying", {"command_id": result["command_id"]})
+            show("notification_control_result", "applying", {
+                "command_id": result["command_id"], "action": command.get("action"),
+                "recorded_at": now,
+            })
             try:
                 await save_now()
             except Exception:
                 controls.load_state(before)
                 show("notification_control_result", "failed", {
-                    "command_id": result["command_id"], "reason": "storage_failed"})
+                    "command_id": result["command_id"], "action": command.get("action"),
+                    "reason": "storage_failed", "recorded_at": now})
                 raise
         show("notification_controls", controls.revision, controls.dump_state())
-        show("notification_control_result", result["status"], result)
+        show("notification_control_result", result["status"], {
+            **result, "recorded_at": now,
+        })
         await refresh_dashboard_choices(hass, workflow, trend_workflow, controls, _LOGGER,
                                         external_service=external_service)
         if hass.services.has_service("mqtt", "publish"):
