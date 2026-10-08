@@ -515,7 +515,10 @@ class HAServiceIntegrationTests(TestCase):
                 await drain()
                 choices = hass.states.get("input_select.bapsim_active_assessment").attributes["options"]
                 self.assertEqual(len(choices), 3)
-                self.assertTrue(any(item.endswith(" | gap-a") for item in choices))
+                self.assertTrue(any(item.startswith("예상 시간대 사용 공백") and
+                                    item.endswith(" | gap-a") for item in choices))
+                self.assertTrue(any(item.startswith("최근 사용 감소") and
+                                    item.endswith(" | trend-b") for item in choices))
                 selected = next(item for item in choices if item.endswith(" | trend-b"))
                 hass.states.async_set("input_select.bapsim_active_assessment", selected,
                                       {"options": choices})
@@ -800,6 +803,41 @@ class HAServiceIntegrationTests(TestCase):
         asyncio.run(scenario(False))
         asyncio.run(scenario(True))
 
+    def test_caregiver_routine_form_applies_only_to_one_real_cooker(self):
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules({})):
+                spec = importlib.util.spec_from_file_location(
+                    "bapsim_ha_caregiver_routine_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                self.assertTrue(await module.async_setup(hass, {}))
+                for index in range(1, 5):
+                    hass.states.async_set(f"input_select.bapsim_routine_days_{index}",
+                                          "사용 안 함", {})
+                    hass.states.async_set(f"input_datetime.bapsim_routine_time_{index}",
+                                          "00:00:00", {})
+                hass.states.async_set("input_select.bapsim_routine_days_1", "평일", {})
+                hass.states.async_set("input_datetime.bapsim_routine_time_1",
+                                      "08:30:00", {})
+                with self.assertRaisesRegex(ValueError, "정확히 한 대"):
+                    await hass.services.async_call("bapsim", "dashboard_initial_routine", {})
+                self.assertEqual(hass.states.get(
+                    "sensor.bapsim_initial_routine_result").state, "failed")
+                model = hass.data["bapsim"]["usage_model"]
+                model.configure_initial_routine("matter", "cooker_01", [])
+                await hass.services.async_call("bapsim", "dashboard_initial_routine", {})
+                self.assertEqual(model.initial_routine("matter", "cooker_01"),
+                                 [{"time": "08:30", "weekdays": [0, 1, 2, 3, 4]}])
+                self.assertEqual(hass.states.get(
+                    "sensor.bapsim_initial_routine_result").state, "applied")
+                model.configure_initial_routine("matter", "cooker_02", [])
+                with self.assertRaisesRegex(ValueError, "정확히 한 대"):
+                    await hass.services.async_call("bapsim", "dashboard_initial_routine", {})
+                self.assertEqual(model.initial_routine("matter", "cooker_02"), [])
+
+        asyncio.run(scenario())
+
     def test_restored_initial_routine_without_review_date_is_visible(self):
         model = PersonalUsageModel()
         model.configure_initial_routine("matter", "cooker_01", [{"time": "08:00"}])
@@ -934,6 +972,11 @@ class HAServiceIntegrationTests(TestCase):
                     await task
                     self.assertEqual(hass.states.get(
                         "sensor.bapsim_notification_control_result").state, "accepted")
+                    self.assertEqual(hass.states.get(
+                        "sensor.bapsim_notification_control_result").attributes["action"],
+                        "pause_lifestyle")
+                    self.assertIn("recorded_at", hass.states.get(
+                        "sensor.bapsim_notification_control_result").attributes)
                     self.assertEqual(store.commits, 1)
                     self.assertIn("trip-delayed", store.saved["notification_controls"]["pauses"])
 

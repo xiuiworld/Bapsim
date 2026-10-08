@@ -22,6 +22,8 @@ class HABundleTests(TestCase):
                 names = archive.namelist()
                 self.assertIn("custom_components/bapsim/runtime/domain/events/normalizer/core.py", names)
                 self.assertIn("custom_components/bapsim/runtime/service/observations.py", names)
+                self.assertIn("optional_config/packages/bapsim_caregiver_routine.yaml", names)
+                self.assertIn("optional_config/dashboards/bapsim_lab.yaml", names)
                 self.assertIn("custom_components/bapsim/runtime/workflow/notification_controls.py", names)
                 self.assertIn("custom_components/bapsim/runtime/workflow/notification_policy.py", names)
                 self.assertIn("custom_components/bapsim/runtime/service/ha_notification_transport.py", names)
