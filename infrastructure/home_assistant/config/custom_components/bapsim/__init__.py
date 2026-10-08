@@ -362,6 +362,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     show("board_history", len(board_history), {"latest": board_history[-3:]})
     show("away", "away" if away else "home")
     show("notification_controls", controls.revision, controls.dump_state())
+    # A restored pause is not a newly accepted command. Keep the result entity
+    # present before the first post-restart action without inventing success.
+    show("notification_control_result", "waiting", {"reason": "awaiting_command"})
     show("output_state", "awaiting_matter", {"mode": "external_service" if external_service else "internal"})
     show("simulation_output_state", "waiting", {"mode": "simulation"})
     for entity in ("baseline", "features", "detection_status", "interval_detection",
