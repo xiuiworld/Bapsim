@@ -7,6 +7,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from homeassistant.core import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP, Event, HomeAssistant, callback
@@ -783,6 +784,41 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         save_later()
 
     service_registry.register("set_initial_routine", set_initial_routine)
+
+    async def dashboard_initial_routine(_call) -> None:
+        recorded_at = datetime.now(timezone.utc).isoformat()
+        try:
+            devices = sorted(device_id for source, device_id in usage_model.device_keys
+                             if source == "matter")
+            if len(devices) != 1:
+                raise ValueError("연결된 실물 밥솥이 정확히 한 대일 때만 설정할 수 있습니다.")
+            day_options = {"매일": list(range(7)), "평일": list(range(5)), "주말": [5, 6]}
+            windows = []
+            for index in range(1, 5):
+                day_state = hass.states.get(f"input_select.bapsim_routine_days_{index}")
+                days = day_state.state if day_state else None
+                if days == "사용 안 함":
+                    continue
+                if days not in day_options:
+                    raise ValueError(f"{index}번째 사용 요일을 선택해 주세요.")
+                time_state = hass.states.get(f"input_datetime.bapsim_routine_time_{index}")
+                try:
+                    time = datetime.strptime(time_state.state, "%H:%M:%S").strftime("%H:%M")
+                except (AttributeError, TypeError, ValueError) as error:
+                    raise ValueError(f"{index}번째 시간을 확인해 주세요.") from error
+                windows.append({"time": time, "weekdays": day_options[days]})
+            if not windows:
+                raise ValueError("사용 시간대를 한 개 이상 선택해 주세요.")
+            await set_initial_routine(SimpleNamespace(data={"device_id": devices[0],
+                                                            "windows": windows}))
+        except Exception as error:
+            show("initial_routine_result", "failed",
+                 {"reason": str(error), "recorded_at": recorded_at})
+            raise
+        show("initial_routine_result", "applied",
+             {"device_id": devices[0], "windows": windows, "recorded_at": recorded_at})
+
+    service_registry.register("dashboard_initial_routine", dashboard_initial_routine)
 
     caregiver = bind_caregiver_commands(
         callback, hass, workflow, trend_workflow, controls, usage_model, analysis_mode,

@@ -122,7 +122,9 @@ def bind_mqtt_subscriptions(hass, output, set_notification_control, show, logger
                 payload = json.loads(message.payload)
                 if not isinstance(payload, dict):
                     raise ValueError("worker result must be an object")
-                show("notification_control_result", payload.get("status", "unknown"), payload)
+                show("notification_control_result", payload.get("status", "unknown"), {
+                    **payload, "recorded_at": datetime.now(timezone.utc).isoformat(),
+                })
             except (TypeError, ValueError):
                 _LOGGER.warning("Ignored invalid worker control result")
 
