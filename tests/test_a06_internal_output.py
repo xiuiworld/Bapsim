@@ -26,19 +26,44 @@ class A06InternalOutputTests(TestCase):
         content = dashboard_file.read_text(encoding="utf-8")
         start = content.index("          ## 생활 루틴 확인")
         end = content.index("      - type: entities", start)
-        template = Environment().from_string("\n".join(
+        environment = Environment()
+        environment.filters["timestamp_custom"] = lambda value, _format, _local=True: "10월 08일 09:00"
+        template = environment.from_string("\n".join(
             line.removeprefix("          ") for line in content[start:end].splitlines()))
 
         def render(issue, attributes=None):
-            return template.render(states=lambda entity: issue if entity ==
-                                   "sensor.bapsim_observation_issue_status" else "waiting",
-                                   state_attr=lambda entity, name: (attributes or {}).get(name)
-                                   if entity == "sensor.bapsim_output_state" else None)
+            output = {"observation": "available", "valid_until": "2099-01-01T00:00:00+00:00",
+                      **(attributes or {})}
+            def as_timestamp(value, default=0):
+                if not value:
+                    return default
+                return (value if isinstance(value, datetime) else
+                        datetime.fromisoformat(value)).timestamp()
+            return template.render(
+                states=lambda entity: issue if entity == "sensor.bapsim_observation_issue_status"
+                else "현재 확인된 밥솥 사용 기록을 표시합니다." if entity == "sensor.bapsim_output_state"
+                else "선택",
+                state_attr=lambda entity, name: output.get(name)
+                if entity == "sensor.bapsim_output_state" else None,
+                as_timestamp=as_timestamp,
+                now=lambda: datetime(2026, 10, 8, tzinfo=timezone.utc),
+            )
 
         self.assertNotIn("관측 상태를 먼저 확인하세요", render("available"))
         self.assertNotIn("관측 확인 전", render("available"))
         self.assertIn("관측 상태를 먼저 확인하세요", render("disconnected"))
         self.assertIn("관측 확인 전", render("unknown"))
+        self.assertIn("비교 불가", render("available", {"valid_until": None}))
+        self.assertIn("개인 기록 부족", render("available", {"learning": "insufficient"}))
+        self.assertNotIn("정상 생활", render("available"))
+        active = render("available", {"learning": "personalized",
+                                      "last_usage_at": "2026-10-08T00:00:00+00:00",
+                                      "assessments": [{"type": "usage_gap", "status": "notified"}]})
+        self.assertIn("10월 08일 09:00", active)
+        self.assertIn("예상 시간대 사용 공백", active)
+        self.assertIn("안부 확인 요청됨", active)
+        self.assertNotIn("10월 08일 09:00", render("disconnected", {
+            "last_usage_at": "2026-10-08T00:00:00+00:00"}))
         initial = render("available", {"learning": "collecting", "initial_basis": True})
         self.assertIn("개인 기록 수집 중", initial)
         self.assertIn("입력한 초기 사용 시간으로 판단 중", initial)

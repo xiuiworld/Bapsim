@@ -515,7 +515,10 @@ class HAServiceIntegrationTests(TestCase):
                 await drain()
                 choices = hass.states.get("input_select.bapsim_active_assessment").attributes["options"]
                 self.assertEqual(len(choices), 3)
-                self.assertTrue(any(item.endswith(" | gap-a") for item in choices))
+                self.assertTrue(any(item.startswith("예상 시간대 사용 공백") and
+                                    item.endswith(" | gap-a") for item in choices))
+                self.assertTrue(any(item.startswith("최근 사용 감소") and
+                                    item.endswith(" | trend-b") for item in choices))
                 selected = next(item for item in choices if item.endswith(" | trend-b"))
                 hass.states.async_set("input_select.bapsim_active_assessment", selected,
                                       {"options": choices})
@@ -915,6 +918,11 @@ class HAServiceIntegrationTests(TestCase):
                     await task
                     self.assertEqual(hass.states.get(
                         "sensor.bapsim_notification_control_result").state, "accepted")
+                    self.assertEqual(hass.states.get(
+                        "sensor.bapsim_notification_control_result").attributes["action"],
+                        "pause_lifestyle")
+                    self.assertIn("recorded_at", hass.states.get(
+                        "sensor.bapsim_notification_control_result").attributes)
                     self.assertEqual(store.commits, 1)
                     self.assertIn("trip-delayed", store.saved["notification_controls"]["pauses"])
 
