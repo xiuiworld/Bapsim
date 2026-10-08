@@ -1,0 +1,32 @@
+# Optional caregiver-entered home cooker-use times. The simulator remains separate.
+input_datetime:
+  bapsim_routine_time_1:
+    name: 첫 번째 평소 사용 시간
+    has_date: false
+    has_time: true
+  bapsim_routine_time_2:
+    name: 두 번째 평소 사용 시간
+    has_date: false
+    has_time: true
+  bapsim_routine_time_3:
+    name: 세 번째 평소 사용 시간
+    has_date: false
+    has_time: true
+  bapsim_routine_time_4:
+    name: 네 번째 평소 사용 시간
+    has_date: false
+    has_time: true
+
+input_select:
+  bapsim_routine_days_1:
+    name: 첫 번째 사용 요일
+    options: [사용 안 함, 매일, 평일, 주말]
+  bapsim_routine_days_2:
+    name: 두 번째 사용 요일
+    options: [사용 안 함, 매일, 평일, 주말]
+  bapsim_routine_days_3:
+    name: 세 번째 사용 요일
+    options: [사용 안 함, 매일, 평일, 주말]
+  bapsim_routine_days_4:
+    name: 네 번째 사용 요일
+    options: [사용 안 함, 매일, 평일, 주말]

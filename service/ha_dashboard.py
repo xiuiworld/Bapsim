@@ -10,6 +10,7 @@ LABELS = {
     "baseline": "개인 기준", "features": "현재 특징",
     "usage_context": "최근 개방의 보드 맥락",
     "initial_routine": "초기 밥솥 사용 시간 설정",
+    "initial_routine_result": "초기 사용 시간 적용 결과",
     "notification_delivery": "알림 전달 단계", "matter_input": "실물 밥솥 입력 준비",
     "observation_issue_status": "연결 문제 상태",
     "output_state": "실물 분석 상태", "simulation_output_state": "시뮬레이션 분석 상태",

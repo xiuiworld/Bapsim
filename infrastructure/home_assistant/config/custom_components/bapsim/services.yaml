@@ -228,6 +228,9 @@ set_initial_routine:
       example: '[{"time":"08:00","weekdays":[0,1,2,3,4,5,6]},{"time":"13:00","weekdays":[5,6]}]'
       selector:
         object:
+dashboard_initial_routine:
+  name: Apply caregiver-entered cooker-use times
+  description: Apply the time and day choices on the caregiver dashboard to the one registered Matter cooker. Replaces its previous initial routine.
 set_notification_control:
   name: Set bounded notification control
   description: Acknowledge one active incident until an end time, pause lifestyle alerts for a period, or cancel a pause. Use a unique command_id for each action.
