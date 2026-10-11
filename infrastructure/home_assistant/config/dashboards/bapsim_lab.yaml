@@ -43,7 +43,7 @@ views:
           현재는 입력한 사용 시간으로 비교 중입니다. 개인 기록을 모으는 중이에요.
           {% endif %}
 
-          밥솥 사용 기록만으로 **식사 여부나 건강 상태는 알 수 없습니다.**
+          밥솥 사용 기록에서 평소와 다른 생활 흐름을 유추해 안부 확인을 돕습니다. 실제 식사·건강 상태는 직접 확인이 필요합니다.
       - type: markdown
         content: |
           **필요한 작업**
@@ -303,7 +303,7 @@ views:
       - type: markdown
         content: |
           ## 기록 자세히 보기
-          밥솥의 뚜껑 열림·취사 기록으로 **실제 식사나 건강 상태는 확인할 수 없습니다.**
+          뚜껑 열림·취사 기록을 바탕으로 평소와 다른 사용을 살펴보고, 안부 확인이 필요할지 유추합니다. 실제 식사·건강 상태는 직접 확인이 필요합니다.
           {% set output = states('sensor.bapsim_output_state') %}
           {% set issue = states('sensor.bapsim_observation_issue_status') %}
           {% if output in ['awaiting_matter', 'expired', 'unknown', 'unavailable', 'waiting'] %}
@@ -457,7 +457,7 @@ views:
           {% elif result == 'failed' %}
           **저장하지 못했습니다.** {{ state_attr('sensor.bapsim_initial_routine_result', 'reason') or '입력과 밥솥 연결을 확인해 주세요.' }}
           {% endif %}
-          사용 시간은 식사 여부나 건강 상태를 확인하는 설정이 아닙니다.
+          설정한 시간과 실제 밥솥 사용의 차이를 살펴보고, 안부 확인이 필요할지 유추하는 데 사용합니다.
   - title: Simulator
     path: simulator
     icon: mdi:rice
