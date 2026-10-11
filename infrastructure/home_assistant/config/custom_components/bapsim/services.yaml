@@ -217,7 +217,7 @@ set_away:
         boolean:
 set_initial_routine:
   name: Set initial home cooker-use routine
-  description: Set up to four KST home-use times for one cooker. Each window has time HH:MM and weekdays 0=Monday through 6=Sunday; omit weekdays for every day. To exclude routine weekday lunches away from home, omit those weekdays from that lunch window. An empty list clears the setting. Early alerts still require observed use and connection coverage.
+  description: Set KST home-use times for one cooker. Each window has time HH:MM and weekdays 0=Monday through 6=Sunday; omit weekdays for every day. An empty list clears the setting. Early alerts still require observed use and connection coverage.
   fields:
     device_id:
       required: true
@@ -231,6 +231,12 @@ set_initial_routine:
 dashboard_initial_routine:
   name: Apply caregiver-entered cooker-use times
   description: Apply the time and day choices on the caregiver dashboard to the one registered Matter cooker. Replaces its previous initial routine.
+dashboard_add_routine:
+  name: Add a home cooker-use time
+  description: Add the chosen time and weekdays to the existing routine for the one registered Matter cooker.
+dashboard_remove_routine:
+  name: Remove a home cooker-use time
+  description: Remove the selected time from the existing routine for the one registered Matter cooker.
 set_notification_control:
   name: Set bounded notification control
   description: Acknowledge one active incident until an end time, pause lifestyle alerts for a period, or cancel a pause. Use a unique command_id for each action.
