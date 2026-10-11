@@ -25,7 +25,7 @@ class A06InternalOutputTests(TestCase):
                           "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
         content = dashboard_file.read_text(encoding="utf-8")
         start = content.index("              ## 저장된 알림 쉬기")
-        end = content.index("          - type: conditional", start)
+        end = content.index("          - type: entities", start)
         past_start = content.index("          ## 지난 쉬기")
         past_end = content.index("  - title: 자세한 기록", past_start)
         environment = Environment()
