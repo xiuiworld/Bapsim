@@ -24,8 +24,8 @@ class A06InternalOutputTests(TestCase):
         dashboard_file = (Path(__file__).resolve().parents[1] /
                           "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
         content = dashboard_file.read_text(encoding="utf-8")
-        start = content.index("          ## 생활 루틴 확인")
-        end = content.index("      - type: entities", start)
+        start = content.index("          ## 밥솥 사용 확인")
+        end = content.index("      - type: markdown", start)
         environment = Environment()
         environment.filters["timestamp_custom"] = lambda value, _format, _local=True: "10월 08일 09:00"
         template = environment.from_string("\n".join(
@@ -49,25 +49,22 @@ class A06InternalOutputTests(TestCase):
                 now=lambda: datetime(2026, 10, 8, tzinfo=timezone.utc),
             )
 
-        self.assertNotIn("관측 상태를 먼저 확인하세요", render("available"))
-        self.assertNotIn("관측 확인 전", render("available"))
-        self.assertIn("관측 상태를 먼저 확인하세요", render("disconnected"))
-        self.assertIn("관측 확인 전", render("unknown"))
-        self.assertIn("비교 불가", render("available", {"valid_until": None}))
-        self.assertIn("개인 기록 부족", render("available", {"learning": "insufficient"}))
-        self.assertNotIn("정상 생활", render("available"))
+        self.assertIn("최근 밥솥 기록을 확인했어요", render("available"))
+        self.assertIn("연결 확인이 필요해요", render("disconnected"))
+        self.assertIn("새 사용 기록을 기다리는 중이에요", render("unknown"))
+        self.assertIn("평소와 비교할 수 없습니다", render("available", {"valid_until": None}))
+        self.assertIn("식사 여부나 건강 상태는 알 수 없습니다", render("available"))
         active = render("available", {"learning": "personalized",
                                       "last_usage_at": "2026-10-08T00:00:00+00:00",
                                       "assessments": [{"type": "usage_gap", "status": "notified"}]})
         self.assertIn("10월 08일 09:00", active)
-        self.assertIn("예상 시간대 사용 공백", active)
-        self.assertIn("안부 확인 요청됨", active)
+        self.assertIn("평소 시간대 사용 기록 없음", active)
+        self.assertIn("확인 필요", active)
         self.assertNotIn("10월 08일 09:00", render("disconnected", {
             "last_usage_at": "2026-10-08T00:00:00+00:00"}))
         initial = render("available", {"learning": "collecting", "initial_basis": True})
-        self.assertIn("개인 기록 수집 중", initial)
-        self.assertIn("입력한 초기 사용 시간으로 판단 중", initial)
-        self.assertNotIn("입력한 초기 사용 시간으로 판단 중",
+        self.assertIn("입력한 사용 시간으로 비교 중", initial)
+        self.assertNotIn("입력한 사용 시간으로 비교 중",
                          render("available", {"learning": "personalized", "initial_basis": False}))
 
     def test_simulator_updates_only_simulation_card_and_expires(self):
