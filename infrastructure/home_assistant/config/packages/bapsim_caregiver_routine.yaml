@@ -30,3 +30,13 @@ input_select:
   bapsim_routine_days_4:
     name: 네 번째 사용 요일
     options: [사용 안 함, 매일, 평일, 주말]
+
+script:
+  bapsim_prepare_control_until:
+    alias: 알림 종료 시각을 내일로 설정
+    sequence:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.bapsim_control_until
+        data:
+          datetime: "{{ (now() + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S') }}"
