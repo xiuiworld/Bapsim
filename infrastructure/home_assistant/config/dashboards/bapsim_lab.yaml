@@ -2,6 +2,7 @@ title: 밥심 실험실
 views:
   - title: 보호자
     path: status
+    icon: mdi:heart-pulse
     cards:
       - type: markdown
         content: |
@@ -493,8 +494,6 @@ views:
   - title: Simulator
     path: simulator
     icon: mdi:rice
-    subview: true
-    back_path: /bapsim-lab/status
     cards:
       - type: markdown
         content: |
@@ -564,8 +563,6 @@ views:
   - title: A05 연결 시험
     path: a05-test
     icon: mdi:test-tube
-    subview: true
-    back_path: /bapsim-lab/status
     cards:
       - type: markdown
         content: |
@@ -596,8 +593,6 @@ views:
   - title: 진단
     path: diagnostics
     icon: mdi:stethoscope
-    subview: true
-    back_path: /bapsim-lab/status
     cards:
       - type: markdown
         content: |
