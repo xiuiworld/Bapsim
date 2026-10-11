@@ -188,7 +188,8 @@ views:
               {% for pause in pauses.values() | sort(attribute='starts_at') %}
               {% if as_timestamp(pause.ends_at, 0) > as_timestamp(now()) %}
               {% set present.count = present.count + 1 %}
-              - **{{ present.count }}번 · {{ '진행 중' if as_timestamp(pause.starts_at, 0) <= as_timestamp(now()) else '예정' }}**  {{ as_timestamp(pause.starts_at) | timestamp_custom('%m/%d %H:%M', true) }} → {{ as_timestamp(pause.ends_at) | timestamp_custom('%m/%d %H:%M', true) }}
+              **{{ present.count }}번 · {{ '진행 중' if as_timestamp(pause.starts_at, 0) <= as_timestamp(now()) else '예정' }}**\
+              {{ as_timestamp(pause.starts_at) | timestamp_custom('%m/%d %H:%M', true) }} → {{ as_timestamp(pause.ends_at) | timestamp_custom('%m/%d %H:%M', true) }}
               {% endif %}
               {% endfor %}
               {% if present.count == 0 %}
@@ -241,12 +242,18 @@ views:
             tap_action:
               action: perform-action
               perform_action: script.bapsim_prepare_pause_interval
-          - type: entities
-            entities:
-              - entity: input_datetime.bapsim_pause_from
-                name: 시작
-              - entity: input_datetime.bapsim_control_until
-                name: 종료
+          - type: tile
+            entity: input_datetime.bapsim_pause_from
+            name: 시작 날짜와 시간
+            icon: mdi:calendar-start
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: input_datetime.bapsim_control_until
+            name: 종료 날짜와 시간
+            icon: mdi:calendar-end
+            tap_action:
+              action: more-info
           - type: conditional
             conditions:
               - condition: template
