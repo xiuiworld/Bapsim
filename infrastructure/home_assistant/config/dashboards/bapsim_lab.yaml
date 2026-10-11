@@ -182,7 +182,7 @@ views:
         cards:
           - type: markdown
             content: |
-              ## 쉬는 기간
+              ## 저장된 알림 쉬기
               {% set pauses = state_attr('sensor.bapsim_notification_controls', 'pauses') or {} %}
               {% set present = namespace(count=0) %}
               {% for pause in pauses.values() | sort(attribute='starts_at') %}
@@ -193,18 +193,19 @@ views:
               {% endif %}
               {% endfor %}
               {% if present.count == 0 %}
-              설정된 쉬기 기간이 없어요.
+              진행 중이거나 예정된 쉬기 기간이 없어요.
               {% endif %}
           - type: conditional
             conditions:
-              - condition: template
-                value_template: "{{ (state_attr('input_select.bapsim_active_pause', 'options') or []) | count > 1 }}"
+              - condition: state
+                entity: input_select.bapsim_active_pause
+                state_not: [선택, unknown, unavailable]
             card:
               type: entities
-              title: 취소할 기간
+              title: 삭제할 설정
               entities:
                 - entity: input_select.bapsim_active_pause
-                  name: 기간 선택
+                  name: 저장된 기간
           - type: conditional
             conditions:
               - condition: state
@@ -212,13 +213,18 @@ views:
                 state_not: [선택, unknown, unavailable]
             card:
               type: button
-              name: 선택한 기간 취소
+              name: 선택한 설정 삭제
               show_icon: false
-              icon: mdi:bell-cancel-outline
+              icon: mdi:delete-outline
               tap_action:
                 action: perform-action
                 perform_action: bapsim.dashboard_control
                 data: {action: cancel_pause}
+                confirmation:
+                  title: 알림 쉬기 삭제
+                  text: 선택한 쉬기 기간을 삭제할까요? 다른 쉬기 설정은 유지됩니다.
+                  confirm_text: 삭제
+                  dismiss_text: 돌아가기
           - type: conditional
             conditions:
               - condition: state
@@ -282,7 +288,7 @@ views:
           {% for pause in pauses.values() | sort(attribute='ends_at', reverse=true) %}
           {% if as_timestamp(pause.ends_at, 0) <= as_timestamp(now()) and past.count < 3 %}
           {% set past.count = past.count + 1 %}
-          - {{ as_timestamp(pause.starts_at) | timestamp_custom('%m/%d %H:%M', true) }} → {{ as_timestamp(pause.ends_at) | timestamp_custom('%m/%d %H:%M', true) }}
+          - **지난 {{ past.count }}번** · {{ as_timestamp(pause.starts_at) | timestamp_custom('%m/%d %H:%M', true) }} → {{ as_timestamp(pause.ends_at) | timestamp_custom('%m/%d %H:%M', true) }}
           {% endif %}
           {% endfor %}
           {% if past.count == 0 %}

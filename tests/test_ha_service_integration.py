@@ -157,7 +157,7 @@ async def confirm_matter_connection(hass, device_id):
 
 
 class HAServiceIntegrationTests(TestCase):
-    def test_dashboard_choices_exclude_ended_pauses_and_cover_empty_and_multiple_states(self):
+    def test_dashboard_choices_include_past_pauses_for_deletion(self):
         async def scenario():
             hass = FakeHass()
 
@@ -192,8 +192,11 @@ class HAServiceIntegrationTests(TestCase):
             self.assertEqual(hass.states.get("input_select.bapsim_active_assessment").attributes["options"],
                              ["선택"])
             options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
-            self.assertEqual(len(options), 3)
-            self.assertEqual(options[1:], ["1번 기간", "2번 기간"])
+            self.assertEqual(len(options), 4)
+            self.assertEqual(options[1:3], ["1번 기간", "2번 기간"])
+            self.assertTrue(options[3].startswith("지난 1번 · "))
+            self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state,
+                             "1번 기간")
             self.assertFalse(any("trip-" in item for item in options))
             self.assertFalse(any("ended" in item for item in options))
             self.assertIn("ended", controls.pauses)  # Retain the historical control record.
@@ -202,6 +205,13 @@ class HAServiceIntegrationTests(TestCase):
             await refresh_dashboard_choices(hass, empty, empty, controls)
             self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state, selected)
             controls.pauses.pop("trip-a")
+            await refresh_dashboard_choices(hass, empty, empty, controls)
+            self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state, "1번 기간")
+            controls.pauses.pop("trip-b")
+            await refresh_dashboard_choices(hass, empty, empty, controls)
+            self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state,
+                             options[3])
+            controls.pauses.pop("ended")
             await refresh_dashboard_choices(hass, empty, empty, controls)
             self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state, "선택")
 
@@ -559,8 +569,9 @@ class HAServiceIntegrationTests(TestCase):
                     types.SimpleNamespace(payload=json.dumps(controls)))
                 await drain()
                 pause_options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
-                self.assertEqual(len(pause_options), 2)
+                self.assertEqual(len(pause_options), 3)
                 self.assertEqual(pause_options[1], "1번 기간")
+                self.assertTrue(pause_options[2].startswith("지난 1번 · "))
                 hass.states.async_set("input_select.bapsim_active_pause", pause_options[1],
                                       {"options": pause_options})
                 await hass.services.async_call("bapsim", "dashboard_control", {"action": "cancel_pause"})
@@ -1036,7 +1047,13 @@ class HAServiceIntegrationTests(TestCase):
                     options = call.data["options"]
                     hass.states.async_set(entity_id, options[0], {"options": options})
 
+                async def select_option(call):
+                    entity_id = call.data["entity_id"]
+                    options = hass.states.get(entity_id).attributes["options"]
+                    hass.states.async_set(entity_id, call.data["option"], {"options": options})
+
                 hass.services.async_register("input_select", "set_options", set_options)
+                hass.services.async_register("input_select", "select_option", select_option)
                 hass.states.async_set("input_select.bapsim_active_assessment", "선택", {})
                 hass.states.async_set("input_select.bapsim_active_pause", "선택", {})
                 self.assertTrue(await module.async_setup(hass, {}))
@@ -1061,9 +1078,21 @@ class HAServiceIntegrationTests(TestCase):
                     "starts_at": now.isoformat(), "ends_at": (now + timedelta(hours=2)).isoformat(),
                 })
                 options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
-                hass.states.async_set("input_select.bapsim_active_pause", options[1], {"options": options})
+                self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state,
+                                 options[1])
                 await hass.services.async_call("bapsim", "dashboard_control", {"action": "cancel_pause"})
                 self.assertNotIn("trip-1", hass.data["bapsim"]["notification_controls"].pauses)
+                controls = hass.data["bapsim"]["notification_controls"]
+                controls.pauses["past-1"] = {
+                    "starts_at": (now - timedelta(hours=3)).isoformat(),
+                    "ends_at": (now - timedelta(hours=2)).isoformat(),
+                }
+                await refresh_dashboard_choices(hass, hass.data["bapsim"]["workflow"],
+                                                hass.data["bapsim"]["trend_workflow"], controls)
+                self.assertTrue(hass.states.get("input_select.bapsim_active_pause").state
+                                .startswith("지난 1번 · "))
+                await hass.services.async_call("bapsim", "dashboard_control", {"action": "cancel_pause"})
+                self.assertNotIn("past-1", controls.pauses)
                 if hass.tasks:
                     await asyncio.gather(*hass.tasks)
 

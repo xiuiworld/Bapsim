@@ -24,7 +24,7 @@ class A06InternalOutputTests(TestCase):
         dashboard_file = (Path(__file__).resolve().parents[1] /
                           "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
         content = dashboard_file.read_text(encoding="utf-8")
-        start = content.index("              ## 쉬는 기간")
+        start = content.index("              ## 저장된 알림 쉬기")
         end = content.index("          - type: conditional", start)
         past_start = content.index("          ## 지난 쉬기")
         past_end = content.index("  - title: 자세한 기록", past_start)
@@ -47,7 +47,7 @@ class A06InternalOutputTests(TestCase):
                 now=lambda: moment,
             )
 
-        self.assertIn("설정된 쉬기 기간이 없어요", render({}))
+        self.assertIn("진행 중이거나 예정된 쉬기 기간이 없어요", render({}))
         self.assertIn("지난 쉬기 내역이 없어요", render({}, past_template))
         pauses = {
             "current": {"starts_at": "2026-10-11T11:00:00+00:00",
