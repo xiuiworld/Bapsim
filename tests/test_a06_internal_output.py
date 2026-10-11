@@ -20,6 +20,46 @@ from test_ha_service_integration import COMPONENT, FakeHass, ha_modules
 
 
 class A06InternalOutputTests(TestCase):
+    def test_pause_history_shows_current_upcoming_and_recent_finished_intervals(self):
+        dashboard_file = (Path(__file__).resolve().parents[1] /
+                          "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
+        content = dashboard_file.read_text(encoding="utf-8")
+        start = content.index("          ## 설정한 알림 쉬기")
+        end = content.index("      - type: conditional", start)
+        environment = Environment()
+        environment.filters["timestamp_custom"] = lambda value, _format, _local=True: str(value)
+        template = environment.from_string("\n".join(
+            line.removeprefix("          ") for line in content[start:end].splitlines()))
+        moment = datetime(2026, 10, 11, 12, tzinfo=timezone.utc)
+
+        def as_timestamp(value, default=0):
+            return datetime.fromisoformat(value).timestamp() if isinstance(value, str) else (
+                value.timestamp() if isinstance(value, datetime) else default)
+
+        def render(pauses):
+            return template.render(
+                state_attr=lambda _entity, _name: pauses,
+                as_timestamp=as_timestamp,
+                now=lambda: moment,
+            )
+
+        self.assertIn("예정되거나 진행 중인 알림 쉬기가 없습니다", render({}))
+        pauses = {
+            "current": {"starts_at": "2026-10-11T11:00:00+00:00",
+                        "ends_at": "2026-10-11T13:00:00+00:00"},
+            "upcoming": {"starts_at": "2026-10-12T11:00:00+00:00",
+                         "ends_at": "2026-10-12T13:00:00+00:00"},
+            **{f"past-{day}": {"starts_at": f"2026-10-{day:02d}T09:00:00+00:00",
+                                "ends_at": f"2026-10-{day:02d}T10:00:00+00:00"}
+               for day in range(6, 11)},
+        }
+        rendered = render(pauses)
+        self.assertIn("**진행 중**", rendered)
+        self.assertIn("**예정**", rendered)
+        self.assertIn("지난 쉬기 · 최근 3건", rendered)
+        self.assertIn(str(as_timestamp(pauses["past-10"]["starts_at"])), rendered)
+        self.assertNotIn(str(as_timestamp(pauses["past-7"]["starts_at"])), rendered)
+
     def test_caregiver_observation_copy_distinguishes_available_gap_and_initial(self):
         dashboard_file = (Path(__file__).resolve().parents[1] /
                           "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
