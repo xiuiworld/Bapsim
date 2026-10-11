@@ -215,14 +215,38 @@ views:
             action: perform-action
             perform_action: bapsim.dashboard_control
             data: {action: pause_lifestyle}
+      - type: markdown
+        content: |
+          ## 설정한 알림 쉬기
+          {% set pauses = state_attr('sensor.bapsim_notification_controls', 'pauses') or {} %}
+          {% set present = namespace(count=0) %}
+          {% for pause in pauses.values() | sort(attribute='starts_at') %}
+          {% if as_timestamp(pause.ends_at, 0) > as_timestamp(now()) %}
+          {% set present.count = present.count + 1 %}
+          - **{{ '진행 중' if as_timestamp(pause.starts_at, 0) <= as_timestamp(now()) else '예정' }}** · {{ as_timestamp(pause.starts_at) | timestamp_custom('%m월 %d일 %H:%M', true) }} ~ {{ as_timestamp(pause.ends_at) | timestamp_custom('%m월 %d일 %H:%M', true) }}
+          {% endif %}
+          {% endfor %}
+          {% if present.count == 0 %}
+          예정되거나 진행 중인 알림 쉬기가 없습니다.
+          {% else %}
+          취소하려면 아래에서 기간을 고른 뒤 **선택한 알림 쉬기 취소**를 누르세요.
+          {% endif %}
+
+          {% set past = namespace(count=0) %}
+          {% for pause in pauses.values() | sort(attribute='ends_at', reverse=true) %}
+          {% if as_timestamp(pause.ends_at, 0) <= as_timestamp(now()) and past.count < 3 %}
+          {% if past.count == 0 %}**지난 쉬기 · 최근 3건**{% endif %}
+          {% set past.count = past.count + 1 %}
+          - {{ as_timestamp(pause.starts_at) | timestamp_custom('%m월 %d일 %H:%M', true) }} ~ {{ as_timestamp(pause.ends_at) | timestamp_custom('%m월 %d일 %H:%M', true) }}
+          {% endif %}
+          {% endfor %}
       - type: conditional
         conditions:
-          - condition: state
-            entity: input_select.bapsim_active_pause
-            state_not: [선택, unknown, unavailable]
+          - condition: template
+            value_template: "{{ (state_attr('input_select.bapsim_active_pause', 'options') or []) | count > 1 }}"
         card:
           type: entities
-          title: 설정된 알림 쉬기
+          title: 취소할 알림 쉬기 선택
           entities:
             - input_select.bapsim_active_pause
       - type: conditional

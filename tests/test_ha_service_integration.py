@@ -193,17 +193,18 @@ class HAServiceIntegrationTests(TestCase):
                              ["선택"])
             options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
             self.assertEqual(len(options), 3)
-            self.assertTrue(any(item.endswith(" | trip-a") for item in options))
-            self.assertTrue(any(item.endswith(" | trip-b") for item in options))
+            self.assertTrue(options[1].startswith("쉬기 1 · "))
+            self.assertTrue(options[2].startswith("쉬기 2 · "))
+            self.assertFalse(any("trip-" in item for item in options))
             self.assertFalse(any("ended" in item for item in options))
             self.assertIn("ended", controls.pauses)  # Retain the historical control record.
-            selected = next(item for item in options if item.endswith(" | trip-b"))
+            selected = options[2]
             hass.states.async_set("input_select.bapsim_active_pause", selected, {"options": options})
             await refresh_dashboard_choices(hass, empty, empty, controls)
             self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state, selected)
             controls.pauses.pop("trip-a")
             await refresh_dashboard_choices(hass, empty, empty, controls)
-            self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state, selected)
+            self.assertEqual(hass.states.get("input_select.bapsim_active_pause").state, "선택")
 
         asyncio.run(scenario())
 
