@@ -1,5 +1,9 @@
 # Optional caregiver-entered home cooker-use times. The simulator remains separate.
 input_datetime:
+  bapsim_pause_from:
+    name: 생활 변화 알림 쉬기 시작 시각
+    has_date: true
+    has_time: true
   bapsim_routine_time_1:
     name: 첫 번째 평소 사용 시간
     has_date: false
@@ -20,18 +24,90 @@ input_datetime:
 input_select:
   bapsim_routine_days_1:
     name: 첫 번째 사용 요일
-    options: [사용 안 함, 매일, 평일, 주말]
+    options: [사용 안 함, 매일, 평일, 주말, 요일 직접 선택]
   bapsim_routine_days_2:
     name: 두 번째 사용 요일
-    options: [사용 안 함, 매일, 평일, 주말]
+    options: [사용 안 함, 매일, 평일, 주말, 요일 직접 선택]
   bapsim_routine_days_3:
     name: 세 번째 사용 요일
-    options: [사용 안 함, 매일, 평일, 주말]
+    options: [사용 안 함, 매일, 평일, 주말, 요일 직접 선택]
   bapsim_routine_days_4:
     name: 네 번째 사용 요일
-    options: [사용 안 함, 매일, 평일, 주말]
+    options: [사용 안 함, 매일, 평일, 주말, 요일 직접 선택]
+
+
+input_boolean:
+  bapsim_routine_day_1_0:
+    name: 1번째 사용 시간 월요일
+  bapsim_routine_day_1_1:
+    name: 1번째 사용 시간 화요일
+  bapsim_routine_day_1_2:
+    name: 1번째 사용 시간 수요일
+  bapsim_routine_day_1_3:
+    name: 1번째 사용 시간 목요일
+  bapsim_routine_day_1_4:
+    name: 1번째 사용 시간 금요일
+  bapsim_routine_day_1_5:
+    name: 1번째 사용 시간 토요일
+  bapsim_routine_day_1_6:
+    name: 1번째 사용 시간 일요일
+  bapsim_routine_day_2_0:
+    name: 2번째 사용 시간 월요일
+  bapsim_routine_day_2_1:
+    name: 2번째 사용 시간 화요일
+  bapsim_routine_day_2_2:
+    name: 2번째 사용 시간 수요일
+  bapsim_routine_day_2_3:
+    name: 2번째 사용 시간 목요일
+  bapsim_routine_day_2_4:
+    name: 2번째 사용 시간 금요일
+  bapsim_routine_day_2_5:
+    name: 2번째 사용 시간 토요일
+  bapsim_routine_day_2_6:
+    name: 2번째 사용 시간 일요일
+  bapsim_routine_day_3_0:
+    name: 3번째 사용 시간 월요일
+  bapsim_routine_day_3_1:
+    name: 3번째 사용 시간 화요일
+  bapsim_routine_day_3_2:
+    name: 3번째 사용 시간 수요일
+  bapsim_routine_day_3_3:
+    name: 3번째 사용 시간 목요일
+  bapsim_routine_day_3_4:
+    name: 3번째 사용 시간 금요일
+  bapsim_routine_day_3_5:
+    name: 3번째 사용 시간 토요일
+  bapsim_routine_day_3_6:
+    name: 3번째 사용 시간 일요일
+  bapsim_routine_day_4_0:
+    name: 4번째 사용 시간 월요일
+  bapsim_routine_day_4_1:
+    name: 4번째 사용 시간 화요일
+  bapsim_routine_day_4_2:
+    name: 4번째 사용 시간 수요일
+  bapsim_routine_day_4_3:
+    name: 4번째 사용 시간 목요일
+  bapsim_routine_day_4_4:
+    name: 4번째 사용 시간 금요일
+  bapsim_routine_day_4_5:
+    name: 4번째 사용 시간 토요일
+  bapsim_routine_day_4_6:
+    name: 4번째 사용 시간 일요일
 
 script:
+  bapsim_prepare_pause_interval:
+    alias: 생활 변화 알림을 지금부터 하루 쉬도록 설정
+    sequence:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.bapsim_pause_from
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.bapsim_control_until
+        data:
+          datetime: "{{ (now() + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S') }}"
   bapsim_prepare_control_until:
     alias: 알림 종료 시각을 내일로 설정
     sequence:

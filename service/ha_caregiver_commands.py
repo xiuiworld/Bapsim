@@ -93,10 +93,15 @@ async def refresh_dashboard_choices(hass, workflow, trend_workflow, controls, lo
         for item in assessments
     ]
     now = datetime.now(timezone.utc)
+    def local_label(value: str) -> str:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(
+            timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
+
     pauses = ["선택"] + [
-        f"알림 쉬기 · {datetime.fromisoformat(item['ends_at'].replace('Z', '+00:00')).astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M')} 종료 | {pause_id}"
+        f"알림 쉬기 · {local_label(item['starts_at'])}~{local_label(item['ends_at'])} | {pause_id}"
         for pause_id, item in _active_pauses(hass, controls, external_service).items()
-        if isinstance(item, dict) and isinstance(item.get("ends_at"), str) and
+        if isinstance(item, dict) and isinstance(item.get("starts_at"), str) and
+        isinstance(item.get("ends_at"), str) and
         _future_end(item["ends_at"], now)
     ]
     for entity_id, options in (("input_select.bapsim_active_assessment", choices),
@@ -276,7 +281,15 @@ def bind_caregiver_commands(
             if len(active) != 1:
                 raise ValueError("Acknowledge requires exactly one active assessment")
         elif action == "pause_lifestyle":
-            command.update({"pause_id": str(uuid.uuid4()), "starts_at": now.isoformat()})
+            start_picker = hass.states.get("input_datetime.bapsim_pause_from")
+            if start_picker is None:
+                raise ValueError("Set the notification start date and time first")
+            starts_at = datetime.fromisoformat(start_picker.state).replace(
+                tzinfo=timezone(timedelta(hours=9)))
+            if starts_at >= until:
+                raise ValueError("Notification start time must be before its end")
+            command.update({"pause_id": str(uuid.uuid4()),
+                            "starts_at": max(starts_at, now).isoformat()})
         else:
             pause_id = call.data.get("pause_id") or _selected_id(
                 hass, "input_select.bapsim_active_pause")

@@ -530,6 +530,26 @@ class HAServiceIntegrationTests(TestCase):
                              if (domain, name) == ("mqtt", "publish") and data["topic"].endswith("/control")]
                 self.assertEqual(published[-1]["assessment_id"], "trend-b")
 
+                local_start = now.astimezone(timezone(timedelta(hours=9))) + timedelta(days=2)
+                local_end = local_start + timedelta(days=1)
+                hass.states.async_set("input_datetime.bapsim_pause_from",
+                                      local_start.strftime("%Y-%m-%d %H:%M:%S"), {})
+                hass.states.async_set("input_datetime.bapsim_control_until",
+                                      local_end.strftime("%Y-%m-%d %H:%M:%S"), {})
+                await hass.services.async_call("bapsim", "dashboard_control",
+                                               {"action": "pause_lifestyle"})
+                published = [json.loads(data["payload"]) for domain, name, data in hass.services.calls
+                             if (domain, name) == ("mqtt", "publish") and data["topic"].endswith("/control")]
+                self.assertEqual(published[-1]["starts_at"],
+                                 local_start.replace(microsecond=0).isoformat())
+                self.assertEqual(published[-1]["ends_at"],
+                                 local_end.replace(microsecond=0).isoformat())
+                hass.states.async_set("input_datetime.bapsim_pause_from",
+                                      (local_end + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"), {})
+                with self.assertRaisesRegex(ValueError, "before its end"):
+                    await hass.services.async_call("bapsim", "dashboard_control",
+                                                   {"action": "pause_lifestyle"})
+
                 controls = {"schema_version": "0.1.0", "household_id": "home", "revision": 1,
                             "pauses": {"trip-a": {"starts_at": now.isoformat(),
                                                   "ends_at": (now + timedelta(hours=2)).isoformat()},
@@ -540,6 +560,7 @@ class HAServiceIntegrationTests(TestCase):
                 await drain()
                 pause_options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
                 self.assertEqual(len(pause_options), 2)
+                self.assertIn("~", pause_options[1])
                 hass.states.async_set("input_select.bapsim_active_pause", pause_options[1],
                                       {"options": pause_options})
                 await hass.services.async_call("bapsim", "dashboard_control", {"action": "cancel_pause"})
@@ -831,6 +852,18 @@ class HAServiceIntegrationTests(TestCase):
                                  [{"time": "08:30", "weekdays": [0, 1, 2, 3, 4]}])
                 self.assertEqual(hass.states.get(
                     "sensor.bapsim_initial_routine_result").state, "applied")
+                hass.states.async_set("input_select.bapsim_routine_days_1",
+                                      "요일 직접 선택", {})
+                with self.assertRaisesRegex(ValueError, "하나 이상"):
+                    await hass.services.async_call("bapsim", "dashboard_initial_routine", {})
+                self.assertEqual(model.initial_routine("matter", "cooker_01"),
+                                 [{"time": "08:30", "weekdays": [0, 1, 2, 3, 4]}])
+                for day in (0, 2, 4):
+                    hass.states.async_set(f"input_boolean.bapsim_routine_day_1_{day}",
+                                          "on", {})
+                await hass.services.async_call("bapsim", "dashboard_initial_routine", {})
+                self.assertEqual(model.initial_routine("matter", "cooker_01"),
+                                 [{"time": "08:30", "weekdays": [0, 2, 4]}])
                 model.configure_initial_routine("matter", "cooker_02", [])
                 with self.assertRaisesRegex(ValueError, "정확히 한 대"):
                     await hass.services.async_call("bapsim", "dashboard_initial_routine", {})
