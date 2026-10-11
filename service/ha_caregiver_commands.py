@@ -82,18 +82,13 @@ def _active_pauses(hass, controls, external_service: bool) -> Mapping[str, objec
 
 
 def _pause_choices(hass, controls, external_service: bool, now: datetime) -> list[tuple[str, str]]:
-    def local_label(value: str) -> str:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(
-            timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
-
     active = [(pause_id, item) for pause_id, item in
               _active_pauses(hass, controls, external_service).items()
               if isinstance(item, dict) and isinstance(item.get("starts_at"), str) and
               isinstance(item.get("ends_at"), str) and _future_end(item["ends_at"], now)]
-    active.sort(key=lambda entry: (entry[1]["starts_at"], entry[1]["ends_at"], entry[0]))
-    return [(pause_id, f"쉬기 {index} · {local_label(item['starts_at'])}~"
-             f"{local_label(item['ends_at'])}")
-            for index, (pause_id, item) in enumerate(active, 1)]
+    active.sort(key=lambda entry: entry[1]["starts_at"])
+    return [(pause_id, f"{index}번 기간")
+            for index, (pause_id, _item) in enumerate(active, 1)]
 
 
 def _selected_pause_id(hass, controls, external_service: bool, now: datetime) -> str | None:

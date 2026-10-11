@@ -24,26 +24,31 @@ class A06InternalOutputTests(TestCase):
         dashboard_file = (Path(__file__).resolve().parents[1] /
                           "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
         content = dashboard_file.read_text(encoding="utf-8")
-        start = content.index("          ## 설정한 알림 쉬기")
-        end = content.index("      - type: conditional", start)
+        start = content.index("              ## 쉬는 기간")
+        end = content.index("          - type: conditional", start)
+        past_start = content.index("          ## 지난 쉬기")
+        past_end = content.index("  - title: 자세한 기록", past_start)
         environment = Environment()
         environment.filters["timestamp_custom"] = lambda value, _format, _local=True: str(value)
         template = environment.from_string("\n".join(
-            line.removeprefix("          ") for line in content[start:end].splitlines()))
+            line.removeprefix("              ") for line in content[start:end].splitlines()))
+        past_template = environment.from_string("\n".join(
+            line.removeprefix("          ") for line in content[past_start:past_end].splitlines()))
         moment = datetime(2026, 10, 11, 12, tzinfo=timezone.utc)
 
         def as_timestamp(value, default=0):
             return datetime.fromisoformat(value).timestamp() if isinstance(value, str) else (
                 value.timestamp() if isinstance(value, datetime) else default)
 
-        def render(pauses):
-            return template.render(
+        def render(pauses, selected=template):
+            return selected.render(
                 state_attr=lambda _entity, _name: pauses,
                 as_timestamp=as_timestamp,
                 now=lambda: moment,
             )
 
-        self.assertIn("예정되거나 진행 중인 알림 쉬기가 없습니다", render({}))
+        self.assertIn("설정된 쉬기 기간이 없어요", render({}))
+        self.assertIn("지난 쉬기 내역이 없어요", render({}, past_template))
         pauses = {
             "current": {"starts_at": "2026-10-11T11:00:00+00:00",
                         "ends_at": "2026-10-11T13:00:00+00:00"},
@@ -54,11 +59,11 @@ class A06InternalOutputTests(TestCase):
                for day in range(6, 11)},
         }
         rendered = render(pauses)
-        self.assertIn("**쉬기 1 · 진행 중**", rendered)
-        self.assertIn("**쉬기 2 · 예정**", rendered)
-        self.assertIn("지난 쉬기 · 최근 3건", rendered)
-        self.assertIn(str(as_timestamp(pauses["past-10"]["starts_at"])), rendered)
-        self.assertNotIn(str(as_timestamp(pauses["past-7"]["starts_at"])), rendered)
+        self.assertIn("**1번 · 진행 중**", rendered)
+        self.assertIn("**2번 · 예정**", rendered)
+        past_rendered = render(pauses, past_template)
+        self.assertIn(str(as_timestamp(pauses["past-10"]["starts_at"])), past_rendered)
+        self.assertNotIn(str(as_timestamp(pauses["past-7"]["starts_at"])), past_rendered)
 
     def test_caregiver_observation_copy_distinguishes_available_gap_and_initial(self):
         dashboard_file = (Path(__file__).resolve().parents[1] /
