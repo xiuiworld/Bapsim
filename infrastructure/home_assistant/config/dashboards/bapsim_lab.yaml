@@ -332,31 +332,29 @@ views:
       - type: markdown
         content: |
           ## 평소 밥솥 사용 시간
-          평소 밥솥을 사용하는 시간과 **매주 반복할 요일**을 고르세요. 월·수·금처럼 다르면 ‘요일 직접 선택’을 고르세요. **저장하면 이전 설정을 모두 바꿉니다.**
-          적용하려면 실물 밥솥이 한 대 연결되어 있어야 합니다.
-          특정 날짜에 밥솥을 쓰지 않을 예정이라면 [알림 쉬기](/bapsim-lab/travel)에서 시작·종료 시각을 정하세요.
+          필요한 시간만 추가하세요. 시간마다 **매주 반복할 요일**을 다르게 정할 수 있습니다. 특정 날짜만 쉬려면 [알림 쉬기](/bapsim-lab/travel)를 이용하세요.
           {% set routines = state_attr('sensor.bapsim_initial_routine', 'routines') or [] %}
           {% if routines %}
-          **현재 적용된 시간**
+          **저장된 사용 시간**
           {% for item in routines %}
           {% for w in item.windows %}
           {% set label = namespace(days=[]) %}
           {% for day in w.weekdays %}
           {% set label.days = label.days + [['월','화','수','목','금','토','일'][day]] %}
           {% endfor %}
-          - {{ w.time }} · {{ '매일' if w.weekdays | length == 7 else label.days | join('·') }}
+          - **{{ w.time }}** · {{ '매일' if w.weekdays | length == 7 else label.days | join('·') }}
           {% endfor %}
           {% endfor %}
           {% else %}
-          **현재 적용된 시간이 없습니다.**
+          **저장된 시간이 없습니다.** 아래에서 첫 시간을 추가하세요.
           {% endif %}
       - type: entities
-        title: 첫 번째 시간
+        title: 사용 시간 추가
         entities:
           - entity: input_datetime.bapsim_routine_time_1
             name: 시간
           - entity: input_select.bapsim_routine_days_1
-            name: 요일
+            name: 반복할 요일
       - type: conditional
         conditions:
           - condition: state
@@ -364,7 +362,7 @@ views:
             state: 요일 직접 선택
         card:
           type: grid
-          title: 첫 번째 시간 · 반복할 요일
+          title: 반복할 요일 선택
           columns: 7
           square: false
           cards:
@@ -412,282 +410,52 @@ views:
               tap_action: {action: toggle}
       - type: conditional
         conditions:
-          - condition: or
-            conditions:
-              - condition: state
-                entity: input_select.bapsim_routine_days_1
-                state_not: [사용 안 함, unknown, unavailable]
-              - condition: state
-                entity: input_select.bapsim_routine_days_2
-                state_not: [사용 안 함, unknown, unavailable]
+          - condition: template
+            value_template: >-
+              {% set days = states('input_select.bapsim_routine_days_1') %}
+              {% set selected = namespace(any=false) %}
+              {% for day in range(7) %}
+                {% if is_state('input_boolean.bapsim_routine_day_1_' ~ day, 'on') %}
+                  {% set selected.any = true %}
+                {% endif %}
+              {% endfor %}
+              {{ days in ['매일', '평일', '주말'] or
+                 (days == '요일 직접 선택' and selected.any) }}
         card:
-          type: entities
-          title: 두 번째 시간
-          entities:
-            - entity: input_datetime.bapsim_routine_time_2
-              name: 시간
-            - entity: input_select.bapsim_routine_days_2
-              name: 요일
-      - type: conditional
-        conditions:
-          - condition: state
-            entity: input_select.bapsim_routine_days_2
-            state: 요일 직접 선택
-        card:
-          type: grid
-          title: 두 번째 시간 · 반복할 요일
-          columns: 7
-          square: false
-          cards:
-            - type: button
-              entity: input_boolean.bapsim_routine_day_2_0
-              name: 월
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_2_1
-              name: 화
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_2_2
-              name: 수
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_2_3
-              name: 목
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_2_4
-              name: 금
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_2_5
-              name: 토
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_2_6
-              name: 일
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-      - type: conditional
-        conditions:
-          - condition: or
-            conditions:
-              - condition: state
-                entity: input_select.bapsim_routine_days_2
-                state_not: [사용 안 함, unknown, unavailable]
-              - condition: state
-                entity: input_select.bapsim_routine_days_3
-                state_not: [사용 안 함, unknown, unavailable]
-        card:
-          type: entities
-          title: 세 번째 시간
-          entities:
-            - entity: input_datetime.bapsim_routine_time_3
-              name: 시간
-            - entity: input_select.bapsim_routine_days_3
-              name: 요일
-      - type: conditional
-        conditions:
-          - condition: state
-            entity: input_select.bapsim_routine_days_3
-            state: 요일 직접 선택
-        card:
-          type: grid
-          title: 세 번째 시간 · 반복할 요일
-          columns: 7
-          square: false
-          cards:
-            - type: button
-              entity: input_boolean.bapsim_routine_day_3_0
-              name: 월
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_3_1
-              name: 화
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_3_2
-              name: 수
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_3_3
-              name: 목
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_3_4
-              name: 금
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_3_5
-              name: 토
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_3_6
-              name: 일
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-      - type: conditional
-        conditions:
-          - condition: or
-            conditions:
-              - condition: state
-                entity: input_select.bapsim_routine_days_3
-                state_not: [사용 안 함, unknown, unavailable]
-              - condition: state
-                entity: input_select.bapsim_routine_days_4
-                state_not: [사용 안 함, unknown, unavailable]
-        card:
-          type: entities
-          title: 네 번째 시간
-          entities:
-            - entity: input_datetime.bapsim_routine_time_4
-              name: 시간
-            - entity: input_select.bapsim_routine_days_4
-              name: 요일
-      - type: conditional
-        conditions:
-          - condition: state
-            entity: input_select.bapsim_routine_days_4
-            state: 요일 직접 선택
-        card:
-          type: grid
-          title: 네 번째 시간 · 반복할 요일
-          columns: 7
-          square: false
-          cards:
-            - type: button
-              entity: input_boolean.bapsim_routine_day_4_0
-              name: 월
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_4_1
-              name: 화
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_4_2
-              name: 수
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_4_3
-              name: 목
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_4_4
-              name: 금
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_4_5
-              name: 토
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-            - type: button
-              entity: input_boolean.bapsim_routine_day_4_6
-              name: 일
-              icon: mdi:check
-              icon_height: 18px
-              tap_action: {action: toggle}
-      - type: markdown
-        content: |
-          {% set ns = namespace(chosen=[], incomplete=false) %}
-          {% for i in range(1, 5) %}
-          {% set days = states('input_select.bapsim_routine_days_' ~ i) %}
-          {% if days == '요일 직접 선택' %}
-          {% set selected = namespace(names=[]) %}
-          {% for day in range(7) %}
-          {% if is_state('input_boolean.bapsim_routine_day_' ~ i ~ '_' ~ day, 'on') %}
-          {% set selected.names = selected.names + [['월','화','수','목','금','토','일'][day]] %}
-          {% endif %}
-          {% endfor %}
-          {% if selected.names %}
-          {% set ns.chosen = ns.chosen + [selected.names | join('·') ~ ' ' ~ states('input_datetime.bapsim_routine_time_' ~ i)[:5]] %}
-          {% else %}
-          {% set ns.incomplete = true %}
-          {% endif %}
-          {% elif days not in ['사용 안 함', 'unknown', 'unavailable'] %}
-          {% set ns.chosen = ns.chosen + [days ~ ' ' ~ states('input_datetime.bapsim_routine_time_' ~ i)[:5]] %}
-          {% endif %}
-          {% endfor %}
-          {% if ns.incomplete %}
-          **‘요일 직접 선택’에서 반복할 요일을 하나 이상 눌러 주세요.**
-          {% endif %}
-          {% if ns.chosen %}
-          **저장 전 입력:** {{ ns.chosen | join(' · ') }}
-          {% elif not ns.incomplete %}
-          **요일을 하나 이상 선택해 주세요.** 시간과 요일을 고른 뒤 적용할 수 있습니다.
-          {% endif %}
+          type: button
+          name: 이 시간 추가
+          icon: mdi:plus-circle
+          tap_action:
+            action: perform-action
+            perform_action: bapsim.dashboard_add_routine
       - type: conditional
         conditions:
           - condition: template
             value_template: >-
-              {% set result = namespace(any=false, valid=true) %}
-              {% for i in range(1, 5) %}
-                {% set days = states('input_select.bapsim_routine_days_' ~ i) %}
-                {% if days == '요일 직접 선택' %}
-                  {% set selected = namespace(any=false) %}
-                  {% for day in range(7) %}
-                    {% if is_state('input_boolean.bapsim_routine_day_' ~ i ~ '_' ~ day, 'on') %}
-                      {% set selected.any = true %}
-                    {% endif %}
-                  {% endfor %}
-                  {% if selected.any %}{% set result.any = true %}
-                  {% else %}{% set result.valid = false %}{% endif %}
-                {% elif days in ['매일', '평일', '주말'] %}
-                  {% set result.any = true %}
-                {% endif %}
-              {% endfor %}
-              {{ result.any and result.valid }}
+              {{ (state_attr('sensor.bapsim_initial_routine', 'routines') or []) | count > 0 }}
         card:
-          type: button
-          name: 이 시간으로 적용
-          show_icon: false
-          icon: mdi:content-save-check
-          tap_action:
-            action: perform-action
-            perform_action: bapsim.dashboard_initial_routine
+          type: vertical-stack
+          cards:
+            - type: entities
+              title: 저장된 시간 삭제
+              entities:
+                - entity: input_select.bapsim_routine_remove
+                  name: 삭제할 시간
+            - type: button
+              name: 선택한 시간 삭제
+              icon: mdi:delete-outline
+              tap_action:
+                action: perform-action
+                perform_action: bapsim.dashboard_remove_routine
+                confirmation:
+                  text: 선택한 사용 시간을 삭제할까요?
       - type: markdown
         content: |
           {% set result = states('sensor.bapsim_initial_routine_result') %}
           {% if result == 'applied' %}
-          **적용됨.** 위의 현재 적용된 시간을 확인해 주세요.
+          **저장됐습니다.** 위의 사용 시간 목록을 확인해 주세요.
           {% elif result == 'failed' %}
-          **적용되지 않음.** 입력과 밥솥 연결을 확인해 주세요.
+          **저장하지 못했습니다.** {{ state_attr('sensor.bapsim_initial_routine_result', 'reason') or '입력과 밥솥 연결을 확인해 주세요.' }}
           {% endif %}
           사용 시간은 식사 여부나 건강 상태를 확인하는 설정이 아닙니다.
   - title: Simulator

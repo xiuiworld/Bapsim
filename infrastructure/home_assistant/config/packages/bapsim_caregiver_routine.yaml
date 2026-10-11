@@ -22,9 +22,12 @@ input_datetime:
     has_time: true
 
 input_select:
+  bapsim_routine_remove:
+    name: 삭제할 사용 시간
+    options: [선택 안 함]
   bapsim_routine_days_1:
     name: 첫 번째 사용 요일
-    options: [사용 안 함, 매일, 평일, 주말, 요일 직접 선택]
+    options: [매일, 평일, 주말, 요일 직접 선택]
   bapsim_routine_days_2:
     name: 두 번째 사용 요일
     options: [사용 안 함, 매일, 평일, 주말, 요일 직접 선택]
@@ -93,6 +96,34 @@ input_boolean:
     name: 4번째 사용 시간 토요일
   bapsim_routine_day_4_6:
     name: 4번째 사용 시간 일요일
+
+automation:
+  - id: bapsim_routine_remove_choices
+    alias: 밥심 삭제할 사용 시간 목록 갱신
+    triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: state
+        entity_id: sensor.bapsim_initial_routine
+    actions:
+      - action: input_select.set_options
+        target:
+          entity_id: input_select.bapsim_routine_remove
+        data:
+          options: >-
+            {% set ns = namespace(options=['선택 안 함']) %}
+            {% set names = ['월','화','수','목','금','토','일'] %}
+            {% for item in state_attr('sensor.bapsim_initial_routine', 'routines') or [] %}
+              {% for w in item.windows %}
+                {% set days = namespace(values=[]) %}
+                {% for day in w.weekdays %}
+                  {% set days.values = days.values + [names[day]] %}
+                {% endfor %}
+                {% set label = '매일' if w.weekdays | length == 7 else days.values | join('·') %}
+                {% set ns.options = ns.options + [(ns.options | length) ~ '. ' ~ w.time ~ ' · ' ~ label] %}
+              {% endfor %}
+            {% endfor %}
+            {{ ns.options }}
 
 script:
   bapsim_prepare_pause_interval:

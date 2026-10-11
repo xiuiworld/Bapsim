@@ -882,6 +882,42 @@ class HAServiceIntegrationTests(TestCase):
 
         asyncio.run(scenario())
 
+    def test_caregiver_can_add_and_remove_more_than_four_use_times(self):
+        async def scenario():
+            with patch.dict(sys.modules, ha_modules({})):
+                spec = importlib.util.spec_from_file_location(
+                    "bapsim_ha_variable_routine_under_test", COMPONENT)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                hass = FakeHass()
+                self.assertTrue(await module.async_setup(hass, {}))
+                model = hass.data["bapsim"]["usage_model"]
+                model.configure_initial_routine("matter", "cooker_01", [])
+                hass.states.async_set("input_select.bapsim_routine_days_1", "매일", {})
+                for use_time in ("08:00", "12:00", "18:00", "00:30", "21:00", "23:00"):
+                    hass.states.async_set("input_datetime.bapsim_routine_time_1",
+                                          use_time + ":00", {})
+                    await hass.services.async_call("bapsim", "dashboard_add_routine", {})
+                saved = model.initial_routine("matter", "cooker_01")
+                self.assertEqual(len(saved), 6)
+                self.assertEqual({item["time"] for item in saved},
+                                 {"08:00", "12:00", "18:00", "00:30", "21:00", "23:00"})
+                with self.assertRaisesRegex(ValueError, "이미 저장"):
+                    await hass.services.async_call("bapsim", "dashboard_add_routine", {})
+                profile = model._centers(model._device("matter", "cooker_01"),
+                                         datetime.now(timezone.utc).date())[0]
+                self.assertEqual(len(profile), 6)
+                delete_at = next(index for index, item in enumerate(saved, 1)
+                                 if item["time"] == "21:00")
+                hass.states.async_set("input_select.bapsim_routine_remove",
+                                      f"{delete_at}. 21:00 · 매일", {})
+                await hass.services.async_call("bapsim", "dashboard_remove_routine", {})
+                self.assertEqual(len(model.initial_routine("matter", "cooker_01")), 5)
+                self.assertNotIn("21:00", [item["time"] for item in
+                                         model.initial_routine("matter", "cooker_01")])
+
+        asyncio.run(scenario())
+
     def test_restored_initial_routine_without_review_date_is_visible(self):
         model = PersonalUsageModel()
         model.configure_initial_routine("matter", "cooker_01", [{"time": "08:00"}])
