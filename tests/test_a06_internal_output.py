@@ -20,18 +20,65 @@ from test_ha_service_integration import COMPONENT, FakeHass, ha_modules
 
 
 class A06InternalOutputTests(TestCase):
+    def test_pause_history_shows_current_upcoming_and_recent_finished_intervals(self):
+        dashboard_file = (Path(__file__).resolve().parents[1] /
+                          "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
+        content = dashboard_file.read_text(encoding="utf-8")
+        start = content.index("              ## 저장된 알림 쉬기")
+        end = content.index("          - type: entities", start)
+        past_start = content.index("          ## 지난 쉬기")
+        past_end = content.index("  - title: 자세한 기록", past_start)
+        environment = Environment()
+        environment.filters["timestamp_custom"] = lambda value, _format, _local=True: str(value)
+        template = environment.from_string("\n".join(
+            line.removeprefix("              ") for line in content[start:end].splitlines()))
+        past_template = environment.from_string("\n".join(
+            line.removeprefix("          ") for line in content[past_start:past_end].splitlines()))
+        moment = datetime(2026, 10, 11, 12, tzinfo=timezone.utc)
+
+        def as_timestamp(value, default=0):
+            return datetime.fromisoformat(value).timestamp() if isinstance(value, str) else (
+                value.timestamp() if isinstance(value, datetime) else default)
+
+        def render(pauses, selected=template):
+            return selected.render(
+                state_attr=lambda _entity, _name: pauses,
+                as_timestamp=as_timestamp,
+                now=lambda: moment,
+            )
+
+        self.assertIn("진행 중이거나 예정된 쉬기 기간이 없어요", render({}))
+        self.assertIn("지난 쉬기 내역이 없어요", render({}, past_template))
+        pauses = {
+            "current": {"starts_at": "2026-10-11T11:00:00+00:00",
+                        "ends_at": "2026-10-11T13:00:00+00:00"},
+            "upcoming": {"starts_at": "2026-10-12T11:00:00+00:00",
+                         "ends_at": "2026-10-12T13:00:00+00:00"},
+            **{f"past-{day}": {"starts_at": f"2026-10-{day:02d}T09:00:00+00:00",
+                                "ends_at": f"2026-10-{day:02d}T10:00:00+00:00"}
+               for day in range(6, 11)},
+        }
+        rendered = render(pauses)
+        self.assertIn("**1번 · 진행 중**", rendered)
+        self.assertIn("**2번 · 예정**", rendered)
+        past_rendered = render(pauses, past_template)
+        self.assertIn(str(as_timestamp(pauses["past-10"]["starts_at"])), past_rendered)
+        self.assertNotIn(str(as_timestamp(pauses["past-7"]["starts_at"])), past_rendered)
+
     def test_caregiver_observation_copy_distinguishes_available_gap_and_initial(self):
         dashboard_file = (Path(__file__).resolve().parents[1] /
                           "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
         content = dashboard_file.read_text(encoding="utf-8")
-        start = content.index("          ## 생활 루틴 확인")
-        end = content.index("      - type: entities", start)
+        start = content.index("          ## 밥솥 사용 확인")
+        end = content.index("      - type: markdown", start)
         environment = Environment()
-        environment.filters["timestamp_custom"] = lambda value, _format, _local=True: "10월 08일 09:00"
+        environment.filters["timestamp_custom"] = lambda value, fmt, _local=True: (
+            datetime.fromtimestamp(value, timezone.utc).strftime("%H:%M") if fmt == "%H:%M"
+            else "10월 08일 09:00")
         template = environment.from_string("\n".join(
             line.removeprefix("          ") for line in content[start:end].splitlines()))
 
-        def render(issue, attributes=None):
+        def render(issue, attributes=None, routines=None, baseline=None):
             output = {"observation": "available", "valid_until": "2099-01-01T00:00:00+00:00",
                       **(attributes or {})}
             def as_timestamp(value, default=0):
@@ -44,30 +91,45 @@ class A06InternalOutputTests(TestCase):
                 else "현재 확인된 밥솥 사용 기록을 표시합니다." if entity == "sensor.bapsim_output_state"
                 else "선택",
                 state_attr=lambda entity, name: output.get(name)
-                if entity == "sensor.bapsim_output_state" else None,
+                if entity == "sensor.bapsim_output_state" else
+                {"routines": routines}.get(name) if entity == "sensor.bapsim_initial_routine" else
+                (baseline or {}).get(name) if entity == "sensor.bapsim_baseline" else None,
+                is_state=lambda entity, value: entity == "sensor.bapsim_baseline" and
+                value == "ready" and bool(baseline),
                 as_timestamp=as_timestamp,
                 now=lambda: datetime(2026, 10, 8, tzinfo=timezone.utc),
             )
 
-        self.assertNotIn("관측 상태를 먼저 확인하세요", render("available"))
-        self.assertNotIn("관측 확인 전", render("available"))
-        self.assertIn("관측 상태를 먼저 확인하세요", render("disconnected"))
-        self.assertIn("관측 확인 전", render("unknown"))
-        self.assertIn("비교 불가", render("available", {"valid_until": None}))
-        self.assertIn("개인 기록 부족", render("available", {"learning": "insufficient"}))
-        self.assertNotIn("정상 생활", render("available"))
+        self.assertIn("최근 밥솥 기록을 확인했어요", render("available"))
+        self.assertIn("연결 확인이 필요해요", render("disconnected"))
+        self.assertIn("새 사용 기록을 기다리는 중이에요", render("unknown"))
+        self.assertIn("평소와 비교할 수 없습니다", render("available", {"valid_until": None}))
+        self.assertIn("평소와 다른 생활 흐름을 유추", render("available"))
         active = render("available", {"learning": "personalized",
                                       "last_usage_at": "2026-10-08T00:00:00+00:00",
                                       "assessments": [{"type": "usage_gap", "status": "notified"}]})
         self.assertIn("10월 08일 09:00", active)
-        self.assertIn("예상 시간대 사용 공백", active)
-        self.assertIn("안부 확인 요청됨", active)
+        self.assertIn("평소 시간대 사용 기록 없음", active)
+        self.assertIn("확인 필요", active)
+        timed = render("available", {"last_usage_at": "2026-10-07T20:30:00+00:00"},
+                       [{"windows": [{"time": "08:00", "weekdays": [3]},
+                                     {"time": "18:00", "weekdays": [4]}]}])
+        self.assertIn("3시간 30분 전", timed)
+        self.assertIn("오늘 설정한 평소 사용 시간: **08:00**", timed)
+        self.assertNotIn("18:00", timed)
+        self.assertNotIn("3시간 30분 전", render("disconnected", {
+            "last_usage_at": "2026-10-07T20:30:00+00:00"}))
+        learned = render("available", baseline={
+            "as_of": "2026-10-08T00:00:00+00:00",
+            "windows": [{"expected_time": "2026-10-08T09:00:00+00:00",
+                         "covered_days": 7, "positive_days": 5,
+                         "probability": 0.82, "schedule_excluded": False}]})
+        self.assertIn("기록에서 추정한 오늘의 평소 사용 시간: **09:00**", learned)
         self.assertNotIn("10월 08일 09:00", render("disconnected", {
             "last_usage_at": "2026-10-08T00:00:00+00:00"}))
         initial = render("available", {"learning": "collecting", "initial_basis": True})
-        self.assertIn("개인 기록 수집 중", initial)
-        self.assertIn("입력한 초기 사용 시간으로 판단 중", initial)
-        self.assertNotIn("입력한 초기 사용 시간으로 판단 중",
+        self.assertIn("입력한 사용 시간으로 비교 중", initial)
+        self.assertNotIn("입력한 사용 시간으로 비교 중",
                          render("available", {"learning": "personalized", "initial_basis": False}))
 
     def test_simulator_updates_only_simulation_card_and_expires(self):

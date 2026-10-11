@@ -799,14 +799,23 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 days = day_state.state if day_state else None
                 if days == "사용 안 함":
                     continue
-                if days not in day_options:
+                if days == "요일 직접 선택":
+                    weekdays = [day for day in range(7)
+                                if (state := hass.states.get(
+                                    f"input_boolean.bapsim_routine_day_{index}_{day}"))
+                                and state.state == "on"]
+                    if not weekdays:
+                        raise ValueError(f"{index}번째 사용 요일을 하나 이상 선택해 주세요.")
+                elif days in day_options:
+                    weekdays = day_options[days]
+                else:
                     raise ValueError(f"{index}번째 사용 요일을 선택해 주세요.")
                 time_state = hass.states.get(f"input_datetime.bapsim_routine_time_{index}")
                 try:
                     time = datetime.strptime(time_state.state, "%H:%M:%S").strftime("%H:%M")
                 except (AttributeError, TypeError, ValueError) as error:
                     raise ValueError(f"{index}번째 시간을 확인해 주세요.") from error
-                windows.append({"time": time, "weekdays": day_options[days]})
+                windows.append({"time": time, "weekdays": weekdays})
             if not windows:
                 raise ValueError("사용 시간대를 한 개 이상 선택해 주세요.")
             await set_initial_routine(SimpleNamespace(data={"device_id": devices[0],
@@ -819,6 +828,97 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
              {"device_id": devices[0], "windows": windows, "recorded_at": recorded_at})
 
     service_registry.register("dashboard_initial_routine", dashboard_initial_routine)
+
+    def caregiver_routine_device() -> str:
+        devices = sorted(device_id for source, device_id in usage_model.device_keys
+                         if source == "matter")
+        if len(devices) != 1:
+            raise ValueError("연결된 실물 밥솥이 정확히 한 대일 때만 설정할 수 있습니다.")
+        return devices[0]
+
+    def caregiver_routine_weekdays() -> list[int]:
+        day_state = hass.states.get("input_select.bapsim_routine_days_1")
+        days = day_state.state if day_state else None
+        choices = {"매일": list(range(7)), "평일": list(range(5)), "주말": [5, 6]}
+        if days == "요일 직접 선택":
+            selected = [day for day in range(7)
+                        if (state := hass.states.get(f"input_boolean.bapsim_routine_day_1_{day}"))
+                        and state.state == "on"]
+            if not selected:
+                raise ValueError("반복할 요일을 하나 이상 선택해 주세요.")
+            return selected
+        if days not in choices:
+            raise ValueError("반복할 요일을 선택해 주세요.")
+        return choices[days]
+
+    def caregiver_routine_time() -> str:
+        state = hass.states.get("input_datetime.bapsim_routine_time_1")
+        try:
+            return datetime.strptime(state.state, "%H:%M:%S").strftime("%H:%M")
+        except (AttributeError, TypeError, ValueError) as error:
+            raise ValueError("사용 시간을 확인해 주세요.") from error
+
+    def routine_remove_options(windows: list[dict]) -> list[str]:
+        weekdays = "월화수목금토일"
+        return ["선택 안 함"] + [
+            f"{index}. {item['time']} · " +
+            ("매일" if len(item["weekdays"]) == 7 else
+             "·".join(weekdays[day] for day in item["weekdays"]))
+            for index, item in enumerate(windows, 1)]
+
+    async def sync_routine_remove(windows: list[dict]) -> None:
+        if hass.services.has_service("input_select", "set_options"):
+            await hass.services.async_call("input_select", "set_options", {
+                "entity_id": "input_select.bapsim_routine_remove",
+                "options": routine_remove_options(windows),
+            }, blocking=True)
+
+    async def dashboard_add_routine(_call) -> None:
+        recorded_at = datetime.now(timezone.utc).isoformat()
+        try:
+            device_id = caregiver_routine_device()
+            window = {"time": caregiver_routine_time(),
+                      "weekdays": caregiver_routine_weekdays()}
+            windows = usage_model.initial_routine("matter", device_id)
+            if window in windows:
+                raise ValueError("같은 시간과 요일이 이미 저장되어 있습니다.")
+            await set_initial_routine(SimpleNamespace(data={
+                "device_id": device_id, "windows": windows + [window]}))
+            updated = usage_model.initial_routine("matter", device_id)
+            await sync_routine_remove(updated)
+        except Exception as error:
+            show("initial_routine_result", "failed",
+                 {"reason": str(error), "recorded_at": recorded_at})
+            raise
+        show("initial_routine_result", "applied",
+             {"device_id": device_id, "windows": updated, "recorded_at": recorded_at})
+
+    service_registry.register("dashboard_add_routine", dashboard_add_routine)
+
+    async def dashboard_remove_routine(_call) -> None:
+        recorded_at = datetime.now(timezone.utc).isoformat()
+        try:
+            device_id = caregiver_routine_device()
+            windows = usage_model.initial_routine("matter", device_id)
+            state = hass.states.get("input_select.bapsim_routine_remove")
+            selection = state.state if state else None
+            choices = routine_remove_options(windows)
+            if selection not in choices[1:]:
+                raise ValueError("삭제할 사용 시간을 선택해 주세요.")
+            index = choices.index(selection) - 1
+            await set_initial_routine(SimpleNamespace(data={
+                "device_id": device_id,
+                "windows": windows[:index] + windows[index + 1:]}))
+            updated = usage_model.initial_routine("matter", device_id)
+            await sync_routine_remove(updated)
+        except Exception as error:
+            show("initial_routine_result", "failed",
+                 {"reason": str(error), "recorded_at": recorded_at})
+            raise
+        show("initial_routine_result", "applied",
+             {"device_id": device_id, "windows": updated, "recorded_at": recorded_at})
+
+    service_registry.register("dashboard_remove_routine", dashboard_remove_routine)
 
     caregiver = bind_caregiver_commands(
         callback, hass, workflow, trend_workflow, controls, usage_model, analysis_mode,

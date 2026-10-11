@@ -107,8 +107,8 @@ class PersonalUsageModel:
     @staticmethod
     def parse_initial_windows(windows: object) -> list[dict[str, object]]:
         """Validate optional KST home-use times and expected weekdays (Mon=0)."""
-        if not isinstance(windows, list) or len(windows) > len(PRIORS):
-            raise ValueError("windows must be a list of at most four entries")
+        if not isinstance(windows, list):
+            raise ValueError("windows must be a list")
         result: list[dict[str, object]] = []
         available = set(range(len(PRIORS)))
         for item in windows:
@@ -127,8 +127,11 @@ class PersonalUsageModel:
                     any(type(day) is not int or day not in range(7) for day in weekdays) or
                     len(set(weekdays)) != len(weekdays)):
                 raise ValueError("weekdays must be unique integers 0..6")
-            slot = min(available, key=lambda index: _distance(minute, PRIORS[index][1]))
-            available.remove(slot)
+            if available:
+                slot = min(available, key=lambda index: _distance(minute, PRIORS[index][1]))
+                available.remove(slot)
+            else:
+                slot = len(PRIORS) + sum(item["slot"] >= len(PRIORS) for item in result)
             result.append({"slot": slot, "time": value, "minute": minute,
                            "weekdays": sorted(weekdays)})
         return sorted(result, key=lambda item: item["slot"])
@@ -327,6 +330,7 @@ class PersonalUsageModel:
                       for item in state["initial_windows"]}
         centers = [configured.get(index, float(prior))
                    for index, (_, prior, _) in enumerate(PRIORS)]
+        centers.extend(configured[index] for index in sorted(configured) if index >= len(PRIORS))
         eligible = list(range(len(centers)))
         if slot_lock and history_days < self.history_days:
             anchor_start = before - timedelta(days=self.history_days)
@@ -345,15 +349,17 @@ class PersonalUsageModel:
             if active:
                 eligible = active
         for _ in range(4):
-            groups = [[] for _ in PRIORS]
+            groups = [[] for _ in centers]
             for at in samples:
                 item = _minutes(at)
                 closest = min(eligible, key=lambda index: _distance(item, centers[index]))
                 if _distance(item, centers[closest]) <= 6 * 60:
                     groups[closest].append(item)
             centers = [
-                _circular_mean(group, configured.get(index, float(PRIORS[index][1])))
-                if group else configured.get(index, float(PRIORS[index][1]))
+                _circular_mean(group, configured.get(index, float(PRIORS[index][1])
+                                                     if index < len(PRIORS) else centers[index]))
+                if group else configured.get(index, float(PRIORS[index][1])
+                                             if index < len(PRIORS) else centers[index])
                 for index, group in enumerate(groups)
             ]
         return centers, eligible
@@ -469,12 +475,13 @@ class PersonalUsageModel:
                 weekday_positive += weight * used
         configured = next((item for item in state["initial_windows"] if item["slot"] == slot), None)
         expected_today = configured is not None and day.weekday() in configured["weekdays"]
-        prior_probability = (0.80 if expected_today else 0.05) if configured else PRIORS[slot][2]
+        prior_probability = ((0.80 if expected_today else 0.05) if configured else
+                             PRIORS[slot][2] if slot < len(PRIORS) else 0.05)
         all_probability = (2 * prior_probability + positive) / (2 + count)
         group_probability = (4 * all_probability + group_positive) / (4 + group_count)
         probability = (3 * group_probability + weekday_positive) / (3 + weekday_count)
         return {
-            "slot": PRIORS[slot][0], "expected_time": (
+            "slot": PRIORS[slot][0] if slot < len(PRIORS) else f"slot_{slot + 1}", "expected_time": (
                 datetime.combine(day, time.min, KST) + timedelta(minutes=center)
             ).isoformat(),
             "probability": round(probability, 4),

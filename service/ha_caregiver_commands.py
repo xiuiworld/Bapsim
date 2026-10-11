@@ -81,6 +81,41 @@ def _active_pauses(hass, controls, external_service: bool) -> Mapping[str, objec
     return pauses if isinstance(pauses, dict) else {}
 
 
+def _pause_choices(hass, controls, external_service: bool, now: datetime) -> list[tuple[str, str]]:
+    def valid_end(value: str) -> bool:
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).tzinfo is not None
+        except ValueError:
+            return False
+
+    def local_date(value: str) -> str:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(
+            timezone(timedelta(hours=9))).strftime("%m/%d")
+
+    records = [(pause_id, item) for pause_id, item in
+               _active_pauses(hass, controls, external_service).items()
+               if isinstance(item, dict) and isinstance(item.get("starts_at"), str) and
+               isinstance(item.get("ends_at"), str) and valid_end(item["ends_at"])]
+    active = [(pause_id, item) for pause_id, item in records
+              if _future_end(item["ends_at"], now)]
+    past = [(pause_id, item) for pause_id, item in records
+            if not _future_end(item["ends_at"], now)]
+    active.sort(key=lambda entry: entry[1]["starts_at"])
+    past.sort(key=lambda entry: entry[1]["ends_at"], reverse=True)
+    return ([(pause_id, f"{index}번 기간")
+             for index, (pause_id, _item) in enumerate(active, 1)] +
+            [(pause_id, f"지난 {index}번 · {local_date(item['ends_at'])} 종료")
+             for index, (pause_id, item) in enumerate(past, 1)])
+
+
+def _selected_pause_id(hass, controls, external_service: bool, now: datetime) -> str | None:
+    state = hass.states.get("input_select.bapsim_active_pause")
+    selected = getattr(state, "state", None)
+    return next((pause_id for pause_id, label in
+                 _pause_choices(hass, controls, external_service, now)
+                 if label == selected), None)
+
+
 async def refresh_dashboard_choices(hass, workflow, trend_workflow, controls, logger=None,
                                     *, external_service: bool = False) -> None:
     if not hass.services.has_service("input_select", "set_options"):
@@ -93,25 +128,29 @@ async def refresh_dashboard_choices(hass, workflow, trend_workflow, controls, lo
         for item in assessments
     ]
     now = datetime.now(timezone.utc)
-    pauses = ["선택"] + [
-        f"알림 쉬기 · {datetime.fromisoformat(item['ends_at'].replace('Z', '+00:00')).astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M')} 종료 | {pause_id}"
-        for pause_id, item in _active_pauses(hass, controls, external_service).items()
-        if isinstance(item, dict) and isinstance(item.get("ends_at"), str) and
-        _future_end(item["ends_at"], now)
-    ]
+    pauses = ["선택"] + [label for _, label in
+                       _pause_choices(hass, controls, external_service, now)]
     for entity_id, options in (("input_select.bapsim_active_assessment", choices),
                                ("input_select.bapsim_active_pause", pauses)):
         current = hass.states.get(entity_id)
-        if current is None or current.attributes.get("options") == options:
+        if current is None:
+            continue
+        changed = current.attributes.get("options") != options
+        select_first_pause = (entity_id == "input_select.bapsim_active_pause" and
+                              current.state == "선택" and len(options) > 1)
+        if not changed and not select_first_pause:
             continue
         try:
-            await hass.services.async_call("input_select", "set_options", {
-                "entity_id": entity_id, "options": options,
-            }, blocking=True)
-            if (current.state in options and current.state != "선택" and
-                    hass.services.has_service("input_select", "select_option")):
+            if changed:
+                await hass.services.async_call("input_select", "set_options", {
+                    "entity_id": entity_id, "options": options,
+                }, blocking=True)
+            selected = (current.state if current.state in options and current.state != "선택"
+                        else options[1] if entity_id == "input_select.bapsim_active_pause" and
+                        len(options) > 1 else None)
+            if selected is not None and hass.services.has_service("input_select", "select_option"):
                 await hass.services.async_call("input_select", "select_option", {
-                    "entity_id": entity_id, "option": current.state,
+                    "entity_id": entity_id, "option": selected,
                 }, blocking=True)
         except Exception as exc:
             if logger is not None:
@@ -276,10 +315,18 @@ def bind_caregiver_commands(
             if len(active) != 1:
                 raise ValueError("Acknowledge requires exactly one active assessment")
         elif action == "pause_lifestyle":
-            command.update({"pause_id": str(uuid.uuid4()), "starts_at": now.isoformat()})
+            start_picker = hass.states.get("input_datetime.bapsim_pause_from")
+            if start_picker is None:
+                raise ValueError("Set the notification start date and time first")
+            starts_at = datetime.fromisoformat(start_picker.state).replace(
+                tzinfo=timezone(timedelta(hours=9)))
+            if starts_at >= until:
+                raise ValueError("Notification start time must be before its end")
+            command.update({"pause_id": str(uuid.uuid4()),
+                            "starts_at": max(starts_at, now).isoformat()})
         else:
-            pause_id = call.data.get("pause_id") or _selected_id(
-                hass, "input_select.bapsim_active_pause")
+            pause_id = call.data.get("pause_id") or _selected_pause_id(
+                hass, controls, external_service, now)
             if not isinstance(pause_id, str) or not pause_id:
                 raise ValueError("pause_id is required to cancel")
             command["pause_id"] = pause_id
