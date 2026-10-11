@@ -28,8 +28,9 @@ packages/bapsim_caregiver_routine.yaml and dashboards/bapsim_lab.yaml.
 Add 'homeassistant: packages: !include_dir_named packages' and a YAML Lovelace
 dashboard with URL path bapsim-lab pointing to dashboards/bapsim_lab.yaml if
 your configuration does not already have them. Check the configuration and
-restart Home Assistant. The dashboard includes a local simulator tab; its
-buttons require the separate simulator package and are not needed for real use.
+restart Home Assistant. The developer simulator is a hidden subview at
+`/bapsim-lab/simulator`; its buttons require the separate simulator package
+and are not needed for caregiver use.
 
 This bundle does not install Matter Server or commission the Nordic board.
 Register real Matter entities only after checking their actual values and

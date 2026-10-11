@@ -799,14 +799,23 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 days = day_state.state if day_state else None
                 if days == "사용 안 함":
                     continue
-                if days not in day_options:
+                if days == "요일 직접 선택":
+                    weekdays = [day for day in range(7)
+                                if (state := hass.states.get(
+                                    f"input_boolean.bapsim_routine_day_{index}_{day}"))
+                                and state.state == "on"]
+                    if not weekdays:
+                        raise ValueError(f"{index}번째 사용 요일을 하나 이상 선택해 주세요.")
+                elif days in day_options:
+                    weekdays = day_options[days]
+                else:
                     raise ValueError(f"{index}번째 사용 요일을 선택해 주세요.")
                 time_state = hass.states.get(f"input_datetime.bapsim_routine_time_{index}")
                 try:
                     time = datetime.strptime(time_state.state, "%H:%M:%S").strftime("%H:%M")
                 except (AttributeError, TypeError, ValueError) as error:
                     raise ValueError(f"{index}번째 시간을 확인해 주세요.") from error
-                windows.append({"time": time, "weekdays": day_options[days]})
+                windows.append({"time": time, "weekdays": weekdays})
             if not windows:
                 raise ValueError("사용 시간대를 한 개 이상 선택해 주세요.")
             await set_initial_routine(SimpleNamespace(data={"device_id": devices[0],
