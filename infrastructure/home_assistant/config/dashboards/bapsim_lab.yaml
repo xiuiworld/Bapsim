@@ -491,14 +491,14 @@ views:
           **저장하지 못했습니다.** {{ state_attr('sensor.bapsim_initial_routine_result', 'reason') or '입력과 밥솥 연결을 확인해 주세요.' }}
           {% endif %}
           설정한 시간과 실제 밥솥 사용의 차이를 살펴보고, 안부 확인이 필요할지 유추하는 데 사용합니다.
-  - title: Simulator
+  - title: 시뮬레이터
     path: simulator
     icon: mdi:rice
     cards:
       - type: markdown
         content: |
           ## 밥솥 시뮬레이터
-          버튼은 원시 상태와 `bapsim_raw_event`만 만듭니다. 실제 식사 여부나 이상 여부를 판정하지 않습니다.
+          버튼은 원시 상태와 시험 이벤트만 만듭니다. 실제 식사 여부나 이상 여부를 판정하지 않습니다. 아래 영문 상태값은 개발용 원본 코드입니다.
       - type: grid
         title: 이벤트 발생
         columns: 2
@@ -554,12 +554,18 @@ views:
       - type: entities
         title: 시뮬레이션 분석 결과
         entities:
-          - sensor.bapsim_simulation_output_state
-          - sensor.bapsim_simulation_baseline
-          - sensor.bapsim_simulation_features
-          - sensor.bapsim_simulation_detection_status
-          - sensor.bapsim_simulation_workflow_status
-          - sensor.bapsim_simulation_notification_delivery
+          - entity: sensor.bapsim_simulation_output_state
+            name: 시뮬레이션 분석 상태
+          - entity: sensor.bapsim_simulation_baseline
+            name: 시뮬레이션 개인 기준
+          - entity: sensor.bapsim_simulation_features
+            name: 시뮬레이션 분석 특징
+          - entity: sensor.bapsim_simulation_detection_status
+            name: 시뮬레이션 변화 판정
+          - entity: sensor.bapsim_simulation_workflow_status
+            name: 시뮬레이션 보호자 확인
+          - entity: sensor.bapsim_simulation_notification_delivery
+            name: 시뮬레이션 알림 단계
   - title: A05 연결 시험
     path: a05-test
     icon: mdi:test-tube
@@ -597,28 +603,46 @@ views:
       - type: markdown
         content: |
           ## 내부 진단
-          실물 입력과 처리 단계를 확인하는 개발용 화면입니다. 시뮬레이션은 Simulator 탭에서 확인합니다.
+          실물 입력과 처리 단계를 확인하는 개발용 화면입니다. 오른쪽 영문값은 시스템 원본 상태 코드이며, 시뮬레이션은 시뮬레이터 탭에서 확인합니다.
       - type: entities
         title: 실물 입력·판정 내부 상태
         entities:
-          - sensor.bapsim_output_state
-          - sensor.bapsim_observation_issue_status
-          - sensor.bapsim_baseline
-          - sensor.bapsim_usage_context
-          - sensor.bapsim_detection_status
-          - sensor.bapsim_decline_detection
-          - sensor.bapsim_interval_detection
-          - sensor.bapsim_features
-          - sensor.bapsim_mqtt_output
-          - sensor.bapsim_auxiliary_deferral
-          - sensor.bapsim_matter_input
-          - sensor.bapsim_away
-          - sensor.bapsim_workflow_status
-          - sensor.bapsim_decline_status
-          - sensor.bapsim_notification_delivery
-          - sensor.bapsim_notification_controls
-          - sensor.bapsim_notification_control_result
-          - input_select.bapsim_availability
+          - entity: sensor.bapsim_output_state
+            name: 실물 분석 상태
+          - entity: sensor.bapsim_observation_issue_status
+            name: 수집·연결 상태
+          - entity: sensor.bapsim_baseline
+            name: 개인 기준 학습
+          - entity: sensor.bapsim_usage_context
+            name: 최근 개방의 보드 맥락
+          - entity: sensor.bapsim_detection_status
+            name: 밥솥 사용 변화 판정
+          - entity: sensor.bapsim_decline_detection
+            name: 사용 감소 판정
+          - entity: sensor.bapsim_interval_detection
+            name: 사용 간격 판정
+          - entity: sensor.bapsim_features
+            name: 현재 분석 특징
+          - entity: sensor.bapsim_mqtt_output
+            name: MQTT 상태 전송
+          - entity: sensor.bapsim_auxiliary_deferral
+            name: 보조 활동에 따른 판단 보류
+          - entity: sensor.bapsim_matter_input
+            name: 실물 밥솥 입력
+          - entity: sensor.bapsim_away
+            name: 외출 상태
+          - entity: sensor.bapsim_workflow_status
+            name: 보호자 확인 상태
+          - entity: sensor.bapsim_decline_status
+            name: 사용 감소 안내 상태
+          - entity: sensor.bapsim_notification_delivery
+            name: 알림 전달 상태
+          - entity: sensor.bapsim_notification_controls
+            name: 알림 설정 변경 번호
+          - entity: sensor.bapsim_notification_control_result
+            name: 최근 알림 조작 결과
+          - entity: input_select.bapsim_availability
+            name: 시뮬레이터 통신 상태
       - type: history-graph
         title: 최근 7일 판정·응답 기록
         hours_to_show: 168
