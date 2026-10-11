@@ -223,14 +223,22 @@ views:
       - type: entities
         title: 평소 시간과 요일
         entities:
-          - input_datetime.bapsim_routine_time_1
-          - input_select.bapsim_routine_days_1
-          - input_datetime.bapsim_routine_time_2
-          - input_select.bapsim_routine_days_2
-          - input_datetime.bapsim_routine_time_3
-          - input_select.bapsim_routine_days_3
-          - input_datetime.bapsim_routine_time_4
-          - input_select.bapsim_routine_days_4
+          - entity: input_datetime.bapsim_routine_time_1
+            name: 1회 시간
+          - entity: input_select.bapsim_routine_days_1
+            name: 1회 요일
+          - entity: input_datetime.bapsim_routine_time_2
+            name: 2회 시간
+          - entity: input_select.bapsim_routine_days_2
+            name: 2회 요일
+          - entity: input_datetime.bapsim_routine_time_3
+            name: 3회 시간
+          - entity: input_select.bapsim_routine_days_3
+            name: 3회 요일
+          - entity: input_datetime.bapsim_routine_time_4
+            name: 4회 시간
+          - entity: input_select.bapsim_routine_days_4
+            name: 4회 요일
       - type: button
         name: 이 시간으로 적용
         icon: mdi:content-save-check
