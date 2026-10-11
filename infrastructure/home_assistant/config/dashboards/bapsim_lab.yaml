@@ -230,17 +230,21 @@ views:
               {% if present.count == 0 %}
               진행 중이거나 예정된 쉬기 기간이 없어요.
               {% endif %}
-          - type: conditional
-            conditions:
-              - condition: state
-                entity: input_select.bapsim_active_pause
-                state_not: [선택, unknown, unavailable]
-            card:
-              type: entities
-              title: 삭제할 설정
-              entities:
-                - entity: input_select.bapsim_active_pause
-                  name: 저장된 기간
+          - type: entities
+            title: 저장된 설정 삭제
+            entities:
+              - entity: input_select.bapsim_active_pause
+                name: 삭제할 기간 선택
+          - type: markdown
+            content: |
+              {% set options = state_attr('input_select.bapsim_active_pause', 'options') or [] %}
+              {% if options | length <= 1 %}
+              삭제할 쉬기 설정이 없어요. 새 기간을 저장하면 여기에서 삭제할 수 있습니다.
+              {% elif states('input_select.bapsim_active_pause') in ['선택', 'unknown', 'unavailable'] %}
+              위에서 삭제할 기간을 선택해 주세요.
+              {% else %}
+              선택한 기간을 아래 버튼으로 삭제할 수 있습니다.
+              {% endif %}
           - type: conditional
             conditions:
               - condition: state
