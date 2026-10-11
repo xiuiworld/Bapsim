@@ -123,7 +123,7 @@ views:
           {% elif result == 'submitted' or result == 'applying' %}
           **처리 중** · 저장 또는 적용 결과를 기다리고 있습니다.
           {% else %}
-          **적용되지 않음** · {{ state_attr('sensor.bapsim_notification_control_result', 'reason') or '조작 조건을 다시 확인해 주세요.' }}
+          **적용되지 않음** · 선택한 안내와 종료 시각을 확인하고 다시 시도해 주세요.
           {% endif %}
           {% set recorded_at = state_attr('sensor.bapsim_notification_control_result', 'recorded_at') %}
           {% if recorded_at %}화면 갱신: {{ as_timestamp(recorded_at) | timestamp_custom('%m월 %d일 %H:%M', true) }}{% endif %}
@@ -157,47 +157,39 @@ views:
       - type: markdown
         content: |
           ## 자세한 관측 기록
-          아래는 밥솥 관측과 보드 추정의 근거입니다. **개방·취사 기록은 식사나 건강 상태를 확정하지 않습니다.**
-      - type: entities
-        title: 관측·학습 상태
-        entities:
-          - sensor.bapsim_output_state
-          - sensor.bapsim_observation_issue_status
-          - sensor.bapsim_baseline
-          - sensor.bapsim_usage_context
+          아래는 확인된 밥솥 사용 관련 기록입니다. **뚜껑 열림·취사 기록만으로 식사나 건강 상태를 알 수 없습니다.**
+      - type: markdown
+        content: |
+          ## 기록 확인 상태
+          {% set output = states('sensor.bapsim_output_state') %}
+          {% set issue = states('sensor.bapsim_observation_issue_status') %}
+          {% set baseline = states('sensor.bapsim_baseline') %}
+          {% set context = states('sensor.bapsim_usage_context') %}
+          - **밥솥 사용 기록:** {% if output == 'awaiting_matter' %}실물 기록을 기다리는 중{% elif output == 'expired' %}최근 분석 결과가 오래돼 새 기록을 기다리는 중{% elif output in ['unknown', 'unavailable', 'waiting'] %}현재 기록을 확인할 수 없음{% else %}최근 분석 결과가 있음 · 위의 생활 루틴 요약을 확인해 주세요{% endif %}
+          - **연결 상태:** {{ {'available':'밥솥에서 연결 정보를 받음', 'partial':'일부 연결 정보만 확인됨', 'disconnected':'밥솥 연결이 끊김', 'unavailable':'밥솥 연결을 확인할 수 없음', 'alert_requested':'연결 확인 안내를 요청함', 'not_observed':'연결 상태를 확인할 기록이 없음', 'unknown':'연결 상태를 확인할 기록이 없음'}.get(issue, '연결 상태를 확인할 수 없음') }}
+          - **평소 사용 패턴:** {{ {'ready':'비교할 개인 기록이 쌓임', 'learning':'개인 기록을 모으는 중', 'waiting':'아직 비교할 기록이 없음', 'not_observed':'아직 비교할 기록이 없음'}.get(baseline, '현재 확인할 수 없음') }}
+          - **최근 뚜껑 열림:** {{ {'warming_possible_use':'보온 중 뚜껑 열림 · 식사 여부는 알 수 없음', 'recent_cooking_possible_use':'취사 후 뚜껑 열림 · 식사 여부는 알 수 없음', 'unclassified_open':'뚜껑 열림 기록 있음 · 용도는 알 수 없음', 'waiting':'확인된 실물 기록이 없음'}.get(context, '현재 기록을 확인할 수 없음') }}
       - type: markdown
         content: |
           {% set f = states.sensor.bapsim_features.attributes if states.sensor.bapsim_features is defined else {} %}
           {% set p = states.sensor.bapsim_baseline.attributes if states.sensor.bapsim_baseline is defined else {} %}
           {% set windows = state_attr('sensor.bapsim_baseline', 'windows') or [] %}
-          {% set d = states.sensor.bapsim_detection_status.attributes if states.sensor.bapsim_detection_status is defined else {} %}
           {% set c = states.sensor.bapsim_usage_context.attributes if states.sensor.bapsim_usage_context is defined else {} %}
           {% set cooks = f.get('cook_count_24h') %}
           {% set opens = p.get('lid_open_count_24h') %}
           ### 개인별 사용 패턴
-          - 모델 상태: **{{ states('sensor.bapsim_baseline') }}** (개인 기준 표시는 정상 관측 7일 이상·유효 사용일 5일 이상에서 시작합니다. 초기 설정을 활용한 판단은 그 전에도 가능합니다.)
+          - 개인 기준: **{{ {'ready':'평소 사용 패턴과 비교할 기록이 쌓임', 'learning':'평소 사용 패턴을 살펴보는 중', 'waiting':'아직 비교할 기록이 없음', 'not_observed':'아직 비교할 기록이 없음'}.get(states('sensor.bapsim_baseline'), '현재 확인할 수 없음') }}** (정상 관측 7일 이상·유효 사용일 5일 이상이 필요합니다. 입력한 사용 시간으로 그전에 판단할 수도 있습니다.)
           {% for w in windows %}
-          - 예상 사용 구간 {{ loop.index }}: **{{ as_timestamp(w.expected_time) | timestamp_custom('%H:%M', true) }} 전후** · 관측 확률 {{ (w.probability * 100) | round(0) }}% · 학습일 {{ w.covered_days }}일
+          - 평소 사용 시간 {{ loop.index }}: **{{ as_timestamp(w.expected_time) | timestamp_custom('%H:%M', true) }} 전후** · 참고한 기록 {{ w.covered_days }}일
           {% endfor %}
           ### 현재 관측
-          - 최근 24시간 취사 세션: **{{ cooks ~ '회' if cooks is not none else '미관측' }}** / 뚜껑 열림: **{{ opens ~ '회' if opens is not none else '미관측' }}**
-          ### 최근 실물 개방의 맥락
+          - 최근 24시간 취사 기록: **{{ cooks ~ '회' if cooks is not none else '기록을 확인할 수 없음' }}** / 뚜껑 열림: **{{ opens ~ '회' if opens is not none else '기록을 확인할 수 없음' }}**
+          ### 최근 뚜껑 열림 기록
           {% if c.get('source') == 'matter' and c.get('lid_record_id') %}
-          - 분류: **{{ {'warming_possible_use':'보온 중 사용 가능 행동', 'recent_cooking_possible_use':'최근 취사 뒤 사용 가능 행동', 'unclassified_open':'개방 확인·용도 불명'}.get(c.get('classification'), '용도 불명') }}** (식사 확정 아님)
-          - 보드 추정: **{{ c.get('phase') or '판단 불가' }}** · 품질 {{ c.get('phase_quality') }} · 모델 {{ c.get('model_version') or '없음' }}
-          - 표면 온도: **{{ c.get('temperature_c') ~ ' °C' if c.get('temperature_quality') == 'good' else '미확인' }}** · 근거 {{ c.get('lid_record_id') }}
+          - **{{ {'warming_possible_use':'보온 중 뚜껑 열림', 'recent_cooking_possible_use':'취사 후 뚜껑 열림', 'unclassified_open':'뚜껑 열림·용도는 알 수 없음'}.get(c.get('classification'), '뚜껑 열림·용도는 알 수 없음') }}** · 실제 식사 여부는 알 수 없습니다.
           {% else %}
-          - 검증된 실물 개방 맥락 없음
+          - 확인된 실물 뚜껑 열림 기록이 없습니다.
           {% endif %}
-          - 판정 근거: **{{ (d.get('reason_codes') or []) | join(', ') if d.get('reason_codes') else '없음' }}**
-          - 밥솥 판정: **{{ states('sensor.bapsim_detection_status') }}**
-      - type: history-graph
-        title: 최근 7일 판정·응답 기록
-        hours_to_show: 168
-        entities:
-          - sensor.bapsim_detection_status
-          - sensor.bapsim_workflow_status
-          - sensor.bapsim_decline_status
   - title: 사용 시간 설정
     path: routine
     icon: mdi:calendar-clock
@@ -367,6 +359,10 @@ views:
       - type: entities
         title: 실물 입력·판정 내부 상태
         entities:
+          - sensor.bapsim_output_state
+          - sensor.bapsim_observation_issue_status
+          - sensor.bapsim_baseline
+          - sensor.bapsim_usage_context
           - sensor.bapsim_detection_status
           - sensor.bapsim_decline_detection
           - sensor.bapsim_interval_detection
@@ -381,3 +377,10 @@ views:
           - sensor.bapsim_notification_controls
           - sensor.bapsim_notification_control_result
           - input_select.bapsim_availability
+      - type: history-graph
+        title: 최근 7일 판정·응답 기록
+        hours_to_show: 168
+        entities:
+          - sensor.bapsim_detection_status
+          - sensor.bapsim_workflow_status
+          - sensor.bapsim_decline_status
