@@ -23,7 +23,42 @@ views:
           **최근 밥솥 기록을 확인했어요.**
           {% endif %}
           {% if usable and last_usage %}
-          최근 사용 관련 기록: **{{ as_timestamp(last_usage) | timestamp_custom('%m월 %d일 %H:%M', true) }}**
+          {% set elapsed_minutes = ((as_timestamp(now()) - as_timestamp(last_usage)) / 60) | int %}
+          마지막 밥솥 사용: **{{ as_timestamp(last_usage) | timestamp_custom('%m월 %d일 %H:%M', true) }}**{% if elapsed_minutes >= 0 %} · **{% if elapsed_minutes >= 1440 %}{{ elapsed_minutes // 1440 }}일 {% endif %}{% if elapsed_minutes >= 60 %}{{ (elapsed_minutes % 1440) // 60 }}시간 {% endif %}{{ elapsed_minutes % 60 }}분 전**{% endif %}
+          {% elif usable %}
+          아직 확인된 밥솥 사용 시각이 없습니다.
+          {% endif %}
+          {% if usable %}
+          {% set routines = state_attr('sensor.bapsim_initial_routine', 'routines') or [] %}
+          {% set chosen = namespace(times=[]) %}
+          {% for item in routines %}
+          {% for w in item.windows %}
+          {% if now().weekday() in w.weekdays %}
+          {% set chosen.times = chosen.times + [w.time] %}
+          {% endif %}
+          {% endfor %}
+          {% endfor %}
+          {% if routines %}
+          {% if chosen.times %}
+          오늘 설정한 평소 사용 시간: **{{ chosen.times | sort | join(' · ') }}**
+          {% else %}
+          오늘은 설정된 평소 사용 시간이 없습니다.
+          {% endif %}
+          {% elif is_state('sensor.bapsim_baseline', 'ready') and 0 <= as_timestamp(now()) - as_timestamp(state_attr('sensor.bapsim_baseline', 'as_of'), 0) < 7200 %}
+          {% set learned = namespace(times=[]) %}
+          {% for w in state_attr('sensor.bapsim_baseline', 'windows') or [] %}
+          {% if w.covered_days >= 7 and w.positive_days >= 5 and w.probability >= 0.72 and not w.schedule_excluded %}
+          {% set learned.times = learned.times + [as_timestamp(w.expected_time) | timestamp_custom('%H:%M', true)] %}
+          {% endif %}
+          {% endfor %}
+          {% if learned.times %}
+          기록에서 추정한 오늘의 평소 사용 시간: **{{ learned.times | sort | join(' · ') }}**
+          {% else %}
+          평소 사용 시간은 기록을 더 모으는 중입니다.
+          {% endif %}
+          {% else %}
+          평소 사용 시간은 기록을 더 모으는 중입니다. [직접 설정하기](/bapsim-lab/routine)
+          {% endif %}
           {% endif %}
           {% set assessments = state_attr('sensor.bapsim_output_state', 'assessments') or [] %}
           {% if usable and assessments %}

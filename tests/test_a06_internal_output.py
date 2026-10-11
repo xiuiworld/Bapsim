@@ -72,11 +72,13 @@ class A06InternalOutputTests(TestCase):
         start = content.index("          ## 밥솥 사용 확인")
         end = content.index("      - type: markdown", start)
         environment = Environment()
-        environment.filters["timestamp_custom"] = lambda value, _format, _local=True: "10월 08일 09:00"
+        environment.filters["timestamp_custom"] = lambda value, fmt, _local=True: (
+            datetime.fromtimestamp(value, timezone.utc).strftime("%H:%M") if fmt == "%H:%M"
+            else "10월 08일 09:00")
         template = environment.from_string("\n".join(
             line.removeprefix("          ") for line in content[start:end].splitlines()))
 
-        def render(issue, attributes=None):
+        def render(issue, attributes=None, routines=None, baseline=None):
             output = {"observation": "available", "valid_until": "2099-01-01T00:00:00+00:00",
                       **(attributes or {})}
             def as_timestamp(value, default=0):
@@ -89,7 +91,11 @@ class A06InternalOutputTests(TestCase):
                 else "현재 확인된 밥솥 사용 기록을 표시합니다." if entity == "sensor.bapsim_output_state"
                 else "선택",
                 state_attr=lambda entity, name: output.get(name)
-                if entity == "sensor.bapsim_output_state" else None,
+                if entity == "sensor.bapsim_output_state" else
+                {"routines": routines}.get(name) if entity == "sensor.bapsim_initial_routine" else
+                (baseline or {}).get(name) if entity == "sensor.bapsim_baseline" else None,
+                is_state=lambda entity, value: entity == "sensor.bapsim_baseline" and
+                value == "ready" and bool(baseline),
                 as_timestamp=as_timestamp,
                 now=lambda: datetime(2026, 10, 8, tzinfo=timezone.utc),
             )
@@ -98,13 +104,27 @@ class A06InternalOutputTests(TestCase):
         self.assertIn("연결 확인이 필요해요", render("disconnected"))
         self.assertIn("새 사용 기록을 기다리는 중이에요", render("unknown"))
         self.assertIn("평소와 비교할 수 없습니다", render("available", {"valid_until": None}))
-        self.assertIn("식사 여부나 건강 상태는 알 수 없습니다", render("available"))
+        self.assertIn("평소와 다른 생활 흐름을 유추", render("available"))
         active = render("available", {"learning": "personalized",
                                       "last_usage_at": "2026-10-08T00:00:00+00:00",
                                       "assessments": [{"type": "usage_gap", "status": "notified"}]})
         self.assertIn("10월 08일 09:00", active)
         self.assertIn("평소 시간대 사용 기록 없음", active)
         self.assertIn("확인 필요", active)
+        timed = render("available", {"last_usage_at": "2026-10-07T20:30:00+00:00"},
+                       [{"windows": [{"time": "08:00", "weekdays": [3]},
+                                     {"time": "18:00", "weekdays": [4]}]}])
+        self.assertIn("3시간 30분 전", timed)
+        self.assertIn("오늘 설정한 평소 사용 시간: **08:00**", timed)
+        self.assertNotIn("18:00", timed)
+        self.assertNotIn("3시간 30분 전", render("disconnected", {
+            "last_usage_at": "2026-10-07T20:30:00+00:00"}))
+        learned = render("available", baseline={
+            "as_of": "2026-10-08T00:00:00+00:00",
+            "windows": [{"expected_time": "2026-10-08T09:00:00+00:00",
+                         "covered_days": 7, "positive_days": 5,
+                         "probability": 0.82, "schedule_excluded": False}]})
+        self.assertIn("기록에서 추정한 오늘의 평소 사용 시간: **09:00**", learned)
         self.assertNotIn("10월 08일 09:00", render("disconnected", {
             "last_usage_at": "2026-10-08T00:00:00+00:00"}))
         initial = render("available", {"learning": "collecting", "initial_basis": True})
