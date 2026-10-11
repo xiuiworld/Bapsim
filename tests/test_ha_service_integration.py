@@ -193,8 +193,7 @@ class HAServiceIntegrationTests(TestCase):
                              ["선택"])
             options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
             self.assertEqual(len(options), 3)
-            self.assertTrue(options[1].startswith("쉬기 1 · "))
-            self.assertTrue(options[2].startswith("쉬기 2 · "))
+            self.assertEqual(options[1:], ["1번 기간", "2번 기간"])
             self.assertFalse(any("trip-" in item for item in options))
             self.assertFalse(any("ended" in item for item in options))
             self.assertIn("ended", controls.pauses)  # Retain the historical control record.
@@ -561,7 +560,7 @@ class HAServiceIntegrationTests(TestCase):
                 await drain()
                 pause_options = hass.states.get("input_select.bapsim_active_pause").attributes["options"]
                 self.assertEqual(len(pause_options), 2)
-                self.assertIn("~", pause_options[1])
+                self.assertEqual(pause_options[1], "1번 기간")
                 hass.states.async_set("input_select.bapsim_active_pause", pause_options[1],
                                       {"options": pause_options})
                 await hass.services.async_call("bapsim", "dashboard_control", {"action": "cancel_pause"})
