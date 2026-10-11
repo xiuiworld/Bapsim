@@ -278,24 +278,17 @@ views:
         cards:
           - type: markdown
             content: |
-              ## 새 쉬기 설정
-              밥솥을 쓰지 않을 기간을 정하면 **생활 변화 알림만** 쉽니다. 밥솥 연결 알림은 계속 받을 수 있어요.
-          - type: button
-            name: 오늘부터 내일까지
-            show_icon: false
-            icon: mdi:calendar-today
-            tap_action:
-              action: perform-action
-              perform_action: script.bapsim_prepare_pause_interval
+              ## 알림 쉬는 시간 설정
+              시작과 종료를 각각 눌러 **날짜와 시간**을 정하세요. 이 기간에는 생활 변화 알림만 쉬고, 밥솥 연결 알림은 계속 받을 수 있어요.
           - type: tile
             entity: input_datetime.bapsim_pause_from
-            name: 시작 날짜와 시간
+            name: 언제부터
             icon: mdi:calendar-start
             tap_action:
               action: more-info
           - type: tile
             entity: input_datetime.bapsim_control_until
-            name: 종료 날짜와 시간
+            name: 언제까지
             icon: mdi:calendar-end
             tap_action:
               action: more-info
