@@ -223,7 +223,7 @@ views:
           {% for pause in pauses.values() | sort(attribute='starts_at') %}
           {% if as_timestamp(pause.ends_at, 0) > as_timestamp(now()) %}
           {% set present.count = present.count + 1 %}
-          - **{{ '진행 중' if as_timestamp(pause.starts_at, 0) <= as_timestamp(now()) else '예정' }}** · {{ as_timestamp(pause.starts_at) | timestamp_custom('%m월 %d일 %H:%M', true) }} ~ {{ as_timestamp(pause.ends_at) | timestamp_custom('%m월 %d일 %H:%M', true) }}
+          - **쉬기 {{ present.count }} · {{ '진행 중' if as_timestamp(pause.starts_at, 0) <= as_timestamp(now()) else '예정' }}** · {{ as_timestamp(pause.starts_at) | timestamp_custom('%m월 %d일 %H:%M', true) }} ~ {{ as_timestamp(pause.ends_at) | timestamp_custom('%m월 %d일 %H:%M', true) }}
           {% endif %}
           {% endfor %}
           {% if present.count == 0 %}

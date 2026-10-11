@@ -54,8 +54,8 @@ class A06InternalOutputTests(TestCase):
                for day in range(6, 11)},
         }
         rendered = render(pauses)
-        self.assertIn("**진행 중**", rendered)
-        self.assertIn("**예정**", rendered)
+        self.assertIn("**쉬기 1 · 진행 중**", rendered)
+        self.assertIn("**쉬기 2 · 예정**", rendered)
         self.assertIn("지난 쉬기 · 최근 3건", rendered)
         self.assertIn(str(as_timestamp(pauses["past-10"]["starts_at"])), rendered)
         self.assertNotIn(str(as_timestamp(pauses["past-7"]["starts_at"])), rendered)
