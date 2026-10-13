@@ -27,11 +27,11 @@ HA 내부 분석 모드를 전제로 한다. 보드 펌웨어와 A05 수신기�
    설정하지 않는다. 기존 설정을 통째로 덮어쓰지 않는다. HA 설정 검사 후
    **HA Core 재시작**을 실행한다. `sensor.bapsim_a05_connection_test`가
    `not_armed`인지 확인한다. 대시보드는
-   `http://192.168.1.13/bapsim-lab/a05-test`이다.
+   `http://192.0.2.10/bapsim-lab/a05-test`이다.
 6. Mosquitto 인증 연결이 HA MQTT 통합에서 정상인지 확인한다.
-   A의 브로커는 `192.168.1.8:1883`이며 사용자명·비밀번호는 A의 현지
+   A의 브로커는 `192.0.2.20:1883`이며 사용자명·비밀번호는 A의 현지
    설정만 사용한다. 이 시험 서비스는 별도의 MQTT 비밀번호를 받지 않는다.
-   HA 앱의 `notify.mobile_app_nothing_phone_4a` 서비스와 폰 로그인을 확인한다.
+   HA 앱의 `notify.mobile_app_your_phone` 서비스와 폰 로그인을 확인한다.
 
 시험 실행에는 코드의 상수나 `.env`에 폰 대상, 비밀번호, HA 토큰을 넣지 않는다.
 매 실행마다 아래 서비스 호출의 `phone_service`를 명시한다.
@@ -66,7 +66,7 @@ action: bapsim.start_a05_connection_test
 data:
   device_id: cooker_a_test
   entity_id: sensor.a05_reportcounter
-  phone_service: notify.mobile_app_nothing_phone_4a
+  phone_service: notify.mobile_app_your_phone
 ```
 
 `sensor.bapsim_a05_connection_test`와 실험실의 `A05 연결 시험` 화면에서

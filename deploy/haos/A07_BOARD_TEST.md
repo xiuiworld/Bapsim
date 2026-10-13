@@ -19,7 +19,7 @@ B의 출처 검사를 사용한다. 실측·개인 학습·AI 정확도 시험�
   `input_kind=synthetic`, `live_qualified=false`, 버전 접두어 `a07-`여야 한다.
   생성기가 대기·취사·보온·판단 불가의 실제 모델 결과를 갖는 원시 입력을
   찾지 못하면 실패하며 임의의 고정 판정을 전송하지 않는다.
-- A의 HA OS는 `http://192.168.1.13/`, 인증 MQTT는 `192.168.1.8:1883`,
+- A의 HA OS는 `http://192.0.2.10/`, 인증 MQTT는 `192.0.2.20:1883`,
   논리 가정은 `household_a_test`, 보드는 `cooker_a_test`, A05 엔티티는
   `sensor.a05_reportcounter`이다. 비밀번호·HA 토큰은 이 절차에 넣지 않는다.
 
@@ -67,7 +67,7 @@ Get-Content "$a07Build/domains.yaml"
 들어가는지 기존 A05 절차대로 확인한다.
 
 ```powershell
-west flash -d $a07Build --domain a07-phase-test --no-rebuild --dev-id 1051887912
+west flash -d $a07Build --domain a07-phase-test --no-rebuild --dev-id <BOARD_SERIAL>
 ```
 
 보드가 재부팅한 뒤 기존 Node 4와 Matter entry
@@ -96,7 +96,7 @@ data:
   scenario: a07_phase_sequence
   device_id: cooker_a_test
   entity_id: sensor.a05_reportcounter
-  phone_service: notify.mobile_app_nothing_phone_4a
+  phone_service: notify.mobile_app_your_phone
 ```
 
 `/bapsim-lab/a05-test`에서 `await_inactive`와 새 `test_run_id`를 기록한다.

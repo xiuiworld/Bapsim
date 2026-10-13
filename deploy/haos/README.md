@@ -16,7 +16,7 @@ whole `infrastructure/home_assistant/config` directory over the HA OS config.
 ## Values to collect
 
 * HA URL: verify the HA OS URL and port in a browser. The prior A address was
-  `http://192.168.1.13/`; use its actual working address. Internal mode does
+  `http://192.0.2.10/`; use its actual working address. Internal mode does
   not need `BAPSIM_HA_TOKEN` or `BAPSIM_HA_URL` in Docker.
 * Windows LAN IPv4: put it in `BAPSIM_MQTT_BIND_IP` in `deploy/haos/.env`.
   Keep it stable (DHCP reservation is suitable). It is the MQTT host entered

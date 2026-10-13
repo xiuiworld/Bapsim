@@ -44,3 +44,9 @@ htmlcov/
 # Editor / OS local files
 .DS_Store
 Thumbs.db
+
+# Private workspace artifacts
+/.project-identity
+/.codex-remote-attachments/
+/output/
+/tmp/
