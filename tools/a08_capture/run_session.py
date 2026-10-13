@@ -25,11 +25,14 @@ def stamp():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
+    parser.add_argument("--serial", required=True, help="J-Link serial of the explicitly selected board")
+    parser.add_argument("--elf", required=True, type=Path, help="Exact historical ELF whose addresses are verified below")
+    parser.add_argument("--port", default="COM8")
     parser.add_argument("--seconds", type=int, default=14400)
     args = parser.parse_args()
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=False)
-    elf = Path("C:/Users/USER/AppData/Local/Temp/baph1/history-v1/zephyr/zephyr.elf")
+    elf = args.elf
     nm = "C:/ncs/toolchains/4f5b6ad6dd/opt/zephyr-sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-nm.exe"
     symbols = subprocess.check_output([nm, "-C", str(elf)], text=True)
     if not re.search(r"^20000560\s+d\s+\(anonymous namespace\)::sSensors$", symbols, re.M):
@@ -52,7 +55,7 @@ def main():
     stopped = threading.Event()
     errors = []
     uart_count = [0]
-    port = serial.Serial("COM8", 115200, timeout=0.2)
+    port = serial.Serial(args.port, 115200, timeout=0.2)
 
     def uart_reader():
         try:
@@ -80,7 +83,7 @@ def main():
         errors.append("Could not prevent system sleep")
     jlink = subprocess.Popen([
         "C:/Program Files/SEGGER/JLink_V924a/JLink.exe", "-Device", "nRF54LM20A_M33",
-        "-If", "SWD", "-Speed", "4000", "-SelectEmuBySN", "BOARD_SERIAL",
+        "-If", "SWD", "-Speed", "4000", "-SelectEmuBySN", args.serial,
         "-NoGui", "1", "-ExitOnError", "1", "-CommandFile", str(commands.resolve()),
     ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
        creationflags=subprocess.CREATE_NO_WINDOW)

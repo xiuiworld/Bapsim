@@ -1,0 +1,30 @@
+Bapsim third-party notices
+
+Original Bapsim code and documentation are under the root MIT LICENSE.
+This grant does not relicense third-party code, SDKs, dependencies, trademarks,
+or files carrying their own copyright/license notices. Preserve upstream notices.
+
+Runtime/development dependencies (installed separately, not bundled here):
+- Eclipse Paho MQTT Python 2.1.0: EPL-2.0 / EDL-1.0 dual licensing.
+  https://github.com/eclipse-paho/paho.mqtt.python/blob/v2.1.0/LICENSE.txt
+  https://github.com/eclipse-paho/paho.mqtt.python/blob/v2.1.0/edl-v10
+  https://github.com/eclipse-paho/paho.mqtt.python/blob/v2.1.0/epl-v20
+- NumPy 2.3.5: BSD-3-Clause; binary distributions may include additional notices.
+  https://github.com/numpy/numpy/blob/v2.3.5/LICENSE.txt
+- pySerial 3.5: BSD-3-Clause.
+  https://github.com/pyserial/pyserial/blob/v3.5/LICENSE.txt
+
+External firmware/build platforms:
+- Nordic nRF Connect SDK, Zephyr and connectedhomeip/Matter have their own
+  component licenses. Build preparation reads an SDK installed separately;
+  generated SDK applications and signed images are not covered wholesale by MIT.
+  https://github.com/nrfconnect/sdk-nrf
+  https://github.com/zephyrproject-rtos/zephyr
+  https://github.com/project-chip/connectedhomeip
+- Home Assistant, container images, Python, Jinja2 and build tools retain their
+  own upstream licenses. An installed/binary distribution must carry the notices
+  applicable to its exact dependencies; this source list is not a binary SBOM.
+
+Fritzing application and manufacturer manuals are not distributed here.
+Repository wiring illustrations/custom part descriptions describe connections;
+product names identify equipment and do not imply manufacturer endorsement.
