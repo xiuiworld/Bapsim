@@ -15,11 +15,11 @@ views:
           {% set usable = current and observation in ['available', 'partial'] and issue not in ['disconnected', 'alert_requested', 'unknown', 'unavailable', 'not_observed'] %}
           {% set last_usage = state_attr('sensor.bapsim_output_state', 'last_usage_at') %}
           {% if issue in ['disconnected', 'alert_requested'] %}
-          **연결 확인이 필요해요.** 밥솥의 현재 기록을 받을 수 없습니다.
+          **밥솥 연결을 확인해 주세요.** 새 사용 기록이 들어오지 않아 현재 변화를 비교할 수 없습니다.
           {% elif not usable %}
-          **새 사용 기록을 기다리는 중이에요.** 지금은 평소와 비교할 수 없습니다.
+          **아직 비교할 사용 기록이 없어요.** 밥솥 사용이 확인되면 평소 시간과 비교해 변화가 표시됩니다.
           {% elif observation == 'partial' %}
-          **일부 기록만 확인돼요.** 생활 변화를 판단하기 어렵습니다.
+          **일부 기록만 확인돼요.** 기록이 더 쌓이면 평소와의 차이를 살펴볼 수 있습니다.
           {% else %}
           **최근 밥솥 기록을 확인했어요.**
           {% endif %}
@@ -73,7 +73,7 @@ views:
           {% elif usable %}
           현재 처리할 안내는 없습니다.
           {% else %}
-          새 기록이 들어오면 이곳에 변화와 안내가 표시됩니다.
+          확인된 기록이 생기면 최근 사용과 안내가 여기에 표시됩니다.
           {% endif %}
           {% if usable and state_attr('sensor.bapsim_output_state', 'initial_basis') %}
           현재는 입력한 사용 시간으로 비교 중입니다. 개인 기록을 모으는 중이에요.
@@ -82,9 +82,21 @@ views:
           밥솥 사용 기록에서 평소와 다른 생활 흐름을 유추해 안부 확인을 돕습니다. 실제 식사·건강 상태는 직접 확인이 필요합니다.
       - type: markdown
         content: |
-          **필요한 작업**
-
-          [평소 사용 시간 설정](/bapsim-lab/routine) · [특정 날짜 알림 쉬기](/bapsim-lab/travel) · [기록 자세히 보기](/bapsim-lab/details)
+          **다음에 할 일**
+          {% set output = states('sensor.bapsim_output_state') %}
+          {% set issue = states('sensor.bapsim_observation_issue_status') %}
+          {% set observation = state_attr('sensor.bapsim_output_state', 'observation') %}
+          {% set valid_until = state_attr('sensor.bapsim_output_state', 'valid_until') %}
+          {% set current = output not in ['awaiting_matter', 'expired', 'unknown', 'unavailable', 'waiting'] and valid_until and as_timestamp(valid_until, 0) > as_timestamp(now()) %}
+          {% set usable = current and observation in ['available', 'partial'] and issue not in ['disconnected', 'alert_requested', 'unknown', 'unavailable', 'not_observed'] %}
+          {% if issue in ['disconnected', 'alert_requested'] %}
+          밥솥 연결 상태를 확인해 주세요. 연결이 돌아오면 새 기록부터 살펴볼 수 있습니다.
+          {% elif not usable %}
+          [평소 사용 시간 설정하기](/bapsim-lab/routine) · [기록 확인하기](/bapsim-lab/details)
+          {% else %}
+          [안내 확인하기](/bapsim-lab/notice) · [기록 확인하기](/bapsim-lab/details)
+          {% endif %}
+          [특정 날짜 알림 쉬기](/bapsim-lab/travel)
 
   - title: 안내 확인
     path: notice
@@ -491,16 +503,18 @@ views:
           **저장하지 못했습니다.** {{ state_attr('sensor.bapsim_initial_routine_result', 'reason') or '입력과 밥솥 연결을 확인해 주세요.' }}
           {% endif %}
           설정한 시간과 실제 밥솥 사용의 차이를 살펴보고, 안부 확인이 필요할지 유추하는 데 사용합니다.
-  - title: 가상 입력
+  - title: 가상 신호 시험
     path: simulator
     icon: mdi:rice
     cards:
       - type: markdown
         content: |
-          ## 가상 밥솥 입력
-          개발·시연용 화면입니다. 아래 버튼은 가짜 밥솥 신호를 하나씩 만듭니다. 실제 보드나 보호자 알림에는 영향을 주지 않으며, 7일 사용 기록을 한 번에 학습하는 기능도 아닙니다.
+          ## 가상 신호 시험
+          개발·시연용입니다. 버튼을 누를 때마다 **가상 신호 하나**가 기록됩니다. 실제 보드 신호나 보호자 알림으로 취급되지 않습니다.
+
+          **시연 순서:** 뚜껑 닫기 → 열기 → 취사 시작 → 취사 완료. 버튼을 누른 뒤 아래 *현재 가상 상태*에서 바뀐 값을 확인하세요. 이 순서만으로 개인 사용 기록이 학습되거나 안부 판단이 완성되지는 않습니다.
       - type: grid
-        title: 가상 신호 보내기
+        title: 밥솥 사용 신호
         columns: 2
         square: false
         cards:
@@ -520,6 +534,11 @@ views:
             name: 취사 완료
             icon: mdi:check
             tap_action: {action: perform-action, perform_action: script.bapsim_cooking_finish}
+      - type: grid
+        title: 연결·외출 신호
+        columns: 2
+        square: false
+        cards:
           - type: button
             name: 통신 끊기
             icon: mdi:lan-disconnect
@@ -545,20 +564,24 @@ views:
           - 외출: **{{ {'away':'외출 중', 'home':'집에 있음'}.get(states('input_select.bapsim_away_state'), '아직 선택하지 않음') }}**
           {% set result = states('sensor.bapsim_simulation_output_state') %}
           {% if result not in ['waiting', 'expired', 'unknown', 'unavailable', 'awaiting_matter'] %}
-          **가상 분석:** {{ result }}
+          **가상 분석 결과:** {{ result }}
           {% else %}
-          **가상 분석:** 새 결과를 기다리는 중
+          **가상 분석 결과:** 새 결과를 기다리는 중
           {% endif %}
+          이 값은 가상 입력의 처리 상태입니다. 보호자 화면의 실제 기록과는 별개입니다.
           원본 상태와 변화 기록은 [개발자 진단](/bapsim-lab/diagnostics)에서 확인할 수 있습니다.
-  - title: 보드→폰 연결 시험
+  - title: 실물 연결 시험
     path: a05-test
     icon: mdi:test-tube
     cards:
       - type: markdown
         content: |
-          ## 보드→폰 연결 시험
-          실제 보드 신호가 밥심 기록을 거쳐 시험 폰 알림 요청까지 이어지는지 확인합니다. 이 시험으로 개인 학습이나 실제 식사 여부를 판단하지 않습니다.
-          시작 버튼은 신호를 만들지 않습니다. 시작 후 10분 안에 뚜껑 시험은 닫힘→열림 신호를, 조리 단계 시험은 대기→취사→보온→판단 불가 신호를 차례로 보내야 합니다. 조건을 충족하면 시험 폰에 알림을 최대 1회 요청합니다.
+          ## 실물 연결 시험
+          **실제 보드 → 밥심 기록 → 시험 폰 알림 요청** 경로를 확인합니다. 개인 학습이나 실제 식사 여부를 판단하는 시험은 아닙니다.
+
+          1. 아래에서 시험 방식과 시험 폰을 확인합니다.
+          2. **시험 시작**을 누릅니다. 이 버튼만으로 보드 신호는 생기지 않습니다.
+          3. 보드 담당자가 **10분 안에** 선택한 신호를 차례로 보냅니다. 아래 진행 상태와 시험 폰 수신을 확인합니다.
       - type: entities
         title: 시험 장치 설정 · 개발 담당자용
         entities:
@@ -573,7 +596,7 @@ views:
       - type: horizontal-stack
         cards:
           - type: button
-            name: 시험 시작
+            name: 연결 시험 시작
             icon: mdi:play-circle-outline
             tap_action:
               action: perform-action
@@ -596,11 +619,32 @@ views:
           {% set phase = states('sensor.bapsim_a05_connection_test') %}
           {% set phase_names = {'not_armed':'시작 전', 'await_closed':'새 닫힘 신호 대기', 'closed_observed':'닫힘 확인 · 열림 대기', 'board_input_confirmed':'보드 신호 확인 · 알림 요청 준비', 'ha_accepted':'시험 폰 알림 요청 완료 · 폰 수신 확인 필요', 'delivery_failed':'시험 폰 알림 요청 실패', 'stopped':'시험 종료', 'expired':'10분 경과로 종료', 'storage_failed':'시험 기록 저장 실패', 'await_inactive':'조리 대기 신호 대기', 'observed_1_of_4':'조리 대기 확인 · 취사 신호 대기', 'observed_2_of_4':'취사 확인 · 보온 신호 대기', 'observed_3_of_4':'보온 확인 · 판단 불가 신호 대기'} %}
           **현재 상태:** {{ phase_names.get(phase, '상태를 확인할 수 없음') }}
+          {% if phase in ['not_armed', 'stopped', 'unknown', 'unavailable'] %}
+          **다음 행동:** 시험 방식과 시험 폰을 확인한 뒤 *연결 시험 시작*을 누르세요.
+          {% elif phase == 'await_closed' %}
+          **다음 행동:** 보드 담당자가 새 뚜껑 닫힘 신호를 보내야 합니다.
+          {% elif phase == 'closed_observed' %}
+          **다음 행동:** 보드 담당자가 뚜껑 열림 신호를 보내야 합니다.
+          {% elif phase == 'await_inactive' %}
+          **다음 행동:** 보드 담당자가 조리 대기 신호를 보내야 합니다.
+          {% elif phase == 'observed_1_of_4' %}
+          **다음 행동:** 보드 담당자가 취사 신호를 보내야 합니다.
+          {% elif phase == 'observed_2_of_4' %}
+          **다음 행동:** 보드 담당자가 보온 신호를 보내야 합니다.
+          {% elif phase == 'observed_3_of_4' %}
+          **다음 행동:** 보드 담당자가 판단 불가 신호를 보내야 합니다.
+          {% elif phase == 'board_input_confirmed' %}
+          **다음 행동:** 보드 신호는 확인됐습니다. 시험 폰 알림 요청 결과를 기다리세요.
+          {% elif phase == 'ha_accepted' %}
+          **다음 행동:** 시험 폰에서 알림이 실제로 도착했는지 직접 확인하세요.
+          {% elif phase in ['delivery_failed', 'storage_failed', 'expired'] %}
+          **다음 행동:** 보드 연결과 시험 폰 설정을 확인한 뒤 새 시험을 시작하세요.
+          {% endif %}
           {% if a.get('test_run_id') %}
           - 시험 방식: {{ '조리 단계 신호 확인' if a.get('scenario') == 'a07_phase_sequence' else '뚜껑 닫힘→열림' }}
           - 시험 폰 알림 요청: **{{ '시도함' if a.get('mobile_attempted', false) else '아직 안 함' }}**
           {% endif %}
-          알림 요청 완료는 실제 폰 수신을 뜻하지 않습니다. 폰에서 직접 확인해 주세요.
+          알림 요청 완료는 실제 폰 수신을 뜻하지 않습니다.
           원본 시험 기록은 [개발자 진단](/bapsim-lab/diagnostics)에서 확인할 수 있습니다.
   - title: 개발자 진단
     path: diagnostics
