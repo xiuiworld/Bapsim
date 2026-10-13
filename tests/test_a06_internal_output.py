@@ -20,6 +20,35 @@ from test_ha_service_integration import COMPONENT, FakeHass, ha_modules
 
 
 class A06InternalOutputTests(TestCase):
+    def test_connection_test_card_explains_next_step_for_each_phase(self):
+        dashboard_file = (Path(__file__).resolve().parents[1] /
+                          "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
+        content = dashboard_file.read_text(encoding="utf-8")
+        start = content.index("          ## 연결 시험 진행")
+        end = content.index("\n  - title: 개발자 진단", start)
+        template = Environment().from_string("\n".join(
+            line.removeprefix("          ") for line in content[start:end].splitlines()))
+        for phase, expected in [
+            ("not_armed", "연결 시험 시작"),
+            ("await_closed", "뚜껑 닫힘 신호"),
+            ("closed_observed", "뚜껑 열림 신호"),
+            ("await_inactive", "조리 대기 신호"),
+            ("observed_1_of_4", "취사 신호"),
+            ("observed_2_of_4", "보온 신호"),
+            ("observed_3_of_4", "판단 불가 신호"),
+            ("board_input_confirmed", "알림 요청 결과"),
+            ("ha_accepted", "실제로 도착했는지"),
+            ("delivery_failed", "새 시험을 시작"),
+        ]:
+            with self.subTest(phase=phase):
+                def states(_entity):
+                    return phase
+
+                states.sensor = SimpleNamespace(
+                    bapsim_a05_connection_test=SimpleNamespace(attributes={}))
+                rendered = template.render(states=states)
+                self.assertIn(expected, rendered)
+
     def test_pause_history_shows_current_upcoming_and_recent_finished_intervals(self):
         dashboard_file = (Path(__file__).resolve().parents[1] /
                           "infrastructure/home_assistant/config/dashboards/bapsim_lab.yaml")
@@ -101,9 +130,9 @@ class A06InternalOutputTests(TestCase):
             )
 
         self.assertIn("최근 밥솥 기록을 확인했어요", render("available"))
-        self.assertIn("연결 확인이 필요해요", render("disconnected"))
-        self.assertIn("새 사용 기록을 기다리는 중이에요", render("unknown"))
-        self.assertIn("평소와 비교할 수 없습니다", render("available", {"valid_until": None}))
+        self.assertIn("밥솥 연결을 확인해 주세요", render("disconnected"))
+        self.assertIn("아직 비교할 사용 기록이 없어요", render("unknown"))
+        self.assertIn("아직 비교할 사용 기록이 없어요", render("available", {"valid_until": None}))
         self.assertIn("평소와 다른 생활 흐름을 유추", render("available"))
         active = render("available", {"learning": "personalized",
                                       "last_usage_at": "2026-10-08T00:00:00+00:00",
