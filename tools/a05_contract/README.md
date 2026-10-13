@@ -40,7 +40,7 @@ The output directory must be new. Then, with the existing SDK environment loaded
 west zap-generate --full -z <probe>/src/default_zap/contact_sensor.zap -j <probe>/src/default_zap/zcl.json
 west build --sysbuild -b nrf54lm20dk/nrf54lm20b/cpuapp <probe> -d <build> -- -DCONFIG_CHIP_DEVICE_VENDOR_ID=65521
 # Only after verifying app HEX bounds and retaining rollback image:
-west flash -d <build> --domain probe --no-rebuild --dev-id BOARD_SERIAL
+west flash -d <build> --domain probe --no-rebuild --dev-id <BOARD_SERIAL>
 ```
 
 The test application publishes after 10 seconds, then every 15 seconds for accelerated verification. It cycles cooking, warming, temperature-error/unknown-phase, and unsupported-timer/phase. It explicitly sets test origin; the `rule` method and `test-fixture-only` version are test fields, not claims of deployed inference. Button changes update LidOpen and the snapshot too. Standard temperature becomes null in the error case. BootId is a random uint32 on boot (collision possible, not a permanent identity). The production 60-second reporting setting and physical sensors require subsequent integration.
@@ -96,7 +96,7 @@ HA 읽기 시각을 기준으로 하며 정확한 보드 UTC가 아니다. 이�
 debounce와 60분 사용 묶음 정책은 변경하지 않는다. 따라서 짧은 원시 개폐
 기록 수와 최종 사용 행동 수는 다른 지표다. 새로운 물리 센서 드라이버나
 무제한 오프라인 복원 기능이 아니다. 실제 버튼·단절·초과·재부팅 시험 결과는
-[1차 개선 검증 기록](../../docs/hardware/A_중간점검_1차_개선.md)의 5·6절을 참고한다.
+[1차 개선 검증 기록 · 공개 요약](../../docs/IMPLEMENTATION_STATUS.md)의 5·6절을 참고한다.
 
 읽기 오류 중에는 unavailable로 처리하되 마지막 정상 순번은 진단용으로
 보존한다. `last_discontinuity`는 읽기 오류·순번 공백·재부팅을 구분하고,

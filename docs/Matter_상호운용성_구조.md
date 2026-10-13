@@ -34,7 +34,7 @@ data:
 
 ## Multi-Admin과 Controller 경계
 
-Multi-Admin은 Matter 기기가 두 Controller의 fabric에 공유되는 프로토콜 기능이다. 밥심은 HA Controller에서 보이는 엔티티를 소비한다. 다른 Controller의 내부 API나 장치 노드 번호를 밥심의 `device_id`로 고정하지 않는다. 따라서 두 번째 Controller를 추가하거나 교체해도 HA 쪽 엔티티가 유지되면 분석 코드는 바뀌지 않는다. HA 엔티티가 바뀌면 해당 등록만 갱신한다. 두 Controller의 실제 동기화는 펌웨어·Matter 스택·Controller 수준의 실물 시험으로 [검증표](하드웨어_심사_실물_검증표.md)에 남긴다.
+Multi-Admin은 Matter 기기가 두 Controller의 fabric에 공유되는 프로토콜 기능이다. 밥심은 HA Controller에서 보이는 엔티티를 소비한다. 다른 Controller의 내부 API나 장치 노드 번호를 밥심의 `device_id`로 고정하지 않는다. 따라서 두 번째 Controller를 추가하거나 교체해도 HA 쪽 엔티티가 유지되면 분석 코드는 바뀌지 않는다. HA 엔티티가 바뀌면 해당 등록만 갱신한다. 두 Controller의 실제 동기화는 펌웨어·Matter 스택·Controller 수준의 실물 시험으로 [검증표 · 공개 요약](IMPLEMENTATION_STATUS.md)에 남긴다.
 
 ### Fabric · Multi-Admin · Joint Fabric 구현 위치
 

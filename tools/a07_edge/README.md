@@ -96,7 +96,7 @@ $a07Python = 'C:/Users/USER\.cache\codex-runtimes\codex-primary-runtime\dependen
 - C 헤더 입력은 **원시 ADC가 아닌 11개 float32 특징**과 valid 플래그다. 특징 입력 대조 및 원시 재생→보드 전처리→모델 대조, 실행 시간·정적 메모리는 확인했다. ADC/GPIO부터 Matter까지의 제품 경로는 [A08 통합](../../firmware/a08/README.md)에 연결했다. 실제 센서 보정·성능 확인은 남아 있다.
 - `phase_fields()`는 A05 후보 enum/품질/방법/버전/점수 부분만 반환한다. 완전한 SnapshotPacked나 B 정규화기를 재구현하지 않는다. 합성 시험은 `input_kind=test`로 유지한다.
 
-실행 결과와 현재 완료 범위는 [A07 검증 기록](../../docs/hardware/A07_합성학습_검증.md)을 따른다.
+실행 결과와 현재 완료 범위는 [A07 검증 기록 · 공개 요약](../../docs/IMPLEMENTATION_STATUS.md)을 따른다.
 
 ## 보수적인 정확도 개선 후보 비교
 
@@ -168,7 +168,7 @@ PC와 C++ 모두 ADC 최대값·저항·beta·offset·LED 기준값의 유한성
 55개 거부·10개 수용, LED 복구 28가지 오류 0을 확인했다.
 `raw_manifest.json`의 `safety` 항목이 있으면 로그 검사기가 해당 결과의 누락·중복·오류도 거부한다.
 상세 증거와 현재 설치 이미지는
-[1차 개선 검증 기록](../../docs/hardware/A_중간점검_1차_개선.md)의 6절에 있다.
+[1차 개선 검증 기록 · 공개 요약](../../docs/IMPLEMENTATION_STATUS.md)의 6절에 있다.
 기존 모델을 이 합성 시험만으로 실사용 승인하지 않는다.
 PC 재현: `python -m unittest tools.a07_edge.test_recovery -v`.
 
