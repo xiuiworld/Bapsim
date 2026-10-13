@@ -35,4 +35,4 @@ python -m tools.prepare_demo
 
 ## 다른 노트북에서 같은 결과 얻기
 
-공유 브랜치 `service/software-policy-alignment`를 체크아웃한 뒤 위 명령을 실행한다. 테스트가 실패하면 `tests.log`를 확인한다. 코드 버전이 다르면 `manifest.json`의 `commit`부터 비교한다. HA와 Docker까지 로컬로 실행할 때는 [서비스 설정](../service/README.md)과 [통합 실행 설정](../deploy/README.md)을 따른다. `.env`와 HA 토큰은 데모 폴더에 넣지 않는다.
+검토할 main 커밋 또는 발표 태그를 체크아웃한 뒤 위 명령을 실행한다. 테스트가 실패하면 `tests.log`를 확인한다. 코드 버전이 다르면 `manifest.json`의 `commit`부터 비교한다. HA와 Docker까지 로컬로 실행할 때는 [서비스 설정](../service/README.md)과 [통합 실행 설정](../deploy/README.md)을 따른다. `.env`와 HA 토큰은 데모 폴더에 넣지 않는다.
