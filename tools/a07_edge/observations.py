@@ -17,7 +17,7 @@ FEATURES = tuple(f"{name}_{stat}" for name in LEDS for stat in ("duty", "edges")
     "surface_c", "slope_c_per_min", "lid_open_fraction")
 LABELS = ("inactive", "cooking", "warming", "unknown")
 SCHEMA = "a07.raw.v1"
-PREPROCESS_VERSION = "a07-preprocess-v3"
+PREPROCESS_VERSION = "a07-preprocess-v5"
 # Candidate bound until physical LEDs are measured: 20 s at 20 Hz.
 LED_HISTORY_SAMPLES = 400
 
@@ -33,13 +33,17 @@ class Calibration:
     ntc_beta: float = 3950.
     ntc_to_ground: bool = True
     offset_c: float = 0.
+    # Installation-specific optical leakage, not an adaptive ambient baseline.
+    warm_white_gain: float = 0.
+    white_reference: float = 0.
 
     def validate(self):
         if not isinstance(self.led_off, (tuple, list)) or not isinstance(self.led_on, (tuple, list)) or \
                 len(self.led_off) != 4 or len(self.led_on) != 4:
             raise ValueError("four LED calibrations required")
         numbers = (self.adc_max, self.series_ohms, self.ntc_r25, self.ntc_beta,
-                   *self.led_off, *self.led_on, self.offset_c)
+                   *self.led_off, *self.led_on, self.offset_c,
+                   self.warm_white_gain, self.white_reference)
         if not all(isinstance(x, (int, float)) and not isinstance(x, bool)
                    and math.isfinite(x) for x in numbers):
             raise ValueError("nonfinite or nonnumeric calibration")
@@ -51,6 +55,8 @@ class Calibration:
             raise ValueError("insufficient LED calibration contrast")
         if any(not 0 <= x <= self.adc_max for x in (*self.led_off, *self.led_on)):
             raise ValueError("LED calibration outside ADC range")
+        if not 0 <= self.warm_white_gain <= 1 or not 0 <= self.white_reference <= self.adc_max:
+            raise ValueError("invalid optical leakage calibration")
 
 
 def ntc_c(adc, cal):
@@ -93,13 +99,16 @@ def debounce(t_ms, values, hold_ms=50):
     return out
 
 
-def extract(t_ms, adc, lid, boot, cal, step_seconds=2, sequence=None):
+def extract(t_ms, adc, lid, boot, cal, step_seconds=2, sequence=None, trusted_led_mask=15):
     """20Hz input; 2s features, 20s LED guard, 60s temperature/link history.
 
     Missing a required channel abstains the model; LED/NTC observations remain
     individually available. Returns features, validity, end sample and LED enums.
     """
     cal.validate()
+    if type(trusted_led_mask) is not int or not 0 <= trusted_led_mask <= 15:
+        raise ValueError('invalid trusted LED mask')
+    trusted = np.array([bool(trusted_led_mask & (1 << j)) for j in range(4)])
     t_ms, adc = np.asarray(t_ms), np.asarray(adc, dtype=float)
     lid, boot = np.asarray(lid), np.asarray(boot)
     if adc.shape != (len(t_ms), 5) or lid.shape != t_ms.shape or boot.shape != t_ms.shape:
@@ -112,8 +121,14 @@ def extract(t_ms, adc, lid, boot, cal, step_seconds=2, sequence=None):
         raise ValueError("invalid sequence shape/window step")
     if n < 1200:
         return np.empty((0, 11)), np.empty(0, bool), np.empty(0, int), np.empty((0, 4), int)
-    normalized = (adc[:, :4]-np.array(cal.led_off))/(np.array(cal.led_on)-cal.led_off)
     optical_good = np.isfinite(adc[:, :4]) & (adc[:, :4] > 1) & (adc[:, :4] < cal.adc_max-1)
+    corrected = adc[:, :4].copy()
+    if cal.warm_white_gain:
+        corrected[:, 1] -= cal.warm_white_gain * np.maximum(adc[:, 2]-cal.white_reference, 0.)
+        # A failed reference must not manufacture a warm observation.
+        optical_good[:, 1] &= optical_good[:, 2]
+        optical_good[:, 1] &= np.isfinite(corrected[:, 1]) & (corrected[:, 1] >= 0)
+    normalized = (corrected-np.array(cal.led_off))/(np.array(cal.led_on)-cal.led_off)
     # Hysteresis prevents chatter. No derived label is used as a feature.
     on = np.zeros((n, 4), dtype=bool)
     state = np.zeros(4, dtype=bool)
@@ -159,11 +174,14 @@ def extract(t_ms, adc, lid, boot, cal, step_seconds=2, sequence=None):
         continuous = timing_ok and np.all(boot[b:end+1] == boot[end]) and np.all(np.diff(sequence[b:end+1]) == 1)
         contact_ok = (contact[a:end+1] >= 0).all()
         f = np.column_stack((duty, edges)).ravel().tolist()
+        enums[~trusted] = 0
+        for j in range(4):
+            if not trusted[j]: f[2*j:2*j+2] = [float('nan'), float('nan')]
         f += [float(temps[-1]) if temp_ok else 0., slope, float(np.maximum(contact[a:end+1], 0).mean())]
         features.append(f)
         # Keep the trained 2 s features unchanged; gate their use with the
         # longer observation. Warm blinking is reheat/ambiguous, not warming.
-        valid.append(bool(q.all() and (enums != 0).all() and enums[1] != 3
+        valid.append(bool(q[trusted].all() and (enums[trusted] != 0).all() and enums[1] != 3
                           and temp_ok and continuous and contact_ok))
         observations.append(enums)
     return np.asarray(features, np.float32), np.asarray(valid), ends, np.asarray(observations, np.int8)

@@ -6,12 +6,13 @@
 #include <cstring>
 
 namespace a07 {
-constexpr const char *PREPROCESS_VERSION = "a07-preprocess-v3";
+constexpr const char *PREPROCESS_VERSION = "a07-preprocess-v5";
 constexpr unsigned LED_HISTORY_SAMPLES = 400; // candidate 20 s history at 20 Hz
 struct Calibration {
     double off[4], on[4];
     double adc_max, series, r25, beta, offset;
     bool ntc_to_ground;
+    double warm_white_gain=0, white_reference=0;
 };
 struct Sample {
     uint64_t ms, sequence;
@@ -41,6 +42,7 @@ class Preprocessor {
     uint64_t count=0, previous_ms=0, previous_seq=0, since=0;
     uint32_t previous_boot=0;
     uint8_t optical=0, optical_known=0;
+    uint8_t required_leds=15;
     int8_t stable=-1, candidate=-1;
     bool calibrated=false;
 
@@ -55,12 +57,15 @@ class Preprocessor {
     }
     const Slot &at(uint64_t i) const { return ring[i%1200]; }
 public:
-    bool reset(const Calibration &c) {
+    bool reset(const Calibration &c, uint8_t trusted_led_mask=15) {
+        required_leds=trusted_led_mask;
         cal=c; count=0; optical=optical_known=0; stable=candidate=-1;
         previous_ms=previous_seq=since=0; previous_boot=0;
-        calibrated=std::isfinite(c.adc_max) && c.adc_max>2 &&
+        calibrated=trusted_led_mask<=15 && std::isfinite(c.adc_max) && c.adc_max>2 &&
             std::isfinite(c.series) && c.series>0 && std::isfinite(c.r25) && c.r25>0 &&
-            std::isfinite(c.beta) && c.beta>0 && std::isfinite(c.offset);
+            std::isfinite(c.beta) && c.beta>0 && std::isfinite(c.offset) &&
+            std::isfinite(c.warm_white_gain) && c.warm_white_gain>=0 && c.warm_white_gain<=1 &&
+            std::isfinite(c.white_reference) && c.white_reference>=0 && c.white_reference<=c.adc_max;
         for(int j=0;j<4;j++) calibrated=calibrated && std::isfinite(c.off[j]) &&
             std::isfinite(c.on[j]) && std::fabs(c.on[j]-c.off[j])>=100 &&
             c.off[j]>=0 && c.off[j]<=c.adc_max && c.on[j]>=0 && c.on[j]<=c.adc_max;
@@ -80,9 +85,16 @@ public:
         if(!v.link) optical=optical_known=0;
         for(int j=0;j<4;j++) {
             const uint8_t bit=1u<<j;
-            const bool good=std::isfinite(s.adc[j]) && s.adc[j]>1 && s.adc[j]<cal.adc_max-1;
+            bool good=std::isfinite(s.adc[j]) && s.adc[j]>1 && s.adc[j]<cal.adc_max-1;
+            double corrected=s.adc[j];
+            if(j==1 && cal.warm_white_gain>0) {
+                good=good && std::isfinite(s.adc[2]) && s.adc[2]>1 && s.adc[2]<cal.adc_max-1;
+                const double excess=s.adc[2]-cal.white_reference;
+                if(excess>0) corrected-=cal.warm_white_gain*excess;
+                good=good && std::isfinite(corrected) && corrected>=0;
+            }
             if(!good) { optical&=~bit; optical_known&=~bit; continue; }
-            double q=(s.adc[j]-cal.off[j])/(cal.on[j]-cal.off[j]);
+            double q=(corrected-cal.off[j])/(cal.on[j]-cal.off[j]);
             if(q>0.6) { optical|=bit; optical_known|=bit; }
             else if(q<0.4) { optical&=~bit; optical_known|=bit; }
             if(optical_known&bit) v.good|=bit;
@@ -128,6 +140,10 @@ public:
             out.led[j]=!(long_good&(1u<<j)) ? 0 : long_edges[j]>=3 ? 3 :
                 long_edges[j]==0 ? ((at(count-1).on&(1u<<j)) ? 2 : 1) : 0;
             out.led_quality[j]=out.led[j]!=0 ? 1 : 0;
+            if(!(required_leds&(1u<<j))) {
+                out.led[j]=out.led_quality[j]=0;
+                out.x[2*j]=out.x[2*j+1]=NAN;
+            }
         }
         double xs[60], ts[60], xm=0, tm=0;
         bool temp_ok=true;
@@ -149,8 +165,8 @@ public:
         out.surface_c=out.surface_good ? static_cast<float>(ts[59]) : NAN;
         out.lid=at(count-1).contact;
         out.lid_good=out.lid>=0;
-        out.valid=good==15 && temp_ok && continuous && contact_ok;
-        for(int j=0;j<4;j++) out.valid=out.valid && out.led[j]!=0;
+        out.valid=(good&required_leds)==required_leds && temp_ok && continuous && contact_ok;
+        for(int j=0;j<4;j++) if(required_leds&(1u<<j)) out.valid=out.valid && out.led[j]!=0;
         out.valid=out.valid && out.led[1]!=3;
         return true;
     }

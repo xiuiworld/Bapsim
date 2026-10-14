@@ -56,6 +56,45 @@ def tree_predict(nodes, x, valid, threshold=.8):
     return result, score
 
 
+def tree_predict_masked(nodes, x, valid, threshold, available_mask):
+    """Conservative consensus over every branch of explicitly unavailable inputs.
+
+    No replacement value or inferred sensor label. An unavailable feature can
+    cause abstention, never selection of a preferred branch. Score is the
+    minimum training leaf frequency, not a calibrated probability.
+    """
+    x = np.asarray(x, dtype=np.float32)
+    if x.ndim != 2 or x.shape[1] != len(FEATURES):
+        raise ValueError('feature shape mismatch')
+    if type(available_mask) is not int or not 0 <= available_mask < (1 << len(FEATURES)):
+        raise ValueError('invalid available feature mask')
+    result = np.full(len(x), 3, dtype=np.int8)
+    score = np.zeros(len(x), dtype=np.float32)
+    available = np.array([bool(available_mask & (1 << j)) for j in range(len(FEATURES))])
+    for row in np.flatnonzero(valid):
+        if not available[3] or not np.isfinite(x[row, available]).all() or x[row, 3] >= 2:
+            continue
+        stack, chosen, minimum, rejected = [0], None, 1., False
+        while stack:
+            n = nodes[stack.pop()]
+            f = n['feature']
+            if f >= 0:
+                if available[f]:
+                    stack.append(n['left'] if x[row, f] <= np.float32(n['threshold']) else n['right'])
+                else:
+                    stack.extend((n['left'], n['right']))
+                continue
+            leaf_score = np.float32(n['score'])
+            if n['class'] == 3 or leaf_score < np.float32(threshold) or (chosen is not None and chosen != n['class']):
+                rejected = True
+                break
+            chosen = n['class']
+            minimum = min(minimum, leaf_score)
+        if not rejected and chosen is not None:
+            result[row], score[row] = chosen, minimum
+    return result, score
+
+
 def rule_predict(x, valid):
     result = np.full(len(x), 3, dtype=np.int8)
     for i in np.flatnonzero(valid):
@@ -104,6 +143,27 @@ def export_c(model, path):
               "  *score=a07_nodes[i].score;",
               f"  if(*score < {literal(model['score_threshold'])} || x[3]>=2) return 3;",
               "  return a07_nodes[i].cls;", "}"]
+    lines += [
+        '#define A07_MASKED_MODEL_VERSION A07_MODEL_VERSION "-mask1"',
+        '/* Unknown features explore both branches; accept only unanimous qualified leaves. */',
+        'static int a07_predict_masked(const float x[A07_FEATURE_COUNT], int valid, unsigned available, float *score) {',
+        '  *score=0; if(!valid || available >= (1u<<A07_FEATURE_COUNT) || !(available&(1u<<3))) return 3;',
+        '  for(int j=0;j<A07_FEATURE_COUNT;j++) if((available&(1u<<j)) && !isfinite(x[j])) return 3;',
+        '  if(x[3]>=2) return 3;',
+        '  short stack[sizeof(a07_nodes)/sizeof(a07_nodes[0])]; unsigned used=1; stack[0]=0;',
+        '  int chosen=-1; float minimum=1;',
+        '  while(used) { const A07Node *n=&a07_nodes[stack[--used]];',
+        '    if(n->f>=0) {',
+        '      if(available&(1u<<n->f)) stack[used++]=x[n->f]<=n->cut?n->l:n->r;',
+        '      else { stack[used++]=n->l; stack[used++]=n->r; }',
+        '    } else {',
+        f'      if(n->cls==3 || n->score < {literal(model["score_threshold"])} || (chosen>=0 && chosen!=n->cls)) return 3;',
+        '      chosen=n->cls; if(n->score<minimum) minimum=n->score;',
+        '    }',
+        '  }',
+        '  if(chosen<0) return 3; *score=minimum; return chosen;',
+        '}',
+    ]
     Path(path).write_text('\n'.join(lines)+'\n', encoding='utf-8')
 
 

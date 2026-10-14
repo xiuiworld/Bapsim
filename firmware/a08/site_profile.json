@@ -1,0 +1,26 @@
+{
+  "timer_trusted": false,
+  "calibration": {
+    "version": "g1020-leakage-v1-20261013",
+    "adc_max": 4095,
+    "led_off": [
+      220,
+      820,
+      1850,
+      202
+    ],
+    "led_on": [
+      1180,
+      1320,
+      2600,
+      810
+    ],
+    "series_ohms": 10000,
+    "ntc_r25": 10000,
+    "ntc_beta": 3950,
+    "ntc_to_ground": true,
+    "offset_c": 0,
+    "warm_white_gain": 0.215,
+    "white_reference": 618.293
+  }
+}

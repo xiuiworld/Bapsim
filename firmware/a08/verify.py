@@ -5,11 +5,18 @@ import json
 from pathlib import Path
 import re
 
-def verify(path, temperature=False, contact=False, optical=False):
+def verify(path, temperature=False, contact=False, optical=False, raw_uart=True):
     raw=Path(path).read_bytes(); text=raw.decode('utf-8',errors='replace')
     assert re.findall(r'A08 INTEGRATION END failures=(\d+)',text)==['0'], 'integration failed/missing/duplicate'
     # Capture begins before flashing; disregard reports from the previous image.
     text=text[text.index('A08 INTEGRATION END'):]
+    policies=re.findall(r'A08 POLICY trusted_led_mask=(\d+) raw_uart=(\d+)',text)
+    trusted_mask=15
+    if policies:
+        assert len(policies)==1, 'duplicate sensor policy'
+        trusted_mask, logged_raw=map(int,policies[0])
+        assert trusted_mask in (7,15), 'unsupported sensor policy'
+        assert logged_raw==int(raw_uart), 'raw UART policy mismatch'
     assert re.findall(r'A08 ADC config gain=1/4 reference_mv=(\d+) resolution=12',text)==['900'], 'ADC range configuration missing/mismatched'
     starts=re.findall(r'A08 START .*confirmed=(\d+) cal_valid=(\d+) driver_errors=(\d+)',text)
     assert starts==[('1' if optical else '0','1','0')], 'driver startup/calibration failed'
@@ -19,11 +26,18 @@ def verify(path, temperature=False, contact=False, optical=False):
         assert all(r[1:3]==('0','0') for r in reports), 'publish failed'
         if optical:
             assert all(all(0<=int(v)<=3 for v in r[6:]) for r in reports), 'invalid LED enum'
-            assert any(all(int(v)>0 for v in r[6:]) for r in reports), 'no complete calibrated LED observation'
+            assert all(all(int(v)==0 for j,v in enumerate(r[6:]) if not trusted_mask & (1<<j)) for r in reports), 'untrusted LED became valid'
+            assert any(all(int(v)>0 for j,v in enumerate(r[6:]) if trusted_mask & (1<<j)) for r in reports), 'no complete calibrated LED observation'
             samples=re.findall(r'A08 SAMPLE boot=(\d+) seq=(\d+) ms=(\d+) raw=([\d,-]+) supply=(-?\d+) lid=(-?\d+)',text)
-            assert len(samples)>=1200, 'less than 60 seconds of raw 20 Hz records'
-            assert all(len(r[3].split(','))==5 for r in samples), 'missing raw channel'
-            assert all(a[0]==b[0] and int(b[1])==int(a[1])+1 for a,b in zip(samples,samples[1:])), 'raw log sequence gap/reboot'
+            if raw_uart:
+                assert len(samples)>=1200, 'less than 60 seconds of raw 20 Hz records'
+                assert all(len(r[3].split(','))==5 for r in samples), 'missing raw channel'
+                assert all(a[0]==b[0] and int(b[1])==int(a[1])+1 for a,b in zip(samples,samples[1:])), 'raw log sequence gap/reboot'
+            else:
+                assert not samples, 'raw UART still enabled in demo build'
+                acquisition=re.findall(r'A08 ACQUIRE read_max_us=\d+ late_max_ms=\d+ queue_dropped=(\d+)',text)
+                assert len(acquisition)>=6, 'insufficient acquisition queue diagnostics'
+                assert all(int(n)==0 for n in acquisition), 'acquisition queue dropped samples'
         else:
             assert all(r[4]=='0' and r[6:]==('0','0','0','0') for r in reports), 'unconfirmed light became valid'
         if contact:
@@ -66,6 +80,7 @@ def verify(path, temperature=False, contact=False, optical=False):
             'unknown_reports':sum(int(r[5])==-32768 for r in reports),
             'adc_read_checks':len(adc),'clean_timing_windows':best,'timing':timing,
             'adc_gain':'1/4','adc_reference_mv':900,'voltage_checks':len(voltage_pairs),
+            'trusted_led_mask':trusted_mask,'raw_uart_expected':raw_uart,'raw_sequence_verified':bool(optical and temperature and raw_uart),
             'origin':'test','temperature_enabled':temperature,'contact_enabled':contact,'optical_enabled':optical,'contact_states':sorted({int(r[3]) for r in reports}),'contact_unknown_reports':sum(r[3]=='255' for r in reports),'physical_sensors_verified':False,
             'sha256':hashlib.sha256(raw).hexdigest()}
 
@@ -74,6 +89,7 @@ if __name__=='__main__':
     parser.add_argument('--temperature',action='store_true')
     parser.add_argument('--contact',action='store_true')
     parser.add_argument('--optical',action='store_true')
-    args=parser.parse_args(); result=verify(args.log,args.temperature,args.contact,args.optical)
+    parser.add_argument('--no-raw-uart',action='store_true',help='Require raw logging OFF and zero queue drops; does not verify individual sample sequences')
+    args=parser.parse_args(); result=verify(args.log,args.temperature,args.contact,args.optical,not args.no_raw_uart)
     with open(args.output,'x',encoding='utf-8') as f: json.dump(result,f,indent=2)
     print(json.dumps(result,indent=2))

@@ -109,7 +109,7 @@ k_timer_start(&sProbeTimer, K_SECONDS(10), K_SECONDS(15));
             self.assertNotIn("PublishSnapshot(false)", changed)
             self.assertNotIn("raw_selftest.cpp", (app / "CMakeLists.txt").read_text())
             self.assertIn("sObservationSequence", changed)
-            self.assertIn("u8(1); // schema v1, explicit test origin",
+            self.assertIn("return encode_snapshot(r,m,frame,capacity,length,true,true);",
                           (app / "src/a07/a07_snapshot.hpp").read_text())
             with self.assertRaises(ValueError):
                 prepare(model, root / "Firmware" / "local-data" / "a05-app")

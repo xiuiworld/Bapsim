@@ -9,8 +9,10 @@ import json
 from pathlib import Path
 import shutil
 from tools.a07_edge.model import export_c
+from firmware.a08.profile import render_profile
 
-def prepare(app, model_path):
+def prepare(app, model_path, profile_path=None, *, live_observations=False, live_edge=False):
+    live_observations = live_observations or live_edge
     app=Path(app).resolve()
     if 'local-data' not in app.parts or 'firmware' in app.parts:
         raise ValueError('Generated app must be under local-data outside firmware')
@@ -26,6 +28,15 @@ def prepare(app, model_path):
     out=app/'src/a08'; out.mkdir(exist_ok=True)
     for name in ('config.hpp','pipeline.hpp','sensors.hpp','selftest.hpp','temperature.hpp'):
         shutil.copyfile(here/name,out/name)
+    if live_observations:
+        config=(out/'config.hpp').read_text()
+        if 'constexpr bool CONTACT_ENABLED = true;' not in config:
+            raise ValueError('Live observations require the physical contact input')
+        (out/'config.hpp').write_text(config.replace('LIVE_OBSERVATIONS = false','LIVE_OBSERVATIONS = true'))
+    if live_edge:
+        config=(out/'config.hpp').read_text()
+        (out/'config.hpp').write_text(config.replace('LIVE_EDGE_OUTPUT = false','LIVE_EDGE_OUTPUT = true'))
+    profile = render_profile(profile_path or here/'site_profile.json',out/'site_profile.hpp')
     a07=app/'src/a07'; a07.mkdir(exist_ok=True)
     for name in ('preprocess.hpp','a07_snapshot.hpp'):
         shutil.copyfile(root/'tools/a07_edge'/name,a07/name)
@@ -49,13 +60,26 @@ def prepare(app, model_path):
     with (app/'prj.conf').open('a') as f:
         f.write('\n# A08 physical acquisition, test origin retained\nCONFIG_ADC=y\n')
         f.write((here/'logging.conf').read_text())
-    (app/'VERSION').write_text('VERSION_MAJOR = 3\nVERSION_MINOR = 4\nPATCHLEVEL = 1\nVERSION_TWEAK = 11\nEXTRAVERSION = a08-optical-log-1\n')
-    manifest={'firmware':'a08-optical-log-1','origin':'test','calibration_config':(here/'config.hpp').read_text(),
+    (app/'VERSION').write_text('VERSION_MAJOR = 3\nVERSION_MINOR = 4\nPATCHLEVEL = 1\nVERSION_TWEAK = 17\nEXTRAVERSION = a08-demo-optical\n')
+    manifest={'firmware':'a08-demo-optical+17','origin':'test','calibration_config':(here/'config.hpp').read_text(),
+              'live_qualified':False,'installation_profile':profile,
               'model':model['version'],'source_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest()
               for p in here.iterdir() if p.is_file()}}
+    if live_observations:
+        (app/'VERSION').write_text('VERSION_MAJOR = 3\nVERSION_MINOR = 4\nPATCHLEVEL = 1\nVERSION_TWEAK = 18\nEXTRAVERSION = a08-live-observations\n')
+        manifest.update(firmware='a08-live-observations+18', origin='live',
+                        live_scope='physical_observations_only', model_live_qualified=False,
+                        calibration_config=(out/'config.hpp').read_text())
+    if live_edge:
+        (app/'VERSION').write_text('VERSION_MAJOR = 3\nVERSION_MINOR = 4\nPATCHLEVEL = 1\nVERSION_TWEAK = 21\nEXTRAVERSION = a08-live-edge\n')
+        manifest.update(firmware='a08-live-edge+21', live_scope='physical_observations_and_edge_candidate',
+                        model_live_qualified=False, calibration_config=(out/'config.hpp').read_text())
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     return manifest
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(); parser.add_argument('--app',required=True); parser.add_argument('--model',required=True)
-    args=parser.parse_args(); print(json.dumps(prepare(args.app,args.model),indent=2))
+    parser.add_argument('--profile',help='Installation settings JSON; defaults to the checked-in profile')
+    parser.add_argument('--live-observations',action='store_true',help='Publish physical observations as live; omit unqualified model inference')
+    parser.add_argument('--live-edge',action='store_true',help='Transmit existing Edge AI candidate on physical live input; qualification unchanged')
+    args=parser.parse_args(); print(json.dumps(prepare(args.app,args.model,args.profile,live_observations=args.live_observations,live_edge=args.live_edge),indent=2))
