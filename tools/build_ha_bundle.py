@@ -1,11 +1,12 @@
 """Build a standalone Bapsim custom integration for another HA config directory.
 
-Only source code and the integration manifest/service description are packaged.
+Includes integration sources, caregiver static assets and optional dashboard configuration.
 The local HA database, tokens, logs, and simulator configuration are excluded.
 """
 
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
@@ -17,25 +18,64 @@ ROOT = "custom_components/bapsim"
 
 INSTALL_NOTES = """# Bapsim Home Assistant integration bundle
 
-Extract this ZIP into the Home Assistant configuration directory. It contains
-`custom_components/bapsim` with its Python runtime code. Add `bapsim:` to
-`configuration.yaml` if it is not already present, then run Home Assistant's
-configuration check and restart Home Assistant.
+Back up existing files and merge configuration; do not replace your entire
+configuration.yaml. Extract this ZIP into the Home Assistant configuration
+directory (usually /config; File editor may show /homeassistant).
 
-For the caregiver dashboard, copy the two files under optional_config into
-the same relative locations in the Home Assistant configuration directory:
-packages/bapsim_caregiver_routine.yaml and dashboards/bapsim_lab.yaml.
-Add 'homeassistant: packages: !include_dir_named packages' and a YAML Lovelace
-dashboard with URL path bapsim-lab pointing to dashboards/bapsim_lab.yaml if
-your configuration does not already have them. Check the configuration and
-restart Home Assistant. The developer simulator is a hidden subview at
-`/bapsim-lab/simulator`; its buttons require the separate simulator package
-and are not needed for caregiver use.
+Included:
+- custom_components/bapsim: integration and its Python runtime
+- www/bapsim-caregiver.js: caregiver card
+- www/bapsim-caregiver-replay.json: isolated synthetic replay, no real phone send
+- optional_config/packages/bapsim_caregiver_routine.yaml
+- optional_config/dashboards/bapsim_lab.yaml
 
-This bundle does not install Matter Server or commission the Nordic board.
-Register real Matter entities only after checking their actual values and
-direction as described in the project guide.
+Copy the two optional_config files to packages/ and dashboards/ respectively.
+Merge these keys into configuration.yaml, preserving existing siblings:
+
+```yaml
+bapsim:
+homeassistant:
+  packages: !include_dir_named packages
+lovelace:
+  mode: storage
+  dashboards:
+    bapsim-lab:
+      mode: yaml
+      title: 밥심
+      icon: mdi:rice
+      show_in_sidebar: true
+      filename: dashboards/bapsim_lab.yaml
+```
+
+If packages or dashboards already exist, merge rather than duplicate their keys.
+Keep an existing Lovelace resource management mode instead of changing it.
+In storage mode, enable Advanced mode in your HA profile if needed, then open
+Settings > Dashboards > Resources and register this URL as a JavaScript module:
+
+`@RESOURCE_URL@`
+
+Update the existing entry for this JS when upgrading; do not register it twice.
+If resources are already YAML-managed, add/update the same URL with type: module
+in your existing lovelace.resources list instead of using the resource UI.
+The /local/ URL maps to www/, not to optional_config/.
+
+Run HA's configuration check and restart HA after installing/updating Python
+files (also needed when first creating www/). Reload the app/dashboard and open
+/bapsim-lab/status. For later JS/JSON-only updates, replace both www files and
+update the resource version URL; no backend restart is needed. Exit and restart
+an active replay to fetch its new JSON.
+
+The developer simulator is a hidden subview at /bapsim-lab/simulator; its buttons
+need the separate simulator package, which is not included. The caregiver's
+synthetic record replay uses the included JSON and needs no simulator package.
+
+This bundle does not install Matter Server, commission a board, register input
+entities or configure a phone recipient. Follow the project input setup guide;
+check real entity values/direction before registering them. Without a verified
+input, the caregiver screen may correctly show that observations are unavailable.
+UI installation and synthetic replay do not prove real phone delivery.
 """
+
 
 
 def bundle_members() -> list[tuple[str, bytes]]:
@@ -52,7 +92,14 @@ def bundle_members() -> list[tuple[str, bytes]]:
          "optional_config/dashboards/bapsim_lab.yaml"),
     ):
         members.append((target, (PROJECT / source).read_bytes()))
-    members.append(("BAPSIM_INSTALL.md", INSTALL_NOTES.encode("utf-8")))
+    for name in ("bapsim-caregiver.js", "bapsim-caregiver-replay.json"):
+        payload = (PROJECT / "infrastructure/home_assistant/config/www" / name).read_bytes()
+        members.append((f"www/{name}", payload))
+    # Match the normalized bytes actually written into the deterministic ZIP.
+    card = dict(members)["www/bapsim-caregiver.js"].replace(b"\r\n", b"\n")
+    resource_url = "/local/bapsim-caregiver.js?v=" + sha256(card).hexdigest()[:12]
+    members.append(("BAPSIM_INSTALL.md", INSTALL_NOTES.replace(
+        "@RESOURCE_URL@", resource_url).encode("utf-8")))
     return sorted(members)
 
 
