@@ -1,5 +1,7 @@
 """Verify the portable HA bundle imports its own runtime code."""
 
+from hashlib import sha256
+import json
 import inspect
 from pathlib import Path
 import subprocess
@@ -54,6 +56,27 @@ print("bundle import and async_setup passed")
                                     cwd=root, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+
+    def test_caregiver_assets_resource_version_and_replay_are_self_contained(self):
+        project = Path(__file__).resolve().parents[1]
+        with TemporaryDirectory() as directory:
+            with ZipFile(build(Path(directory) / "bundle.zip")) as archive:
+                assets = {name for name in archive.namelist() if name.startswith("www/")}
+                self.assertEqual(assets, {"www/bapsim-caregiver.js", "www/bapsim-caregiver-replay.json"})
+                for name in assets:
+                    source = project / "infrastructure/home_assistant/config" / name
+                    self.assertEqual(archive.read(name), source.read_bytes().replace(b"\r\n", b"\n"))
+                card = archive.read("www/bapsim-caregiver.js")
+                notes = archive.read("BAPSIM_INSTALL.md").decode("utf-8")
+                self.assertIn("/local/bapsim-caregiver.js?v=" + sha256(card).hexdigest()[:12], notes)
+                self.assertNotIn("@RESOURCE_URL@", notes)
+                replay = json.loads(archive.read("www/bapsim-caregiver-replay.json"))
+                self.assertFalse(replay["real_push_sent"])
+                self.assertTrue(all(frame["states"]["sensor.bapsim_output_state"]["attributes"]["source"]
+                                    == "simulator" for frame in replay["frames"]))
+                self.assertFalse(any(name.startswith(("local-data/", "output/", "firmware/"))
+                                     or name.endswith(("secrets.yaml", ".env")) for name in archive.namelist()))
+                self.assertNotIn("configuration.yaml", archive.namelist())
 
     def test_bundle_is_identical_for_lf_and_crlf_sources(self):
         with TemporaryDirectory() as directory:
