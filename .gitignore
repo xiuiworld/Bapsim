@@ -40,6 +40,8 @@ htmlcov/
 /docs/program/
 /docs/hardware/*.pdf
 /docs/reference/*.pdf
+# Matter training handouts and bundled tools: publication decision pending
+/docs/reference/matter-training/
 
 # Editor / OS local files
 .DS_Store
@@ -50,3 +52,6 @@ Thumbs.db
 /.codex-remote-attachments/
 /output/
 /tmp/
+
+# Local design previews
+/prototypes/

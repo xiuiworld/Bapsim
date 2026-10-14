@@ -13,6 +13,9 @@ class Pipeline {
     uint64_t since=0, last_ms=0, last_seq=0, last_report=0;
     uint32_t boot=0, counter=0;
     bool seen=false, calibrated=false;
+    bool live_observations=false, live_edge=false;
+    uint8_t trusted_leds=15;
+    unsigned available_features=(1u<<11)-1;
     double adc_max=4095;
     a07::Calibration temperature_cal{};
 public:
@@ -20,8 +23,11 @@ public:
     uint8_t frame[110]{};
     size_t length=0;
     uint32_t reports() const { return counter; }
-    bool reset(const a07::Calibration &cal) {
-        calibrated=processor.reset(cal); temperature_cal=cal; adc_max=cal.adc_max; latest={}; latest.lid=-1;
+    bool reset(const a07::Calibration &cal, uint8_t trusted_led_mask=15, bool physical_live=false, bool edge_output=false) {
+        live_observations=physical_live; live_edge=physical_live && edge_output;
+        trusted_leds=trusted_led_mask; available_features=(1u<<11)-1;
+        for(int j=0;j<4;j++) if(!(trusted_leds&(1u<<j))) available_features&=~(3u<<(2*j));
+        calibrated=processor.reset(cal,trusted_led_mask); temperature_cal=cal; adc_max=cal.adc_max; latest={}; latest.lid=-1;
         stable=candidate=-1; seen=false; counter=0; length=0;
         history=a05::History{}; return calibrated;
     }
@@ -46,8 +52,11 @@ public:
         bool faulty=false;
         for(int j=0;j<5;j++) {
             const bool bad=!std::isfinite(s.adc[j]) || s.adc[j]<=1 || s.adc[j]>=adc_max-1;
-            faulty=faulty || bad;
+            faulty=faulty || (bad && (j==4 || (trusted_leds&(1u<<j))));
             if(bad && j<4) { latest.led[j]=0; latest.led_quality[j]=0; }
+            if(bad && j==2 && temperature_cal.warm_white_gain>0) {
+                latest.led[1]=0; latest.led_quality[1]=0;
+            }
             if(bad && j==4) { latest.surface_good=false; latest.surface_c=NAN; }
         }
         if(faulty || stable<0 || gap) { latest.valid=false; }
@@ -56,10 +65,15 @@ public:
         seen=true; boot=s.boot; last_ms=s.ms; last_seq=s.sequence;
         if(!emit) return false;
         float score=0;
-        const int phase=a07_predict(latest.x,latest.valid,&score);
-        a07::SnapshotMeta meta{s.boot,counter+1,counter+1,s.ms,phase,score,A07_MODEL_VERSION};
-        // Physical commissioning remains test-origin until live producer approval.
-        if(!a07::encode_test_snapshot(latest,meta,frame,sizeof(frame),length)) return false;
+        const int phase=trusted_leds==15 ? a07_predict(latest.x,latest.valid,&score) :
+            a07_predict_masked(latest.x,latest.valid,available_features,&score);
+        a07::SnapshotMeta meta{s.boot,counter+1,counter+1,s.ms,phase,score,
+            trusted_leds==15 ? A07_MODEL_VERSION : A07_MASKED_MODEL_VERSION};
+        const bool encoded=live_observations ?
+            (live_edge ? a07::encode_live_edge_snapshot(latest,meta,frame,sizeof(frame),length) :
+            a07::encode_live_observations(latest,meta,frame,sizeof(frame),length)) :
+            a07::encode_test_snapshot(latest,meta,frame,sizeof(frame),length);
+        if(!encoded) return false;
         ++counter; last_report=s.ms;
         return history.append(frame,length);
     }

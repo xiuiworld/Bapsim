@@ -17,7 +17,13 @@ if (Test-Path -LiteralPath $pointerPath) {
 }
 $sessionDirectory = Join-Path $projectRoot ('local-data/a08/continuous-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $pythonRuntime = 'C:/ncs/toolchains/4f5b6ad6dd/opt/bin/python.exe'
-$recordProcess = Start-Process -FilePath $pythonRuntime -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru -ArgumentList @('-u','tools/a08_capture/continuous_uart.py','--output',('"' + $sessionDirectory + '"'),'--until',$Until) -RedirectStandardOutput "$sessionDirectory.stdout.log" -RedirectStandardError "$sessionDirectory.stderr.log"
+$recordArguments = @('-u','tools/a08_capture/continuous_uart.py','--output',('"' + $sessionDirectory + '"'),'--until',$Until)
+$offlineConfiguration = Join-Path $projectRoot 'local-data/a08/offline-enabled.json'
+if (Test-Path -LiteralPath $offlineConfiguration) {
+    $offlineSettings = Get-Content -LiteralPath $offlineConfiguration -Raw | ConvertFrom-Json
+    $recordArguments += @('--offline-archive', ('"' + $offlineSettings.archive + '"'), '--allow-sleep')
+}
+$recordProcess = Start-Process -FilePath $pythonRuntime -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru -ArgumentList $recordArguments -RedirectStandardOutput "$sessionDirectory.stdout.log" -RedirectStandardError "$sessionDirectory.stderr.log"
 Set-Content -LiteralPath $pointerPath -Value $sessionDirectory
 Write-Output "Recorder PID: $($recordProcess.Id)"
 Write-Output "Output: $sessionDirectory"

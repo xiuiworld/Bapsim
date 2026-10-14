@@ -1,7 +1,7 @@
 """Daily USB UART records with reconnect, until an explicit ISO deadline.
 
-No debug connection, reset, flash or writes to the serial port. Firmware emits
-20 Hz A08 SAMPLE records with device boot ID, sequence and uptime.
+No debug connection, reset or flash. With --offline-archive, sends only the
+baplog status/get/ack protocol. Recovered history remains separate from live CSV.
 """
 import argparse
 import csv
@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import time
 import os
+import sys
 
 import serial
 
@@ -27,6 +28,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--until", required=True, help="ISO timestamp with timezone")
+    parser.add_argument("--offline-archive", help="Durable archive directory; requires offline-log firmware")
+    parser.add_argument("--allow-sleep", action="store_true", help="Do not request Windows sleep prevention")
+    parser.add_argument("--port", default="COM8")
+    parser.add_argument("--device", default="cooker", help="Stable archive identity; use a different ID for each device")
     args = parser.parse_args()
     deadline = datetime.fromisoformat(args.until)
     if deadline.tzinfo is None or deadline <= now():
@@ -35,9 +40,9 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     (root / "metadata.json").write_text(json.dumps({
         "start_utc": now().isoformat(), "until": deadline.isoformat(),
-        "port": "COM8", "baud": 115200, "source": "firmware UART 20 Hz; board acquisition 20 Hz",
+        "port": args.port, "baud": 115200, "source": "firmware UART 20 Hz; board acquisition 20 Hz",
         "raw_channels": ["lock", "warm", "white_rice", "reservation", "ntc"],
-        "usage": "Rice is transferred to another cooker; approximately one serving remains warming here. Opening does not prove eating.",
+        "usage": "Raw observations only; opening does not prove eating.",
         "temperature": "Nominal 10K B3950 surface temperature; no reference thermometer calibration",
         "origin": "test; optical calibration and model are not independently validated",
         "timing": "UTC host receipt plus device boot ID/sequence/uptime; sample sequence advances by 1 at 20 Hz",
@@ -49,7 +54,12 @@ def main():
     count = lines = reconnects = 0
     last_sample = last_uart = None
     last_flush = 0
-    awake = bool(ctypes.windll.kernel32.SetThreadExecutionState(0x80000001))
+    awake = False if args.allow_sleep else bool(ctypes.windll.kernel32.SetThreadExecutionState(0x80000001))
+    recovery = None
+    if args.offline_archive:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+        from tools.a08_storage.receiver import Receiver
+        recovery = Receiver(args.offline_archive, device=args.device)
     failure = None
     status_warning_active = False
 
@@ -59,6 +69,8 @@ def main():
             "until": deadline.isoformat(), "samples": count, "uart_lines": lines,
             "reconnects": reconnects, "last_sample_utc": last_sample,
             "last_uart_utc": last_uart, "sleep_prevention": awake, "reason": reason}
+        if recovery:
+            payload["offline_storage"] = recovery.status()
         temp = root / "status.tmp"
         for attempt in range(5):
             try:
@@ -99,7 +111,9 @@ def main():
                 events = (folder / "events.jsonl").open("a", encoding="utf-8")
             if port is None:
                 try:
-                    port = serial.Serial("COM8", 115200, timeout=0.2)
+                    port = serial.Serial(args.port, 115200, timeout=0.2, write_timeout=2)
+                    if recovery:
+                        recovery.disconnected()
                     pending = b""
                     events.write(json.dumps({"utc": now().isoformat(), "event": "serial_connected"}) + "\n")
                 except (serial.SerialException, OSError) as exc:
@@ -107,6 +121,8 @@ def main():
                     time.sleep(2)
                     continue
             try:
+                if recovery:
+                    recovery.tick(port)
                 block = port.read(max(1, port.in_waiting))
             except (serial.SerialException, OSError) as exc:
                 reconnects += 1
@@ -123,8 +139,20 @@ def main():
                     raw, pending = pending.split(b"\n", 1)
                     line = raw.decode("utf-8", errors="replace").rstrip("\r")
                     line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", line)
+                    if recovery:
+                        try:
+                            recovery.consume(line, port)
+                        except (serial.SerialException, ConnectionError) as exc:
+                            events.write(json.dumps({"utc": now().isoformat(), "event": "recovery_serial_disconnected", "reason": str(exc)}) + "\n")
+                            events.flush()
+                            port.close()
+                            port = None
+                            reconnects += 1
+                            recovery.disconnected()
+                            pending = b""
+                            break
                     # Only sensor diagnostics: exclude pairing codes and unrelated secrets.
-                    if "A08 " not in line and not re.search(r"dropped|<err>|fault|assert|panic|stack overflow|exception", line, re.I):
+                    if "A08 " not in line and "BAPLOG " not in line and not re.search(r"dropped|<err>|fault|assert|panic|stack overflow|exception", line, re.I):
                         continue
                     utc = now().isoformat()
                     log.write(json.dumps({"utc": utc, "line": line}) + "\n")
@@ -156,6 +184,8 @@ def main():
                 f.close()
         ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
         status("failed" if failure else "complete", failure)
+        if recovery:
+            recovery.close()
 
 
 if __name__ == "__main__":
