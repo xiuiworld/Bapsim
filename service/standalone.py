@@ -115,7 +115,8 @@ class AnalysisService:
             if command.get("action") == "acknowledge":
                 item = active[0]
                 manager = self.decline if item in self.decline.dump_state() else self.gap
-                manager.caregiver_response(item["source"], item["device_id"], "checking", now, item["incident_id"])
+                manager.caregiver_response(item["source"], item["device_id"], "checking", now,
+                                          item["incident_id"], caregiver_initiated=False)
             elif command.get("action") == "pause_lifestyle" and self.controls.is_paused(now):
                 self.model.set_away(True, now)
                 for manager in (self.gap, self.decline):

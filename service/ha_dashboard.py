@@ -61,7 +61,8 @@ class HADashboard:
 
         def expire(_now) -> None:
             if self.output_revisions.get(entity) == revision:
-                self.show(entity, "expired", {"source": source, "valid_until": payload["valid_until"]})
+                self.show(entity, "expired", {"source": source, "valid_until": payload["valid_until"],
+                                             "last_usage_at": payload.get("last_usage_at")})
                 self.output_timers.pop(entity, None)
                 if source == "matter" and self.on_output_change is not None:
                     self.on_output_change()
@@ -79,6 +80,24 @@ class HADashboard:
         for cancel in self.output_timers.values():
             cancel()
         self.output_timers.clear()
+
+    def show_observation(self, records: list[dict]) -> None:
+        """Present only verified live contract records, independent of analysis."""
+        rows = [row for row in records if row.get("mode") == "live"]
+        if not rows:
+            return
+        fields = {row["signal"]: row for row in rows}
+        latest = rows[-1]
+        at = latest.get("source_at") or latest["received_at"]
+        valid_until = (datetime.fromisoformat(at.replace("Z", "+00:00")) +
+                       timedelta(minutes=3)).isoformat()
+        self.show("current_observation", "received", {
+            "source": "matter", "device_id": latest["device_id"],
+            "observed_at": latest.get("observed_at"), "source_at": latest.get("source_at"),
+            "received_at": latest["received_at"], "valid_until": valid_until,
+            "fields": {name: {"value": row["value"], "quality": row["quality"]}
+                       for name, row in fields.items()},
+        })
 
     def show_initial_routines(self, as_of: datetime | None = None) -> None:
         now = as_of or datetime.now(timezone.utc)

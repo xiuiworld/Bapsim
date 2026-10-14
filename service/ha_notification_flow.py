@@ -85,6 +85,9 @@ def make_notification_handlers(
         if not delivery.begin(notification_id, notification_time):
             return
         await save_now()  # A restart during either service call leaves an uncertain record.
+        show("notification_delivery", "pending", {"source": update.source,
+             "incident_id": update.incident_id, "notification_id": notification_id,
+             "requested_at": notification_time})
         try:
             await send_local(hass, notification_id, title, message)
         except Exception as exc:

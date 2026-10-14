@@ -606,7 +606,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         recorder = a05_records.setdefault(entity_id, A05ContractRecords(
             output.household_id, adapter.device_id, entity_id))
         if raw is None:
-            journal_io.archive_contract(recorder.offline(now))
+            offline_records = recorder.offline(now)
+            journal_io.archive_contract(offline_records)
+            dashboard.show_observation(offline_records)
             a05_usage_context.reset(adapter.device_id)
             for item in adapter.accept(None, now):
                 hass.bus.async_fire(RAW_EVENT, item)
@@ -622,6 +624,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                     continue
                 records = recorder.accept(report, now, at)
                 journal_io.archive_contract(records)
+                dashboard.show_observation(records)
                 if records:
                     a05_usage_context.observe(adapter.device_id, entity_id, report, records, at)
                 lid_raw = report if report["SignalQuality"]["LidOpen"] == 1 else None

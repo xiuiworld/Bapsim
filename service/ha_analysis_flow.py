@@ -85,7 +85,9 @@ def bind_analysis(
                     if (item["source"], item["device_id"]) == (source, device_id) and item["status"] == "checking":
                         incident_id = item.get("incident_id")
                         if incident_id in controls.acknowledgements and not controls.is_acknowledged(incident_id, as_of):
-                            resolved = workflow.caregiver_response(source, device_id, "resolved", as_of, incident_id)
+                            resolved = workflow.caregiver_response(
+                                source, device_id, "resolved", as_of, incident_id,
+                                resolution_reason="acknowledgement_expired", caregiver_initiated=False)
                             if resolved is not None:
                                 publish_workflow(resolved)
             hass.bus.async_fire(detection_event, decision)

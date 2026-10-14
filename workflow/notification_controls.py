@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Mapping
 
@@ -29,9 +30,9 @@ class NotificationControls:
         self.revision = int(stored.get("revision", 0))
 
     def dump_state(self) -> dict[str, object]:
-        return {"pauses": self.pauses, "acknowledgements": self.acknowledgements,
+        return deepcopy({"pauses": self.pauses, "acknowledgements": self.acknowledgements,
                 "commands": self.commands, "command_requests": self.command_requests,
-                "revision": self.revision}
+                "revision": self.revision})
 
     def apply(self, command: Mapping[str, object], now: str) -> dict[str, str]:
         moment = _time(now)
@@ -63,9 +64,14 @@ class NotificationControls:
             self.pauses[pause_id] = {"starts_at": starts_at, "ends_at": ends_at}
         elif action == "cancel_pause":
             pause_id = command.get("pause_id")
-            if not isinstance(pause_id, str) or pause_id not in self.pauses:
+            previously_cancelled = any(
+                request.get("action") == "cancel_pause" and request.get("pause_id") == pause_id
+                and self.commands.get(key, {}).get("status") == "accepted"
+                for key, request in self.command_requests.items()
+            )
+            if not isinstance(pause_id, str) or (pause_id not in self.pauses and not previously_cancelled):
                 raise ValueError("known pause_id is required")
-            del self.pauses[pause_id]
+            self.pauses.pop(pause_id, None)
         else:
             raise ValueError("unsupported control action")
         self.revision += 1

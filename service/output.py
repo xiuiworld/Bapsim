@@ -40,7 +40,9 @@ class StatusOutput:
             assessments.append({
                 "assessment_id": item["incident_id"], "type": kind,
                 "source": item.get("source"), "device_id": item.get("device_id"),
-                "caregiver_status": item["status"] if item["status"] in {"checking", "resolved"} else None,
+                "caregiver_status": (item.get("caregiver_status") if active else
+                                     "resolved" if item.get("resolution_reason") == "caregiver_completed" else None),
+                "resolution_reason": item.get("resolution_reason"),
                 "status": "notified" if item["status"] in {"notified", "checking"} else
                           "resolved" if item["status"] == "resolved" else "watch",
                 "reason_codes": [REASON_CODES[code] for code in item.get("reason_codes", [])

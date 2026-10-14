@@ -40,6 +40,8 @@ class _State:
     next_reminder_at: str | None = None
     last_lid_open_at: str | None = None
     evidence_ids: tuple[str, ...] = ()
+    resolution_reason: str | None = None
+    caregiver_status: str | None = None
 
 
 class DetectionStateManager:
@@ -137,6 +139,8 @@ class DetectionStateManager:
             if state.candidate_count < required:
                 return []
             state.status = "check_required"
+            state.resolution_reason = None
+            state.caregiver_status = None
             state.incident_id = f"{source}:{device_id}:{as_of}"
             state.reason_codes = reasons
             state.candidate_count = 0
@@ -155,10 +159,12 @@ class DetectionStateManager:
         state.candidate_at = None
         if kind == "away" and state.status in {"check_required", "notified", "checking"}:
             state.status = "resolved"
+            state.resolution_reason = "away_declared"
             state.pending_action = None
             return [self._update(source, device_id, state, "away_declared", as_of)]
         if kind == "normal" and state.status in {"check_required", "notified", "checking"}:
             state.status = "resolved"
+            state.resolution_reason = "usage_resumed" if "USAGE_RESUMED" in reasons else "change_cleared"
             state.pending_action = None
             updates = [self._update(source, device_id, state, "auto_resolved", as_of)]
             if state.notification_count and self.resumption_alerts:
@@ -210,25 +216,33 @@ class DetectionStateManager:
         state.pending_action = None
         if initial and state.status == "check_required":
             state.status = "resolved"
+            state.resolution_reason = "request_cancelled"
             state.candidate_count = 0
             state.candidate_at = None
         if state.interval_hours is not None:
             state.next_reminder_at = (now + timedelta(hours=state.interval_hours)).isoformat()
 
     def caregiver_response(self, source: str, device_id: str, response: str, as_of: str,
-                           incident_id: str | None = None) -> WorkflowUpdate | None:
+                           incident_id: str | None = None, *,
+                           resolution_reason: str = "caregiver_completed",
+                           caregiver_initiated: bool = True) -> WorkflowUpdate | None:
         state = self._states.get((source, device_id))
         if state is None:
             return None
         if incident_id is not None and incident_id != state.incident_id:
             return None
         self._time(as_of)
-        if response == "checking" and state.status == "notified":
+        if response == "checking" and state.status == "check_required" and caregiver_initiated:
+            pass  # Record the response without changing pending-delivery eligibility.
+        elif response == "checking" and state.status in {"notified", "checking"}:
             state.status = "checking"
         elif response == "resolved" and state.status in {"check_required", "notified", "checking"}:
             state.status = "resolved"
+            state.resolution_reason = resolution_reason
         else:
             return None
+        if caregiver_initiated:
+            state.caregiver_status = response
         return self._update(source, device_id, state, "caregiver_response", as_of)
 
     def dump_state(self) -> list[dict[str, object]]:

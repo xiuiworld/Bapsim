@@ -46,7 +46,7 @@ lovelace:
   dashboards:
     bapsim-lab:
       mode: yaml
-      title: 밥심 실험실
+      title: 밥심
       icon: mdi:rice
       show_in_sidebar: true
       filename: dashboards/bapsim_lab.yaml

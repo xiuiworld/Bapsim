@@ -121,8 +121,8 @@ async def refresh_dashboard_choices(hass, workflow, trend_workflow, controls, lo
     if not hass.services.has_service("input_select", "set_options"):
         return
     assessments = _active_assessments(hass, workflow, trend_workflow, external_service)
-    status_labels = {"check_required": "확인 필요", "notified": "안내 발송",
-                     "checking": "확인 중", "watch": "변화 관찰 중"}
+    status_labels = {"check_required": "확인 필요", "notified": "HA 알림 수락",
+                     "checking": "처리 진행", "watch": "변화 관찰 중"}
     choices = ["선택"] + [
         f"{_assessment_label(item)} · {status_labels.get(item['status'], '상태 확인')} | {item['incident_id']}"
         for item in assessments
@@ -247,7 +247,12 @@ def bind_caregiver_commands(
         now = datetime.now(timezone.utc).isoformat()
         async with control_lock:
             before = deepcopy(controls.dump_state())
-            result = controls.apply(command, now)
+            try:
+                result = controls.apply(command, now)
+            except ValueError:
+                # Refresh stale browser lists from the authoritative store even on rejection.
+                show("notification_controls", controls.revision, controls.dump_state())
+                raise
             show("notification_control_result", "applying", {
                 "command_id": result["command_id"], "action": command.get("action"),
                 "recorded_at": now,
@@ -274,7 +279,7 @@ def bind_caregiver_commands(
                 for item in manager.dump_state():
                     if item.get("incident_id") == incident_id:
                         update = manager.caregiver_response(item["source"], item["device_id"],
-                                                            "checking", now, incident_id)
+                                                            "checking", now, incident_id, caregiver_initiated=False)
                         if update is not None:
                             publish_workflow(update)
         if controls.is_paused(now):

@@ -41,6 +41,17 @@ def bind_periodic(
                 usage_model.availability(source, device_id, False, closed_at.isoformat())
                 publish_matter_offline(device_id, closed_at)
                 show_matter_readiness(now)
+        # Reconcile fresh verified reports after restart/reconnection. The normalizer
+        # may already hold online and suppress a duplicate transition, while periodic
+        # expiry previously marked the analysis state offline. Never backfill coverage.
+        if not external_service:
+            for source, device_id in set(availability_by_device) | set(usage_model.device_keys):
+                if (source == "matter" and availability_by_device.get((source, device_id)) != "online"
+                        and matter_contact_registered(device_id) and matter_inputs_available(device_id, now)):
+                    availability_by_device[(source, device_id)] = "online"
+                    usage_model.availability(source, device_id, True, as_of)
+                    show_matter_readiness(now)
+                    save_later()
         if external_service:
             if hass.services.has_service("mqtt", "publish"):
                 for source, device_id in tuple(forwarded_devices):
